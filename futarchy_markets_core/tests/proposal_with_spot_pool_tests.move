@@ -120,7 +120,7 @@ fun test_proposal_with_spot_pool_lifecycle() {
         let asset_coin = coin::mint_for_testing<TEST_COIN_A>(SPOT_POOL_ASSET, ctx);
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(SPOT_POOL_STABLE, ctx);
 
-        let lp_token = unified_spot_pool::add_liquidity(
+        let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
             &mut spot_pool,
             asset_coin,
             stable_coin,
@@ -337,7 +337,7 @@ fun test_quantum_split_reserves() {
         let asset_coin = coin::mint_for_testing<TEST_COIN_A>(SPOT_POOL_ASSET, ctx);
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(SPOT_POOL_STABLE, ctx);
 
-        let lp_token = unified_spot_pool::add_liquidity(
+        let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
             &mut spot_pool,
             asset_coin,
             stable_coin,
@@ -471,7 +471,7 @@ fun test_only_one_active_proposal() {
 
         let asset_coin = coin::mint_for_testing<TEST_COIN_A>(SPOT_POOL_ASSET, ctx);
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(SPOT_POOL_STABLE, ctx);
-        let lp_token = unified_spot_pool::add_liquidity(&mut spot_pool, asset_coin, stable_coin, 0, ctx);
+        let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(&mut spot_pool, asset_coin, stable_coin, 0, ctx);
 
         transfer::public_share_object(spot_pool);
         transfer::public_transfer(lp_token, LP_PROVIDER_ADDR);

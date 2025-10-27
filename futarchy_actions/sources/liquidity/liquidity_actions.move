@@ -281,6 +281,8 @@ public fun do_set_pool_status<Outcome: store, IW: drop>(
 }
 
 /// Fulfill pool creation request with coins from vault
+/// For initial liquidity, all provided coins are used (no excess)
+/// Any excess is returned to treasury vault
 public fun fulfill_create_pool<AssetType: drop, StableType: drop, IW: copy + drop>(
     request: ResourceRequest<CreatePoolAction<AssetType, StableType>>,
     account: &mut Account,
@@ -296,16 +298,17 @@ public fun fulfill_create_pool<AssetType: drop, StableType: drop, IW: copy + dro
     let initial_stable_amount: u64 = resource_requests::get_context(&request, string::utf8(b"initial_stable_amount"));
     let fee_bps: u64 = resource_requests::get_context(&request, string::utf8(b"fee_bps"));
     let _minimum_liquidity: u64 = resource_requests::get_context(&request, string::utf8(b"minimum_liquidity"));
-    
+
     // Verify coins match requested amounts
     assert!(coin::value(&asset_coin) >= initial_asset_amount, EInvalidAmount);
     assert!(coin::value(&stable_coin) >= initial_stable_amount, EInvalidAmount);
-    
+
     // Create the pool using account_spot_pool
     let mut pool = unified_spot_pool::new<AssetType, StableType>(fee_bps, option::none(), clock, ctx);
-    
-    // Add initial liquidity to the pool
-    let lp_token = unified_spot_pool::add_liquidity_and_return(
+
+    // Add initial liquidity to the pool (returns LP token + any excess coins)
+    // For initial liquidity, there should be no excess (all coins used)
+    let (lp_token, excess_asset, excess_stable) = unified_spot_pool::add_liquidity_and_return(
         &mut pool,
         asset_coin,
         stable_coin,
@@ -328,6 +331,32 @@ public fun fulfill_create_pool<AssetType: drop, StableType: drop, IW: copy + dro
         witness,
         ctx
     );
+
+    // Return any excess coins to treasury vault
+    // For initial liquidity, excess should be zero, but handle it defensively
+    let vault_name = string::utf8(DEFAULT_VAULT_NAME);
+
+    if (coin::value(&excess_asset) > 0) {
+        vault::deposit_approved<FutarchyConfig, AssetType>(
+            account,
+            registry,
+            vault_name,
+            excess_asset,
+        );
+    } else {
+        coin::destroy_zero(excess_asset);
+    };
+
+    if (coin::value(&excess_stable) > 0) {
+        vault::deposit_approved<FutarchyConfig, StableType>(
+            account,
+            registry,
+            vault_name,
+            excess_stable,
+        );
+    } else {
+        coin::destroy_zero(excess_stable);
+    };
 
     // Return receipt and pool ID
     (resource_requests::fulfill(request), pool_id)
@@ -388,6 +417,7 @@ public fun do_add_liquidity<AssetType: drop, StableType: drop, Outcome: store, I
 
 /// Fulfill add liquidity request with vault coins and pool
 /// Deposits LP token to custody automatically
+/// Returns excess coins back to treasury vault to prevent value donation to existing LPs
 public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, Outcome: store, IW: copy + drop>(
     request: ResourceRequest<AddLiquidityAction<AssetType, StableType>>,
     executable: &mut Executable<Outcome>,
@@ -428,8 +458,8 @@ public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, Outcome: sto
         ctx
     );
 
-    // Add liquidity to pool and get LP token
-    let lp_token = unified_spot_pool::add_liquidity_and_return(
+    // Add liquidity to pool and get LP token + excess coins
+    let (lp_token, excess_asset, excess_stable) = unified_spot_pool::add_liquidity_and_return(
         pool,
         asset_coin,
         stable_coin,
@@ -446,6 +476,34 @@ public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, Outcome: sto
         witness,
         ctx
     );
+
+    // Return excess coins to treasury vault (permissionless deposit of approved coin types)
+    // NOTE: Vault must have these coin types approved for permissionless deposits
+    // This is typically done during DAO initialization
+    let vault_name = string::utf8(DEFAULT_VAULT_NAME);
+
+    // Only deposit if there's excess (non-zero)
+    if (coin::value(&excess_asset) > 0) {
+        vault::deposit_approved<FutarchyConfig, AssetType>(
+            account,
+            registry,
+            vault_name,
+            excess_asset,
+        );
+    } else {
+        coin::destroy_zero(excess_asset);
+    };
+
+    if (coin::value(&excess_stable) > 0) {
+        vault::deposit_approved<FutarchyConfig, StableType>(
+            account,
+            registry,
+            vault_name,
+            excess_stable,
+        );
+    } else {
+        coin::destroy_zero(excess_stable);
+    };
 
     // Create and return receipt
     resource_requests::create_receipt(action)

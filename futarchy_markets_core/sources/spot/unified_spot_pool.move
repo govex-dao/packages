@@ -355,46 +355,51 @@ public fun get_active_escrow_id<AssetType, StableType>(
 
 // === Core AMM Functions ===
 
-/// Add liquidity to the pool and return LP token
+/// Add liquidity to the pool and return LP token with excess coins
 ///
 /// IMPORTANT: LP can be added anytime, including during active proposals.
 /// - If no proposal active: LP goes to LIVE bucket (participates immediately)
 /// - If proposal active: LP goes to PENDING bucket (joins spot pool when proposal ends)
 ///
 /// This prevents new LP from unfairly benefiting from conditional market outcomes.
+/// Returns: (LPToken, excess_asset_coin, excess_stable_coin)
 public fun add_liquidity<AssetType, StableType>(
     pool: &mut UnifiedSpotPool<AssetType, StableType>,
     asset_coin: Coin<AssetType>,
     stable_coin: Coin<StableType>,
     min_lp_out: u64,
     ctx: &mut TxContext,
-): LPToken<AssetType, StableType> {
+): (LPToken<AssetType, StableType>, Coin<AssetType>, Coin<StableType>) {
     add_liquidity_and_return(pool, asset_coin, stable_coin, min_lp_out, ctx)
 }
 
-/// Add liquidity and return LP token (explicit name for clarity)
+/// Add liquidity and return LP token with excess coins (explicit name for clarity)
+/// Returns: (LPToken, excess_asset_coin, excess_stable_coin)
+///
+/// CRITICAL: This function calculates the optimal amounts needed to match pool ratio
+/// and returns any excess coins instead of depositing them (which would donate to existing LPs)
 public fun add_liquidity_and_return<AssetType, StableType>(
     pool: &mut UnifiedSpotPool<AssetType, StableType>,
     asset_coin: Coin<AssetType>,
     stable_coin: Coin<StableType>,
     min_lp_out: u64,
     ctx: &mut TxContext,
-): LPToken<AssetType, StableType> {
+): (LPToken<AssetType, StableType>, Coin<AssetType>, Coin<StableType>) {
     let asset_amount = coin::value(&asset_coin);
     let stable_amount = coin::value(&stable_coin);
 
     assert!(asset_amount > 0 && stable_amount > 0, EZeroAmount);
 
-    // Calculate LP tokens to mint
-    let lp_amount = if (pool.lp_supply == 0) {
-        // Initial liquidity
+    // Calculate LP tokens to mint and optimal amounts to deposit
+    let (lp_amount, optimal_asset_amount, optimal_stable_amount) = if (pool.lp_supply == 0) {
+        // Initial liquidity - use all coins provided (no pool ratio to match)
         let product = (asset_amount as u128) * (stable_amount as u128);
         let initial_lp = (product.sqrt() as u64);
         assert!(initial_lp >= pool.minimum_liquidity, EMinimumLiquidityNotMet);
 
         // Lock minimum liquidity permanently
         pool.lp_supply = pool.minimum_liquidity;
-        initial_lp - pool.minimum_liquidity
+        (initial_lp - pool.minimum_liquidity, asset_amount, stable_amount)
     } else {
         // Proportional liquidity based on current reserves
         // NOTE: This function is now blocked during active proposals,
@@ -402,19 +407,43 @@ public fun add_liquidity_and_return<AssetType, StableType>(
         let asset_reserve = balance::value(&pool.asset_reserve);
         let stable_reserve = balance::value(&pool.stable_reserve);
 
+        // Calculate LP from each coin type
         let lp_from_asset =
             (asset_amount as u128) * (pool.lp_supply as u128) / (asset_reserve as u128);
         let lp_from_stable =
             (stable_amount as u128) * (pool.lp_supply as u128) / (stable_reserve as u128);
 
-        ((lp_from_asset.min(lp_from_stable)) as u64)
+        // Use minimum to maintain ratio - calculate actual amounts needed
+        let lp_to_mint = lp_from_asset.min(lp_from_stable);
+
+        // Calculate optimal amounts that maintain exact pool ratio
+        let optimal_asset = (lp_to_mint * (asset_reserve as u128) / (pool.lp_supply as u128)) as u64;
+        let optimal_stable = (lp_to_mint * (stable_reserve as u128) / (pool.lp_supply as u128)) as u64;
+
+        ((lp_to_mint as u64), optimal_asset, optimal_stable)
     };
 
     assert!(lp_amount >= min_lp_out, ESlippageExceeded);
 
-    // Add to reserves
-    balance::join(&mut pool.asset_reserve, coin::into_balance(asset_coin));
-    balance::join(&mut pool.stable_reserve, coin::into_balance(stable_coin));
+    // Split coins into amounts to deposit and amounts to return
+    let mut asset_coin_to_deposit = asset_coin;
+    let mut stable_coin_to_deposit = stable_coin;
+
+    let excess_asset = if (asset_amount > optimal_asset_amount) {
+        coin::split(&mut asset_coin_to_deposit, asset_amount - optimal_asset_amount, ctx)
+    } else {
+        coin::zero<AssetType>(ctx)
+    };
+
+    let excess_stable = if (stable_amount > optimal_stable_amount) {
+        coin::split(&mut stable_coin_to_deposit, stable_amount - optimal_stable_amount, ctx)
+    } else {
+        coin::zero<StableType>(ctx)
+    };
+
+    // Add optimal amounts to reserves
+    balance::join(&mut pool.asset_reserve, coin::into_balance(asset_coin_to_deposit));
+    balance::join(&mut pool.stable_reserve, coin::into_balance(stable_coin_to_deposit));
 
     pool.lp_supply = pool.lp_supply + lp_amount;
 
@@ -422,24 +451,26 @@ public fun add_liquidity_and_return<AssetType, StableType>(
     if (is_locked_for_proposal(pool)) {
         // Proposal is active - add to PENDING bucket
         // This LP will merge into LIVE when proposal ends
-        pool.asset_spot_join_quantum_lp_when_proposal_ends = pool.asset_spot_join_quantum_lp_when_proposal_ends + asset_amount;
-        pool.stable_spot_join_quantum_lp_when_proposal_ends = pool.stable_spot_join_quantum_lp_when_proposal_ends + stable_amount;
+        pool.asset_spot_join_quantum_lp_when_proposal_ends = pool.asset_spot_join_quantum_lp_when_proposal_ends + optimal_asset_amount;
+        pool.stable_spot_join_quantum_lp_when_proposal_ends = pool.stable_spot_join_quantum_lp_when_proposal_ends + optimal_stable_amount;
         pool.lp_spot_join_quantum_lp_when_proposal_ends = pool.lp_spot_join_quantum_lp_when_proposal_ends + lp_amount;
     } else {
         // No active proposal - add to LIVE bucket
-        pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp + asset_amount;
-        pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp + stable_amount;
+        pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp + optimal_asset_amount;
+        pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp + optimal_stable_amount;
         pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp + lp_amount;
     };
 
-    // Create and return LP token (unlocked, normal mode by default)
-    LPToken<AssetType, StableType> {
+    // Create and return LP token (unlocked, normal mode by default) + excess coins
+    let lp_token = LPToken<AssetType, StableType> {
         id: object::new(ctx),
         amount: lp_amount,
         pool_id: object::uid_to_inner(&pool.id),
         locked_in_proposal: option::none(),
         withdraw_mode: false,
-    }
+    };
+
+    (lp_token, excess_asset, excess_stable)
 }
 
 /// Merge PENDING bucket into LIVE bucket

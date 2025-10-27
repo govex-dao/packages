@@ -164,7 +164,6 @@ fun create_test_proposal_trading(
         signed::from_u64(500000), // twap_threshold
         30, // amm_total_fee_bps
         option::none(), // winning_outcome
-        sui::balance::zero(),
         @0xC, // treasury_address
         vector[option::none(), option::none()],
         ctx,

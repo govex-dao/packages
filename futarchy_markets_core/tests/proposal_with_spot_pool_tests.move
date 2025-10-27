@@ -145,6 +145,7 @@ fun test_proposal_with_spot_pool_lifecycle() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(PROPOSAL_STABLE, ctx);
 
         let outcome_messages = create_outcome_messages(2);
+        let outcome_details = create_outcome_messages(2); // Same helper can be used for details
 
         // Create proposal (this creates conditional AMMs)
         let (proposal_id, market_state_id, state) = proposal::initialize_market<
@@ -168,6 +169,7 @@ fun test_proposal_with_spot_pool_lifecycle() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
+            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -372,6 +374,7 @@ fun test_quantum_split_reserves() {
             string::utf8(b"Reserve Test"),
             string::utf8(b"metadata"),
             create_outcome_messages(2),
+            create_outcome_messages(2), // outcome_details
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -496,6 +499,7 @@ fun test_only_one_active_proposal() {
             string::utf8(b"First Proposal"),
             string::utf8(b"metadata"),
             create_outcome_messages(2),
+            create_outcome_messages(2), // initial_outcome_details
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -561,6 +565,7 @@ fun test_only_one_active_proposal() {
             string::utf8(b"Second Proposal"),
             string::utf8(b"metadata"),
             create_outcome_messages(2),
+            create_outcome_messages(2), // initial_outcome_details
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,

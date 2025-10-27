@@ -8,6 +8,7 @@ use account_actions::vault;
 use account_protocol::account::{Self, Account};
 use account_protocol::executable::{Self, Executable};
 use account_protocol::intents::{Self, Intent};
+use account_protocol::package_registry::{Self, PackageRegistry};
 use futarchy_core::futarchy_config::{Self, FutarchyConfig, FutarchyOutcome};
 use futarchy_core::version;
 use futarchy_governance_actions::governance_intents;
@@ -23,6 +24,7 @@ use futarchy_types::init_action_specs::InitActionSpecs;
 use futarchy_types::signed::{Self as signed};
 use std::option;
 use std::string::String;
+use std::type_name;
 use std::vector;
 use sui::balance::{Self, Balance};
 use sui::clock::{Self, Clock};
@@ -111,6 +113,7 @@ public struct ProposalReserved has copy, drop {
 /// This should be called after trading has ended and TWAP prices are calculated
 public fun finalize_proposal_market<AssetType, StableType>(
     account: &mut Account,
+    registry: &package_registry::PackageRegistry,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
@@ -120,6 +123,7 @@ public fun finalize_proposal_market<AssetType, StableType>(
 ) {
     finalize_proposal_market_internal(
         account,
+        registry,
         proposal,
         escrow,
         market_state,
@@ -133,6 +137,7 @@ public fun finalize_proposal_market<AssetType, StableType>(
 /// Internal implementation shared by both finalization functions
 fun finalize_proposal_market_internal<AssetType, StableType>(
     account: &mut Account,
+    registry: &PackageRegistry,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
@@ -236,10 +241,19 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
         // 1. Refund fees to ALL creators of outcomes 1-N from proposal's fee escrow
         // SECURITY: Use per-proposal escrow instead of global protocol revenue
         // This ensures each proposal's fees are properly tracked and refunded
+        //
+        // NOTE: Outcomes structure:
+        // - Outcome 0: "Reject"/"No" - typically the proposal creator (no refund if this wins)
+        // - Outcomes 1+: "Accept"/"Yes" variants - initially proposal creator, may be mutated
+        //
+        // Refund logic: Loop through outcomes 1-N (NOT outcome 0)
+        // - If ANY action outcome wins (1+), ALL outcome creators get their fees back
+        // - This includes the original proposal creator (who created outcome 1 initially)
+        // - So proposal creator gets refunded if any action is taken, even if their specific outcome loses
         let fee_escrow_balance = proposal::take_fee_escrow(proposal);
         let mut fee_escrow_coin = coin::from_balance(fee_escrow_balance, ctx);
 
-        let mut i = 1u64;
+        let mut i = 1u64; // Start at 1: skip outcome 0 (reject/no action)
         while (i < num_outcomes) {
             let creator_fee = proposal::get_outcome_creator_fee(proposal, i);
             if (creator_fee > 0 && fee_escrow_coin.value() >= creator_fee) {
@@ -251,12 +265,74 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
             i = i + 1;
         };
 
-        // Any remaining escrow gets destroyed (no refund for outcome 0 creator/proposer)
+        // Any remaining escrow gets destroyed (no refund for outcome 0 creator/proposer if outcome 0 wins)
         // Note: In StableType, not SUI, so cannot deposit to SUI-denominated protocol revenue
         if (fee_escrow_coin.value() > 0) {
             transfer::public_transfer(fee_escrow_coin, @0x0); // Burn by sending to null address
         } else {
             fee_escrow_coin.destroy_zero();
+        };
+
+        // 2. Pay bonus reward to WINNING outcome creator (if configured)
+        // Note: Reward is paid in StableType from DAO's "stable" vault
+        // DAOs can set this to 0 to disable, or any amount to incentivize quality outcomes
+        //
+        // IMPORTANT: Skip reward if ANY of these conditions are true:
+        // - Proposal used admin quota (got free/discounted proposal creation)
+        // - Proposal was EXPLICITLY sponsored (team member called sponsor function)
+        //
+        // Distinction between sponsorship and DAO policy:
+        // ✅ DAO default threshold = 0% → NOT sponsored → Winner GETS reward
+        //    (This is just DAO policy, not subsidizing a specific proposal)
+        // ❌ Team calls sponsor_proposal() → IS sponsored → Winner NO reward
+        //    (This is explicit subsidy via threshold adjustment for a specific proposal)
+        //
+        // Rationale: Rewards incentivize quality external proposals.
+        // If proposal already received DAO support (free fees OR easier pass criteria via sponsorship),
+        // paying additional rewards would be double-dipping from DAO treasury.
+        let win_reward = futarchy_config::outcome_win_reward(config);
+        let used_quota = proposal::get_used_quota(proposal);
+        let was_sponsored = proposal::is_sponsored(proposal); // Only true if sponsor_proposal*() was called
+
+        if (win_reward > 0 && !used_quota && !was_sponsored) {
+            let winner = proposal::get_outcome_creator(proposal, winning_outcome);
+
+            // Access DAO's "stable" vault to check balance and withdraw reward
+            let vault_name = b"stable".to_string();
+            let dao_address = account.addr();
+
+            // Check if vault exists
+            if (vault::has_vault(account, vault_name)) {
+                // First check balance (read-only)
+                let dao_vault = vault::borrow_vault(account, registry, vault_name);
+
+                // Check if the vault has StableType balance
+                if (vault::coin_type_exists<StableType>(dao_vault)) {
+                    let available_balance = vault::coin_type_value<StableType>(dao_vault);
+
+                    // Only pay if vault has funds - take minimum of reward and available balance
+                    if (available_balance > 0) {
+                        let actual_reward_amount = if (available_balance >= win_reward) {
+                            win_reward
+                        } else {
+                            available_balance
+                        };
+
+                        // Withdraw from vault using permissionless withdrawal
+                        // (same pattern used for dissolution - no Auth required)
+                        let reward_coin = vault::withdraw_permissionless<FutarchyConfig, StableType>(
+                            account,
+                            registry,
+                            dao_address,
+                            vault_name,
+                            actual_reward_amount,
+                            ctx,
+                        );
+
+                        transfer::public_transfer(reward_coin, winner);
+                    };
+                };
+            };
         };
     };
     // If outcome 0 wins, DAO keeps all fees - no refunds or rewards
@@ -276,6 +352,7 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
 /// This function can be called by anyone (typically keepers) to trigger early resolution
 public entry fun try_early_resolve<AssetType, StableType>(
     account: &mut Account,
+    registry: &PackageRegistry,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
@@ -351,6 +428,7 @@ public entry fun try_early_resolve<AssetType, StableType>(
     // Call standard finalization
     finalize_proposal_market(
         account,
+        registry,
         proposal,
         escrow,
         market_state,

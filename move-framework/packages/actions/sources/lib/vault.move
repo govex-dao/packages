@@ -303,7 +303,8 @@ public fun deposit_approved<Config: store, CoinType>(
 /// Current authorized callers:
 /// - futarchy_actions::dissolution (proportional redemption)
 /// - futarchy_actions::nav_market_making (buyback/sell operations)
-public fun withdraw_permissionless<Config: store, CoinType: drop>(
+/// - futarchy_governance::proposal_lifecycle (outcome winner rewards)
+public fun withdraw_permissionless<Config: store, CoinType>(
     account: &mut Account,
     registry: &PackageRegistry,
     dao_address: address,

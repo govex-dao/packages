@@ -61,42 +61,67 @@ const PROTOCOL_MAX_THRESHOLD_NEGATIVE: u128 = 50_000_000_000; // -5% (stored as 
 
 /// Trading parameters configuration
 public struct TradingParams has copy, drop, store {
+    // Range: PROTOCOL_MIN_LIQUIDITY_AMOUNT (100000) to u64::MAX
     min_asset_amount: u64,
+    // Range: PROTOCOL_MIN_LIQUIDITY_AMOUNT (100000) to u64::MAX
     min_stable_amount: u64,
+    // Range: constants::min_review_period_ms() to u64::MAX milliseconds
     review_period_ms: u64,
+    // Range: constants::min_trading_period_ms() to u64::MAX milliseconds
     trading_period_ms: u64,
+    // Range: 0 to constants::max_amm_fee_bps() (10000 = 100%) basis points
     conditional_amm_fee_bps: u64, // Fee for conditional AMMs (prediction markets)
+    // Range: 0 to constants::max_amm_fee_bps() (10000 = 100%) basis points
     spot_amm_fee_bps: u64, // Fee for spot AMM (base pool)
     // Market operation review period (for conditional raise/buyback)
     // Can be 0 to skip review and start trading immediately after market init
+    // Range: 0 to review_period_ms milliseconds
     market_op_review_period_ms: u64,
     // Max percentage (in basis points) of AMM reserves that can be auto-swapped per proposal
     // Default: 1000 bps (10%) - prevents market from becoming too illiquid for trading
+    // Range: 0 to constants::max_fee_bps() (10000 = 100%) basis points
     max_amm_swap_percent_bps: u64,
     // Percentage of liquidity that moves to conditional markets when proposal launches
     // Base 100 precision (1 = 1%, 80 = 80%, 99 = 99%)
     // Valid range: 1-99 (enforced to ensure both spot and conditional pools have liquidity)
     // Default: 80 (80%) - balances price discovery with spot trading
+    // Range: constants::min_conditional_liquidity_percent() to constants::max_conditional_liquidity_percent() (1-99)
     conditional_liquidity_ratio_percent: u64,
 }
 
 /// TWAP (Time-Weighted Average Price) configuration
 public struct TwapConfig has copy, drop, store {
+    // Range: 0 to u64::MAX milliseconds (can be 0 for immediate TWAP start)
     start_delay: u64,
+    // Range: 1 to u64::MAX milliseconds (must be positive)
     step_max: u64,
+    // Range: 1 to u128::MAX (must be positive, in 1e12 scale)
     initial_observation: u128,
+    // Range: ±PROTOCOL_MAX_THRESHOLD (±50_000_000_000 = ±5% in 1e12 scale)
     threshold: SignedU128,
 }
 
 public struct GovernanceConfig has copy, drop, store {
+    // Range: constants::min_outcomes() to constants::protocol_max_outcomes()
     max_outcomes: u64,
+    // Range: 1 to constants::protocol_max_actions_per_outcome()
     max_actions_per_outcome: u64,
+    // Range: 1 to MAX_PROPOSAL_CREATION_FEE (10_000_000_000 = 10,000 tokens with 6 decimals)
     proposal_creation_fee: u64, // Base fee to create a proposal (DAO-level, in StableType)
+    // Range: 1 to MAX_PROPOSAL_FEE_PER_OUTCOME (10_000_000_000 = 10,000 tokens with 6 decimals)
     proposal_fee_per_outcome: u64, // Fee per additional outcome beyond initial 2 (DAO-level, in StableType)
+    // Categories: true (accept new proposals), false (reject new proposals)
     accept_new_proposals: bool,
+    // Range: 1 to u64::MAX
     max_intents_per_outcome: u64,
+    // Range: constants::min_proposal_intent_expiry_ms() to u64::MAX milliseconds
     proposal_intent_expiry_ms: u64,
+    // Categories: true (enable lock), false (disable lock)
     enable_premarket_reservation_lock: bool,
+    // Categories: true (show proposal details in UI), false (hide details, show only intents)
+    // WARNING: Proposal details are unverified text that may not match actual intent execution
+    // Recommended: false (hide details by default for security)
+    show_proposal_details: bool,  // don’t show per outcome description in UI if true
 }
 
 /// Metadata configuration
@@ -108,6 +133,7 @@ public struct MetadataConfig has copy, drop, store {
 
 /// Conditional coin metadata configuration for proposals
 public struct ConditionalCoinConfig has copy, drop, store {
+    // Categories: true (append outcome index), false (don't append)
     use_outcome_index: bool, // If true, append outcome index to name
     // If Some(), use these hardcoded values for conditional tokens
     // If None(), derive conditional token names from base DAO token CoinMetadata
@@ -116,6 +142,7 @@ public struct ConditionalCoinConfig has copy, drop, store {
 
 /// Metadata for conditional tokens (fallback if CoinMetadata can't be read)
 public struct ConditionalMetadata has copy, drop, store {
+    // Range: 0 to 255 (typically 6-18 for most tokens)
     decimals: u8, // Decimals for conditional coins
     coin_name_prefix: AsciiString, // Prefix for coin names (e.g., "MyDAO_")
     coin_icon_url: Url, // Icon URL for conditional coins
@@ -123,18 +150,26 @@ public struct ConditionalMetadata has copy, drop, store {
 
 /// Quota system configuration
 public struct QuotaConfig has copy, drop, store {
+    // Categories: true (quota system active), false (quota system inactive)
     enabled: bool, // If true, quota system is active
+    // Range: 1 to u64::MAX (must be positive if enabled)
     default_quota_amount: u64, // Default proposals per period for new allowlist members
+    // Range: 1 to u64::MAX milliseconds (must be positive if enabled)
     default_quota_period_ms: u64, // Default period for quotas (e.g., 30 days)
+    // Range: 0 to u64::MAX (0 = free)
     default_reduced_fee: u64, // Default reduced fee (0 for free)
 }
 
 /// Sponsorship system configuration
 /// Allows team members to sponsor external proposals by setting a fixed threshold
 public struct SponsorshipConfig has copy, drop, store {
+    // Categories: true (sponsorship system active), false (sponsorship system inactive)
     enabled: bool, // If true, sponsorship system is active
+    // Range: 0 or negative with magnitude ≤ PROTOCOL_MAX_THRESHOLD_NEGATIVE (50_000_000_000 = 5%)
     sponsored_threshold: SignedU128, // Fixed threshold for sponsored proposals (must be ≤ 0, e.g., 0 or -2%)
+    // Categories: true (waive fees), false (don't waive fees)
     waive_advancement_fees: bool, // Does sponsorship also waive advancement fees?
+    // Range: 1 to u64::MAX (must be positive if enabled)
     default_sponsor_quota_amount: u64, // Default sponsorships per period
 }
 
@@ -231,6 +266,7 @@ public fun new_governance_config(
     max_intents_per_outcome: u64,
     proposal_intent_expiry_ms: u64,
     enable_premarket_reservation_lock: bool,
+    show_proposal_details: bool,
 ): GovernanceConfig {
     assert!(max_outcomes >= constants::min_outcomes(), EInvalidMaxOutcomes);
     assert!(max_outcomes <= constants::protocol_max_outcomes(), EMaxOutcomesExceedsProtocol);
@@ -251,6 +287,7 @@ public fun new_governance_config(
         max_intents_per_outcome,
         proposal_intent_expiry_ms,
         enable_premarket_reservation_lock,
+        show_proposal_details,
     }
 }
 
@@ -443,6 +480,10 @@ public fun proposal_intent_expiry_ms(gov: &GovernanceConfig): u64 { gov.proposal
 
 public fun enable_premarket_reservation_lock(gov: &GovernanceConfig): bool {
     gov.enable_premarket_reservation_lock
+}
+
+public fun show_proposal_details(gov: &GovernanceConfig): bool {
+    gov.show_proposal_details
 }
 
 // Metadata config getters
@@ -730,6 +771,13 @@ public(package) fun set_enable_premarket_reservation_lock(
     gov.enable_premarket_reservation_lock = enabled;
 }
 
+public(package) fun set_show_proposal_details(
+    gov: &mut GovernanceConfig,
+    show: bool,
+) {
+    gov.show_proposal_details = show;
+}
+
 // Metadata config direct setters
 public(package) fun set_dao_name(meta: &mut MetadataConfig, name: AsciiString) {
     meta.dao_name = name;
@@ -961,6 +1009,7 @@ public fun default_governance_config(): GovernanceConfig {
         max_intents_per_outcome: 10,
         proposal_intent_expiry_ms: constants::default_proposal_intent_expiry_ms(),
         enable_premarket_reservation_lock: true,
+        show_proposal_details: false, // Default: false for security
     }
 }
 

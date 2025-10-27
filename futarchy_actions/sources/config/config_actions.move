@@ -218,6 +218,7 @@ public struct GovernanceUpdateAction has store, drop, copy {
     proposal_fee_per_outcome: Option<u64>, // DAO-level fee per additional outcome (in StableType)
     accept_new_proposals: Option<bool>,  // Enable/disable proposal creation
     enable_premarket_reservation_lock: Option<bool>, // Enable/disable premarket reservation lock
+    show_proposal_details: Option<bool>, // Enable/disable showing proposal details in UI (default: false for security)
 }
 
 /// Metadata table update action
@@ -787,6 +788,7 @@ public fun do_update_governance<Outcome: store, IW: drop>(
         proposal_fee_per_outcome,
         accept_new_proposals,
         enable_premarket_reservation_lock,
+        show_proposal_details: option::none(),
     };
 
     // Validate parameters
@@ -831,6 +833,9 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     };
     if (action.enable_premarket_reservation_lock.is_some()) {
         futarchy_config::set_enable_premarket_reservation_lock(config, *action.enable_premarket_reservation_lock.borrow());
+    };
+    if (action.show_proposal_details.is_some()) {
+        futarchy_config::set_show_proposal_details(config, *action.show_proposal_details.borrow());
     };
 
     // Emit event
@@ -1256,6 +1261,7 @@ public fun destroy_governance_update(action: GovernanceUpdateAction) {
         proposal_fee_per_outcome: _,
         accept_new_proposals: _,
         enable_premarket_reservation_lock: _,
+        show_proposal_details: _,
     } = action;
 }
 
@@ -1534,6 +1540,7 @@ public fun new_governance_update_action(
     proposal_fee_per_outcome: Option<u64>,
     accept_new_proposals: Option<bool>,
     enable_premarket_reservation_lock: Option<bool>,
+    show_proposal_details: Option<bool>,
 ): GovernanceUpdateAction {
     let action = GovernanceUpdateAction {
         max_outcomes,
@@ -1547,6 +1554,7 @@ public fun new_governance_update_action(
         proposal_fee_per_outcome,
         accept_new_proposals,
         enable_premarket_reservation_lock,
+        show_proposal_details,
     };
     validate_governance_update(&action);
     action
@@ -1754,6 +1762,7 @@ public fun new_governance_update<Outcome, IW: drop>(
         proposal_fee_per_outcome,
         accept_new_proposals,
         enable_premarket_reservation_lock,
+        show_proposal_details: option::none(),
     };
     validate_governance_update(&action);
     let action_data = bcs::to_bytes(&action);
@@ -2122,6 +2131,7 @@ public(package) fun governance_update_action_from_bytes(bytes: vector<u8>): Gove
         proposal_fee_per_outcome: bcs.peel_option_u64(),
         accept_new_proposals: bcs.peel_option_bool(),
         enable_premarket_reservation_lock: bcs.peel_option_bool(),
+        show_proposal_details: bcs.peel_option_bool(),
     }
 }
 

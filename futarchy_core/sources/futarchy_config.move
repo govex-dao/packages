@@ -64,20 +64,28 @@ const EDAOTerminated: u64 = 103; // DAO is terminated, operation not allowed
 /// To disable: set min_proposal_duration_ms = max_proposal_duration_ms (no early resolve window)
 public struct EarlyResolveConfig has copy, drop, store {
     // Time bounds
+    // Range: 0 to u64::MAX milliseconds (must be <= max_proposal_duration_ms)
     min_proposal_duration_ms: u64, // e.g., 43_200_000 (12 hours) - safety floor
+    // Range: 0 to u64::MAX milliseconds (must be >= min_proposal_duration_ms)
     max_proposal_duration_ms: u64, // e.g., 172_800_000 (48 hours) - max capital lock
     // Winner stability thresholds - TWAP-based
+    // Range: 0 to PROTOCOL_MAX_THRESHOLD_POSITIVE (50_000_000_000 = 5% in 1e12 scale)
     min_winner_spread: u128, // e.g., 50_000_000_000 (5% in 1e12 scale)
+    // Range: 0 to u64::MAX milliseconds
     min_time_since_last_flip_ms: u64, // e.g., 14_400_000 (4 hours) - simple stability check
     // NEW: Flip-based stability (window approach)
+    // Range: 0 to u64::MAX flips (RECOMMENDED: 1 flip max)
     max_flips_in_window: u64, // e.g., 1 (RECOMMENDED: 1 flip max)
+    // Range: 0 to u64::MAX milliseconds
     flip_window_duration_ms: u64, // e.g., 86_400_000 (24 hours)
     // NEW: TWAP-scaled flip tolerance
     // If enabled: Higher TWAP spread = more flip tolerance
     // Formula: effective_max_flips = max_flips_in_window * (current_spread / min_winner_spread)
     // Example: If spread is 30% and min is 5%, allow 6x more flips (1 → 6 flips)
+    // Categories: true (enable TWAP scaling), false (use fixed flip limit - RECOMMENDED)
     enable_twap_scaling: bool, // RECOMMENDED: false (use fixed flip limit)
     // Keeper incentives
+    // Range: 0 to 10000 basis points (0-100%)
     keeper_reward_bps: u64, // e.g., 10 bps (0.1%) of protocol fees
 }
 
@@ -90,13 +98,17 @@ public struct FutarchyConfig has copy, drop, store {
     // Core DAO configuration
     config: DaoConfig,
     // Reward configuration (paid from protocol revenue in SUI)
+    // Range: 0 to u64::MAX (in SUI smallest units)
     outcome_win_reward: u64, // Reward for winning outcome creator (in SUI, default: 0)
     // Verification configuration
+    // Categories: 0 = unverified, 1 = basic, 2 = standard, 3 = premium
     verification_level: u8, // 0 = unverified, 1 = basic, 2 = standard, 3 = premium
+    // Range: 0 to u64::MAX (higher = better, admin-set only)
     dao_score: u64, // DAO quality score (0-unlimited, higher = better, admin-set only)
     // Write-once immutable starting price from launchpad raise
     // Once set to Some(price), can NEVER be changed
     // Used to enforce: 1) AMM initialization ratio, 2) founder reward minimum price
+    // Range: None or Some(0 to u128::MAX in 1e12 scale)
     launchpad_initial_price: Option<u128>,
     // Early resolve configuration
     early_resolve_config: EarlyResolveConfig,
@@ -104,14 +116,21 @@ public struct FutarchyConfig has copy, drop, store {
 
 /// Dynamic state stored on Account via dynamic fields
 public struct DaoState has store {
+    // Categories: 0 = DAO_STATE_ACTIVE (normal operation), 1 = DAO_STATE_TERMINATED (permanent shutdown)
     operational_state: u8,
+    // Range: 0 to u64::MAX
     active_proposals: u64,
+    // Range: 0 to u64::MAX
     total_proposals: u64,
     attestation_url: String,
+    // Categories: true (verification in progress), false (not pending)
     verification_pending: bool,
     // Dissolution fields (set when DAO terminated)
+    // Range: None or Some(0 to u64::MAX milliseconds)
     terminated_at_ms: Option<u64>,  // When DAO was terminated
+    // Range: None or Some(0 to u64::MAX milliseconds)
     dissolution_unlock_delay_ms: Option<u64>,  // How long to wait before redemption
+    // Categories: true (capability created), false (not yet created)
     dissolution_capability_created: bool,  // Prevent multiple capability creation
 }
 
@@ -391,7 +410,9 @@ public struct FutarchyOutcome has copy, drop, store {
     // These fields are set when proposal is created/approved
     proposal_id: Option<ID>,
     market_id: Option<ID>,
+    // Categories: true (proposal passed/approved), false (not approved)
     approved: bool,
+    // Range: 0 to u64::MAX milliseconds (timestamp when execution is allowed)
     min_execution_time: u64,
 }
 
@@ -675,6 +696,11 @@ public fun set_accept_new_proposals(config: &mut FutarchyConfig, accept: bool) {
 public fun set_enable_premarket_reservation_lock(config: &mut FutarchyConfig, enabled: bool) {
     let gov_cfg = dao_config::governance_config_mut(&mut config.config);
     dao_config::set_enable_premarket_reservation_lock(gov_cfg, enabled);
+}
+
+public fun set_show_proposal_details(config: &mut FutarchyConfig, show: bool) {
+    let gov_cfg = dao_config::governance_config_mut(&mut config.config);
+    dao_config::set_show_proposal_details(gov_cfg, show);
 }
 
 public fun set_market_op_review_period_ms(config: &mut FutarchyConfig, period: u64) {

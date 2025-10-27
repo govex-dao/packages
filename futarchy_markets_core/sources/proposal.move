@@ -1629,6 +1629,7 @@ public fun new_for_testing<AssetType, StableType>(
     title: String,
     metadata: String,
     outcome_messages: vector<String>,
+    initial_outcome_details: vector<String>,
     outcome_creators: vector<address>,
     outcome_count: u8,
     review_period_ms: u64,
@@ -1984,7 +1985,7 @@ public fun create_test_proposal<AssetType, StableType>(
 
     let outcome_creators = vector::tabulate!(outcome_count as u64, |_| @0xAAA);
 
-    let intent_specs = vector::tabulate!(outcome_count as u64, |_| option::none());
+    let intent_specs = vector::tabulate!(outcome_count as u64, |_| option::none<InitActionSpecs>());
 
     let mut proposal = new_for_testing<AssetType, StableType>(
         @0x1,                       // dao_id
@@ -1993,6 +1994,7 @@ public fun create_test_proposal<AssetType, StableType>(
         string::utf8(b"Test"),      // title
         string::utf8(b"Metadata"),  // metadata
         outcome_messages,
+        outcome_messages,           // initial_outcome_details (reuse outcome_messages)
         outcome_creators,
         outcome_count,
         60000,                      // review_period_ms (1 min)
@@ -2005,7 +2007,6 @@ public fun create_test_proposal<AssetType, StableType>(
         signed::from_u128(500000000000000000u128),      // twap_threshold
         30,                         // amm_total_fee_bps (0.3%)
         option::some(winning_outcome),
-        sui::balance::zero<StableType>(),
         @0x4,                       // treasury_address
         intent_specs,
         ctx
@@ -2037,6 +2038,7 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
         conditional_treasury_caps,
         conditional_metadata,
         title: _,
+        details: _,
         metadata: _,
         timing: ProposalTiming {
             created_at: _,

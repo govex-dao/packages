@@ -403,6 +403,7 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
         10,
         31_536_000_000,
         true,
+        false, // show_proposal_details (default: false for security)
     );
 
     let metadata_config = dao_config::new_metadata_config(
@@ -640,6 +641,7 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
         10,
         31_536_000_000,
         true,
+        false, // show_proposal_details (default: false for security)
     );
 
     let metadata_config = dao_config::new_metadata_config(

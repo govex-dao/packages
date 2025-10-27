@@ -244,6 +244,7 @@ public fun create_update_governance_intent<Outcome: store + drop + copy>(
                 option::none(), // proposal_fee_per_outcome - not specified
                 option::none(), // accept_new_proposals - not specified
                 option::none(), // enable_premarket_reservation_lock - not specified
+                option::none(), // show_proposal_details - not specified
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
@@ -291,6 +292,7 @@ public fun create_update_governance_flexible_intent<Outcome: store + drop + copy
                 option::none(), // proposal_fee_per_outcome
                 option::none(), // accept_new_proposals
                 option::none(), // enable_premarket_reservation_lock
+                option::none(), // show_proposal_details - not specified
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(

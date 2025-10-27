@@ -19,71 +19,50 @@ npm run prettier -- -w sources/amm/amm.move
 
 ## Concatenating all .Move files for use with LLMs
 
-Run these commands from the project root directory (`/Users/admin/monorepo/`):
+Run these commands from the packages repository directory (`/Users/admin/govex/packages/`):
 
-**All 13 packages (Move Framework + Futarchy):**
+**Just Move Framework packages:**
 ```bash
 find \
-  contracts/move-framework/packages/extensions/sources \
-  contracts/move-framework/packages/protocol/sources \
-  contracts/move-framework/packages/actions/sources \
-  contracts/futarchy_one_shot_utils/sources \
-  contracts/futarchy_core/sources \
-  contracts/futarchy_markets_core/sources \
-  contracts/futarchy_markets_operations/sources \
-  contracts/futarchy_specialized_actions/sources \
-  contracts/futarchy_lifecycle/sources \
-  contracts/futarchy_actions/sources \
-  contracts/futarchy_dao/sources \
-  -type f -name '*.move' ! -name "*test*" ! -name "*Test*" -exec cat {} + > all_13_packages.txt
-```
-
-**Just 3 Move Framework packages:**
-```bash
-find \
-  contracts/move-framework/packages/extensions/sources \
-  contracts/move-framework/packages/protocol/sources \
-  contracts/move-framework/packages/actions/sources \
+  move-framework/packages/protocol/sources \
+  move-framework/packages/actions/sources \
   -type f -name '*.move' ! -name "*test*" ! -name "*Test*" -exec cat {} + > move_framework_only.txt
 ```
 
-**Just 10 Futarchy packages:**
+**Just Futarchy packages:**
 ```bash
 find \
-  contracts/futarchy_one_shot_utils/sources \
-  contracts/futarchy_core/sources \
-  contracts/futarchy_markets_core/sources \
-  contracts/futarchy_markets_operations/sources \
-  contracts/futarchy_vault/sources \
-  contracts/futarchy_specialized_actions/sources \
-  contracts/futarchy_lifecycle/sources \
-  contracts/futarchy_actions/sources \
-  contracts/futarchy_dao/sources \
-  -type f -name '*.move' ! -name "*test*" ! -name "*Test*" -exec cat {} + > futarchy_10_packages.txt
+  futarchy_one_shot_utils/sources \
+  futarchy_types/sources \
+  futarchy_core/sources \
+  futarchy_markets_core/sources \
+  futarchy_markets_operations/sources \
+  futarchy_markets_primitives/sources \
+  futarchy_oracle_actions/sources \
+  futarchy_factory/sources \
+  futarchy_governance/sources \
+  futarchy_governance_actions/sources \
+  futarchy_actions/sources \
+  -type f -name '*.move' ! -name "*test*" ! -name "*Test*" -exec cat {} + > futarchy_packages.txt
 ```
 
-## Concatenating all .Move files for use with LLMs
-
-Run these commands from the project root directory (`/Users/admin/monorepo/`):
-
-**All 19 packages (Move Framework + Futarchy):**
+**All packages (Move Framework + Futarchy):**
 ```bash
 find \
-    contracts/move-framework/packages/protocol/sources \
-    contracts/move-framework/packages/actions/sources \
-    contracts/futarchy_one_shot_utils/sources \
-    contracts/futarchy_types/sources \
-    contracts/futarchy_core/sources \
-    contracts/futarchy_markets_core/sources \
-    contracts/futarchy_markets_operations/sources \
-    contracts/futarchy_markets_primitives/sources \
-    contracts/futarchy_oracle_actions/sources \
-    contracts/futarchy_factory/sources \
-    contracts/futarchy_governance/sources \
-    contracts/futarchy_governance_actions/sources \
-    contracts/futarchy_actions/sources \
-    contracts/futarchy_actions_tracker/sources \
-    -type f -name '*.move' ! -name "*test*" ! -name "*Test*" -exec cat {} + > all_13_packages.txt
+    move-framework/packages/protocol/sources \
+    move-framework/packages/actions/sources \
+    futarchy_one_shot_utils/sources \
+    futarchy_types/sources \
+    futarchy_core/sources \
+    futarchy_markets_core/sources \
+    futarchy_markets_operations/sources \
+    futarchy_markets_primitives/sources \
+    futarchy_oracle_actions/sources \
+    futarchy_factory/sources \
+    futarchy_governance/sources \
+    futarchy_governance_actions/sources \
+    futarchy_actions/sources \
+    -type f -name '*.move' ! -name "*test*" ! -name "*Test*" -exec cat {} + > all_packages.txt
 ```
 
 

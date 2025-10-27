@@ -419,53 +419,6 @@ public fun add_request_verification_to_intent<Outcome: store, IW: drop>(
     intent.add_typed_action(type_name::get<protocol_admin_actions::RequestVerification>().into_string().to_string(), action_data, intent_witness);
 }
 
-/// Approve verification request (validator action)
-public fun add_approve_verification_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    dao_id: ID,
-    verification_id: ID,
-    level: u8,
-    attestation_url: String,
-    intent_witness: IW,
-) {
-    let action = protocol_admin_actions::new_approve_verification(
-        dao_id,
-        verification_id,
-        level,
-        attestation_url,
-    );
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::ApproveVerification>().into_string().to_string(), action_data, intent_witness);
-}
-
-/// Reject verification request (validator action)
-public fun add_reject_verification_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    dao_id: ID,
-    verification_id: ID,
-    reason: String,
-    intent_witness: IW,
-) {
-    let action = protocol_admin_actions::new_reject_verification(dao_id, verification_id, reason);
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::RejectVerification>().into_string().to_string(), action_data, intent_witness);
-}
-
-// === DAO Management Intent Helpers ===
-
-/// Set DAO score
-public fun add_set_dao_score_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    dao_id: ID,
-    score: u64,
-    reason: String,
-    intent_witness: IW,
-) {
-    let action = protocol_admin_actions::new_set_dao_score(dao_id, score, reason);
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::SetDaoScoreAction>().into_string().to_string(), action_data, intent_witness);
-}
-
 // === Coin Fee Configuration Intent Helpers ===
 
 /// Add coin fee configuration
@@ -534,23 +487,4 @@ public fun add_apply_pending_coin_fees_to_intent<Outcome: store, IW: drop>(
     let action = protocol_admin_actions::new_apply_pending_coin_fees(coin_type);
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(type_name::get<protocol_admin_actions::ApplyPendingCoinFees>().into_string().to_string(), action_data, intent_witness);
-}
-
-// === Launchpad Admin Intent Helpers ===
-
-/// Set launchpad raise trust score and review
-public fun add_set_launchpad_trust_score_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    raise_id: ID,
-    trust_score: u64,
-    review_text: String,
-    intent_witness: IW,
-) {
-    let action = protocol_admin_actions::new_set_launchpad_trust_score(
-        raise_id,
-        trust_score,
-        review_text,
-    );
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::SetLaunchpadTrustScore>().into_string().to_string(), action_data, intent_witness);
 }

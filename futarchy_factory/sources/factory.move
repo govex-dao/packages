@@ -138,6 +138,31 @@ public struct LaunchpadFeesUpdated has copy, drop {
     timestamp: u64,
 }
 
+public struct VerificationApproved has copy, drop {
+    dao_id: ID,
+    verification_id: ID,
+    level: u8,
+    attestation_url: UTF8String,
+    validator: address,
+    timestamp: u64,
+}
+
+public struct VerificationRejected has copy, drop {
+    dao_id: ID,
+    verification_id: ID,
+    reason: UTF8String,
+    validator: address,
+    timestamp: u64,
+}
+
+public struct DaoScoreSet has copy, drop {
+    dao_id: ID,
+    score: u64,
+    reason: UTF8String,
+    validator: address,
+    timestamp: u64,
+}
+
 // === Internal Helper Functions ===
 // Note: Action registry removed - using statically-typed pattern like move-framework
 
@@ -1074,6 +1099,97 @@ public entry fun burn_factory_owner_cap(factory: &Factory, cap: FactoryOwnerCap)
     assert!(object::id(&cap) == factory.owner_cap_id, EBadWitness);
     let FactoryOwnerCap { id } = cap;
     id.delete();
+}
+
+// === Validator Functions ===
+
+/// Approve DAO verification request
+/// Validators can approve a DAO's verification and set their attestation URL
+public entry fun approve_verification(
+    _validator_cap: &ValidatorAdminCap,
+    target_dao: &mut Account,
+    registry: &PackageRegistry,
+    verification_id: ID,
+    level: u8,
+    attestation_url: UTF8String,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let dao_id = object::id(target_dao);
+
+    // Get mutable config to update verification level
+    let config = futarchy_config::internal_config_mut(target_dao, registry, version::current());
+    futarchy_config::set_verification_level(config, level);
+
+    // Get mutable state to update pending flag and URL
+    let dao_state = futarchy_config::state_mut_from_account(target_dao, registry);
+    futarchy_config::set_verification_pending(dao_state, false);
+    futarchy_config::set_attestation_url(dao_state, attestation_url);
+
+    // Emit event for transparency
+    event::emit(VerificationApproved {
+        dao_id,
+        verification_id,
+        level,
+        attestation_url,
+        validator: ctx.sender(),
+        timestamp: clock.timestamp_ms(),
+    });
+}
+
+/// Reject DAO verification request
+/// Validators can reject a verification request with a reason
+public entry fun reject_verification(
+    _validator_cap: &ValidatorAdminCap,
+    target_dao: &mut Account,
+    registry: &PackageRegistry,
+    verification_id: ID,
+    reason: UTF8String,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let dao_id = object::id(target_dao);
+
+    // Get mutable state to reset verification status and clear attestation URL
+    let dao_state = futarchy_config::state_mut_from_account(target_dao, registry);
+    futarchy_config::set_verification_pending(dao_state, false);
+    futarchy_config::set_attestation_url(dao_state, b"".to_string());
+
+    // Emit event for transparency
+    event::emit(VerificationRejected {
+        dao_id,
+        verification_id,
+        reason,
+        validator: ctx.sender(),
+        timestamp: clock.timestamp_ms(),
+    });
+}
+
+/// Set DAO quality/reputation score
+/// Validators can assign scores to DAOs for reputation/filtering purposes
+public entry fun set_dao_score(
+    _validator_cap: &ValidatorAdminCap,
+    target_dao: &mut Account,
+    registry: &PackageRegistry,
+    score: u64,
+    reason: UTF8String,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let dao_id = object::id(target_dao);
+
+    // Get the DAO's config using internal_config_mut
+    let config = futarchy_config::internal_config_mut(target_dao, registry, version::current());
+    futarchy_config::set_dao_score(config, score);
+
+    // Emit event for transparency
+    event::emit(DaoScoreSet {
+        dao_id,
+        score,
+        reason,
+        validator: ctx.sender(),
+        timestamp: clock.timestamp_ms(),
+    });
 }
 
 // === View Functions ===

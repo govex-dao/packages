@@ -413,6 +413,14 @@ public fun set_verification_pending(state: &mut DaoState, pending: bool) {
     state.verification_pending = pending;
 }
 
+public fun set_verification_level(config: &mut FutarchyConfig, level: u8) {
+    config.verification_level = level;
+}
+
+public fun set_dao_score(config: &mut FutarchyConfig, score: u64) {
+    config.dao_score = score;
+}
+
 // === Configuration Update Functions ===
 // These return a new config since FutarchyConfig has copy
 

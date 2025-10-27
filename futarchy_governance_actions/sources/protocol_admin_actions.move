@@ -33,7 +33,6 @@ use account_protocol::{
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_factory::{
     factory::{Self, Factory, FactoryOwnerCap, ValidatorAdminCap},
-    launchpad::{Self, Raise},
 };
 use futarchy_markets_core::{
     fee::{Self, FeeManager, FeeAdminCap},
@@ -51,12 +50,8 @@ public struct AddStableType has drop {}
 public struct AddVerificationLevel has drop {}
 /// Apply pending coin fees
 public struct ApplyPendingCoinFees has drop {}
-/// Approve verification
-public struct ApproveVerification has drop {}
 /// Disable factory permanently
 public struct DisableFactoryPermanently has drop {}
-/// Reject verification
-public struct RejectVerification has drop {}
 /// Remove stable type
 public struct RemoveStableType has drop {}
 /// Remove verification level
@@ -65,8 +60,6 @@ public struct RemoveVerificationLevel has drop {}
 public struct RequestVerification has drop {}
 /// Set factory paused state
 public struct SetFactoryPaused has drop {}
-/// Set launchpad trust score
-public struct SetLaunchpadTrustScore has drop {}
 /// Update coin creation fee
 public struct UpdateCoinCreationFee has drop {}
 /// Update coin proposal fee
@@ -96,29 +89,6 @@ public struct VerificationRequested has copy, drop {
     attestation_url: String,
     level: u8,
     timestamp: u64,
-}
-
-public struct VerificationApproved has copy, drop {
-    dao_id: ID,
-    verification_id: ID,
-    level: u8,
-    attestation_url: String,
-    validator: address,
-    timestamp: u64,
-}
-
-public struct VerificationRejected has copy, drop {
-    dao_id: ID,
-    verification_id: ID,
-    reason: String,
-    validator: address,
-    timestamp: u64,
-}
-
-public struct LaunchpadTrustScoreSet has copy, drop {
-    raise_id: ID,
-    trust_score: u64,
-    review_text: String,
 }
 
 const EInvalidFeeAmount: u64 = 3;
@@ -180,35 +150,6 @@ public struct RemoveVerificationLevelAction has store, drop {
 public struct RequestVerificationAction has store, drop {
     level: u8,
     attestation_url: String,
-}
-
-/// Approve DAO verification request
-public struct ApproveVerificationAction has store, drop {
-    dao_id: ID,
-    verification_id: ID,
-    level: u8,
-    attestation_url: String,
-}
-
-/// Reject DAO verification request
-public struct RejectVerificationAction has store, drop {
-    dao_id: ID,
-    verification_id: ID,
-    reason: String,
-}
-
-/// Set DAO quality score (admin-only, uses ValidatorAdminCap)
-public struct SetDaoScoreAction has store, drop {
-    dao_id: ID,
-    score: u64,
-    reason: String,
-}
-
-/// Set launchpad raise trust score and review (admin-only, uses ValidatorAdminCap)
-public struct SetLaunchpadTrustScoreAction has store, drop {
-    raise_id: ID,
-    trust_score: u64,
-    review_text: String,
 }
 
 /// Update the recovery fee
@@ -294,22 +235,6 @@ public fun new_remove_verification_level(level: u8): RemoveVerificationLevelActi
 
 public fun new_request_verification(level: u8, attestation_url: String): RequestVerificationAction {
     RequestVerificationAction { level, attestation_url }
-}
-
-public fun new_approve_verification(dao_id: ID, verification_id: ID, level: u8, attestation_url: String): ApproveVerificationAction {
-    ApproveVerificationAction { dao_id, verification_id, level, attestation_url }
-}
-
-public fun new_reject_verification(dao_id: ID, verification_id: ID, reason: String): RejectVerificationAction {
-    RejectVerificationAction { dao_id, verification_id, reason }
-}
-
-public fun new_set_dao_score(dao_id: ID, score: u64, reason: String): SetDaoScoreAction {
-    SetDaoScoreAction { dao_id, score, reason }
-}
-
-public fun new_set_launchpad_trust_score(raise_id: ID, trust_score: u64, review_text: String): SetLaunchpadTrustScoreAction {
-    SetLaunchpadTrustScoreAction { raise_id, trust_score, review_text }
 }
 
 public fun new_update_recovery_fee(new_fee: u64): UpdateRecoveryFeeAction {
@@ -749,117 +674,6 @@ public fun do_request_verification<Outcome: store, IW: drop>(
     // The actual verification will be done by approve_verification or reject_verification
 }
 
-/// Execute approve verification action
-/// Validators can approve a specific verification request by its ID
-public fun do_approve_verification<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    witness: IW,
-    target_dao: &mut Account,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Get spec and validate type BEFORE deserialization
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<ApproveVerification>(spec);
-
-    // Deserialize the action data
-    let action_data = intents::action_spec_data(spec);
-    let mut bcs = bcs::new(*action_data);
-    let dao_id = bcs::peel_address(&mut bcs).to_id();
-    let verification_id = bcs::peel_address(&mut bcs).to_id();
-    let level = bcs::peel_u8(&mut bcs);
-    let attestation_url = bcs::peel_vec_u8(&mut bcs).to_string();
-    let action = ApproveVerificationAction { dao_id, verification_id, level, attestation_url };
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-
-    // Verify we have the validator capability
-    let cap = account::borrow_managed_asset<String, ValidatorAdminCap>(
-        account,
-        registry, b"protocol:validator_admin_cap".to_string(),
-        version
-    );
-
-    // Verify the DAO ID matches
-    assert!(object::id(target_dao) == action.dao_id, EInvalidAdminCap);
-
-    // Get the DAO's config and update verification level and attestation URL
-    // Get the mutable DaoState from the Account using dynamic fields
-    let dao_state = futarchy_config::state_mut_from_account(target_dao, registry);
-    // Set verification status
-    futarchy_config::set_verification_pending(dao_state, false);
-    futarchy_config::set_attestation_url(dao_state, action.attestation_url);
-
-    // Emit event for transparency with verification ID
-    event::emit(VerificationApproved {
-        dao_id: action.dao_id,
-        verification_id: action.verification_id,
-        level: action.level,
-        attestation_url: action.attestation_url,
-        validator: ctx.sender(),
-        timestamp: clock.timestamp_ms(),
-    });
-}
-
-/// Execute reject verification action
-/// Validators can reject a specific verification request with a reason
-public fun do_reject_verification<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    witness: IW,
-    target_dao: &mut Account,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Get spec and validate type BEFORE deserialization
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<RejectVerification>(spec);
-
-    // Deserialize the action data
-    let action_data = intents::action_spec_data(spec);
-    let mut bcs = bcs::new(*action_data);
-    let dao_id = bcs::peel_address(&mut bcs).to_id();
-    let verification_id = bcs::peel_address(&mut bcs).to_id();
-    let reason = bcs::peel_vec_u8(&mut bcs).to_string();
-    let action = RejectVerificationAction { dao_id, verification_id, reason };
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-
-    // Verify we have the validator capability
-    let cap = account::borrow_managed_asset<String, ValidatorAdminCap>(
-        account,
-        registry, b"protocol:validator_admin_cap".to_string(),
-        version
-    );
-
-    // Verify the DAO ID matches
-    assert!(object::id(target_dao) == action.dao_id, EInvalidAdminCap);
-
-    // Get the DAO's config and ensure verification level stays at 0
-    // Get the mutable DaoState from the Account using dynamic fields
-    let dao_state = futarchy_config::state_mut_from_account(target_dao, registry);
-    // Reset verification to unverified state
-    futarchy_config::set_verification_pending(dao_state, false);
-
-    // Emit event for transparency with verification ID
-    event::emit(VerificationRejected {
-        dao_id: action.dao_id,
-        verification_id: action.verification_id,
-        reason: action.reason,
-        validator: ctx.sender(),
-        timestamp: clock.timestamp_ms(),
-    });
-}
-
 /// Execute update recovery fee action
 public fun do_update_recovery_fee<Outcome: store, IW: drop>(
     executable: &mut Executable<Outcome>,
@@ -1149,61 +963,6 @@ public fun do_apply_pending_coin_fees<Outcome: store, IW: drop, StableType>(
         action.coin_type,
         clock
     );
-}
-
-/// Execute set launchpad trust score action
-public fun do_set_launchpad_trust_score<Outcome: store, IW: drop, RaiseToken, StableCoin>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    witness: IW,
-    raise: &mut Raise<RaiseToken, StableCoin>,
-) {
-    // Get spec and validate type BEFORE deserialization
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<SetLaunchpadTrustScore>(spec);
-
-    // Deserialize the action data
-    let action_data = intents::action_spec_data(spec);
-    let mut bcs = bcs::new(*action_data);
-    let raise_id = bcs::peel_address(&mut bcs).to_id();
-    let trust_score = bcs::peel_u64(&mut bcs);
-    let review_text = bcs::peel_vec_u8(&mut bcs).to_string();
-
-    // Validate all bytes consumed (security: prevents trailing data attacks)
-    bcs_validation::validate_all_bytes_consumed(bcs);
-
-    let action = SetLaunchpadTrustScoreAction { raise_id, trust_score, review_text };
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-
-    // Verify we have the validator capability
-    let cap = account::borrow_managed_asset<String, ValidatorAdminCap>(
-        account,
-        registry, b"protocol:validator_admin_cap".to_string(),
-        version
-    );
-
-    // Verify the raise ID matches
-    assert!(object::id(raise) == action.raise_id, EInvalidAdminCap);
-
-    // Set the trust score and review
-    launchpad::set_admin_trust_score(
-        raise,
-        cap,
-        action.trust_score,
-        action.review_text
-    );
-
-    // Emit event for transparency (off-chain indexers)
-    event::emit(LaunchpadTrustScoreSet {
-        raise_id: action.raise_id,
-        trust_score: action.trust_score,
-        review_text: action.review_text,
-    });
 }
 
 // === Helper Functions for Security Council ===

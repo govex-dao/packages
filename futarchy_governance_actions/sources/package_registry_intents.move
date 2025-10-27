@@ -4,83 +4,23 @@
 /// Unified package registry intents for governance
 module futarchy_governance_actions::package_registry_intents;
 
-use account_protocol::account::{Self, Account, Auth};
-use account_protocol::executable::Executable;
-use account_protocol::intent_interface;
-use account_protocol::intents::{Intent, Params};
-use account_protocol::owned;
+use account_protocol::account::{Self, Account};
+use account_protocol::intents::Intent;
 use account_protocol::package_registry::{PackageAdminCap, PackageRegistry};
 use futarchy_core::version;
 use futarchy_governance_actions::package_registry_actions;
 use std::bcs;
 use std::string::String;
 use std::type_name;
-use sui::transfer::Receiving;
 
-// === Aliases ===
-use fun intent_interface::process_intent as Account.process_intent;
-
-// === Intent Witness Types ===
-
-public struct AcceptPackageAdminCapIntent() has copy, drop;
-
-// === Request Functions ===
-
-/// Request to accept the PackageAdminCap into the DAO's custody
-public fun request_accept_package_admin_cap<Outcome: store>(
-    auth: Auth,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    params: Params,
-    outcome: Outcome,
-    cap_id: sui::object::ID,
-    ctx: &mut TxContext,
-) {
-    account.verify(auth);
-    params.assert_single_execution();
-
-    intent_interface::build_intent!(
-        account,
-        registry,
-        params,
-        outcome,
-        b"Accept PackageAdminCap into protocol DAO custody".to_string(),
-        version::current(),
-        AcceptPackageAdminCapIntent(),
-        ctx,
-        |intent, iw| {
-            owned::new_withdraw_object(intent, account, cap_id, iw);
-        },
-    );
-}
-
-// === Execution Functions ===
-
-/// Execute the intent to accept PackageAdminCap
-public fun execute_accept_package_admin_cap<Outcome: store>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    receiving: Receiving<PackageAdminCap>,
-) {
-    account.process_intent!(
-        registry,
-        executable,
-        version::current(),
-        AcceptPackageAdminCapIntent(),
-        |executable, iw| {
-            let cap = owned::do_withdraw_object(executable, account, receiving, iw);
-
-            account::add_managed_asset(
-                account,
-                registry,
-                b"protocol:package_admin_cap".to_string(),
-                cap,
-                version::current(),
-            );
-        },
-    );
-}
+// === Cap Acceptance Helper Functions ===
+//
+// NOTE: For accepting PackageAdminCap into Protocol DAO custody, use the migration
+// helper function below OR use the generic WithdrawObjectsAndTransferIntent
+// from the Move Framework's owned_intents module.
+//
+// The AcceptPackageAdminCapIntent was removed as it was a redundant wrapper
+// around the generic object transfer functionality.
 
 // === Migration Helper Functions ===
 

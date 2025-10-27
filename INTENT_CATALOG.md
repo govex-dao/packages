@@ -89,7 +89,8 @@ Single witness `LiquidityIntent` with helper functions:
 - **Withdraw LP token** - Withdraw LP token from custody
 - **Create pool** - Create new liquidity pool (initial_asset_amount, initial_stable_amount, fee_bps, minimum_liquidity)
 - **Update pool parameters** - Update existing pool (fee_bps, minimum_liquidity)
-- **Set pool status** - Pause or unpause pool
+
+**Note on Pool Pausing**: Pool pausing was considered but not implemented. The UnifiedSpotPool has no pause mechanism. For DAO wind-down scenarios, use the dissolution mechanism instead - when `operational_state == terminated`, the DAO can use `remove_liquidity_for_dissolution()` which bypasses normal AMM minimums via the `bypass_minimum` flag. This provides cleaner separation of concerns.
 
 ### 5. **account_config_intents** (`futarchy_governance_actions::account_config_intents`)
 - **UpdateDepsIntent** - Update account dependencies (add new action packages)
@@ -120,9 +121,19 @@ Single witness `LiquidityIntent` with helper functions:
 
 ### 8. **package_registry_intents** (`futarchy_governance_actions::package_registry_intents`)
 
-- **AcceptPackageAdminCapIntent** - Accept PackageAdminCap into protocol DAO custody
+**Cap acceptance:**
+For accepting PackageAdminCap into Protocol DAO custody, use:
 
-Helper functions for adding to intents:
+1. **Entry function (recommended for initial setup):**
+   - `migrate_package_admin_cap_to_dao()` - Transfer PackageAdminCap directly
+
+2. **Generic intents (for governance-based transfer):**
+   - Use `WithdrawObjectsAndTransferIntent` from `account_actions::owned_intents`
+   - Then call `account::add_managed_asset()` with key: `"protocol:package_admin_cap"`
+
+  *The AcceptPackageAdminCapIntent was removed as it was a redundant wrapper around generic object transfer functionality.*
+
+**Helper functions for adding package management to intents:**
 - **Add package** - Add package to registry (name, addr, version, action_types, category, description)
 - **Remove package** - Remove package from registry
 - **Update package version** - Update package version
@@ -227,10 +238,12 @@ This reduces witness proliferation and simplifies the type system.
 ## Summary Statistics
 
 - **Total modules**: 16 (6 move-framework + 10 futarchy)
-- **Total named intent witnesses**: 17 distinct types
+- **Total named intent witnesses**: 16 distinct types
 - **Total operations**: 54+ different operations available
 - **Move Framework**: 14 intent types across 6 modules
 - **Futarchy**: 40+ operations across 10 modules (including helper functions)
+
+**Note on removed intents**: AcceptFactoryOwnerCapIntent, AcceptFeeAdminCapIntent, AcceptValidatorAdminCapIntent, and AcceptPackageAdminCapIntent were removed as they were redundant wrappers around the generic WithdrawObjectsAndTransferIntent. Use the migration helper functions or generic intents instead.
 
 **Note**: Many futarchy operations use helper functions rather than distinct witnesses, allowing flexible composition of complex governance proposals.
 

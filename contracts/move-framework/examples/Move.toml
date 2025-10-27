@@ -1,0 +1,9 @@
+[package]
+name = "AccountExamples"
+edition = "2024.beta"
+
+[dependencies]
+AccountProtocol = { local = "../packages/protocol" }
+AccountActions = { local = "../packages/actions" }
+[addresses]
+account_examples = "0x0"

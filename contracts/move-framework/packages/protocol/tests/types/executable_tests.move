@@ -1,0 +1,66 @@
+#[test_only]
+module account_protocol::executable_tests;
+
+use account_protocol::executable;
+use account_protocol::intents;
+use sui::bcs;
+use sui::clock;
+use sui::test_scenario as ts;
+use sui::test_utils::destroy;
+
+// === Imports ===
+
+// === Constants ===
+
+const OWNER: address = @0xCAFE;
+
+// === Structs ===
+
+public struct DummyIntent() has drop;
+public struct WrongIntent() has drop;
+
+public struct Outcome has copy, drop, store {}
+public struct Action has drop, store {}
+public struct ActionType has drop {}
+
+// === Tests ===
+
+#[test]
+fun test_executable_flow() {
+    let mut scenario = ts::begin(OWNER);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let params = intents::new_params(
+        b"one".to_string(),
+        b"".to_string(),
+        vector[1],
+        1,
+        &clock,
+        scenario.ctx(),
+    );
+
+    let mut intent = intents::new_intent(
+        params,
+        Outcome {},
+        b"".to_string(),
+        @0xACC,
+        DummyIntent(),
+        scenario.ctx(),
+    );
+    let action_data = bcs::to_bytes(&Action {});
+    intent.add_typed_action(ActionType {}, action_data, DummyIntent());
+
+    let mut executable = executable::new(intent, scenario.ctx());
+    // verify initial state (pending action)
+    assert!(executable.intent().key() == b"one".to_string());
+    assert!(executable.action_idx() == 0);
+    // first step: verify and increment action idx
+    executable.increment_action_idx();
+    assert!(executable.action_idx() == 1);
+    // second step: destroy executable
+    let intent = executable.destroy();
+
+    destroy(intent);
+    destroy(clock);
+    ts::end(scenario);
+}

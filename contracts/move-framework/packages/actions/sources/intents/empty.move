@@ -1,0 +1,60 @@
+// Copyright (c) Govex DAO LLC
+// SPDX-License-Identifier: BUSL-1.1
+
+// Portions of this file are derived from the account.tech Move Framework project.
+// Those portions remain licensed under the Apache License, Version 2.0.
+
+module account_actions::empty_intents;
+
+use account_actions::version;
+use account_protocol::account::{Account, Auth};
+use account_protocol::executable::Executable;
+use account_protocol::intent_interface;
+use account_protocol::intents::Params;
+use account_protocol::package_registry::PackageRegistry;
+
+// === Imports ===
+
+// === Aliases ===
+
+use fun intent_interface::build_intent as Account.build_intent;
+use fun intent_interface::process_intent as Account.process_intent;
+
+// === Structs ===
+
+/// Intent Witness defining an intent with no action.
+public struct EmptyIntent() has copy, drop;
+
+// === Public functions ===
+
+/// Creates an EmptyIntent and adds it to an Account.
+public fun request_empty<Config: store, Outcome: store>(
+    auth: Auth,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    params: Params,
+    outcome: Outcome,
+    ctx: &mut TxContext,
+) {
+    account.verify(auth);
+
+    account.build_intent!(
+        registry,
+        params,
+        outcome,
+        b"".to_string(),
+        version::current(),
+        EmptyIntent(),
+        ctx,
+        |_intent, _iw| {},
+    );
+}
+
+/// Executes an EmptyIntent (to be able to delete it)
+public fun execute_empty<Config: store, Outcome: store>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+) {
+    account.process_intent!(registry, executable, version::current(), EmptyIntent(), |_executable, _iw| {})
+}

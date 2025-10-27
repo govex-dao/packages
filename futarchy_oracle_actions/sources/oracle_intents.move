@@ -60,36 +60,6 @@ public fun cancel_grant_in_intent<Outcome: store, IW: drop>(
     );
 }
 
-/// Add an emergency freeze grant action to an intent
-public fun emergency_freeze_grant_in_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    grant_id: object::ID,
-    intent_witness: IW,
-) {
-    let action = oracle_actions::new_emergency_freeze_grant(grant_id);
-    intents::add_typed_action(
-        intent,
-        type_name::with_defining_ids<oracle_actions::EmergencyFreezeGrant>().into_string().to_string(),
-        bcs::to_bytes(&action),
-        intent_witness,
-    );
-}
-
-/// Add an emergency unfreeze grant action to an intent
-public fun emergency_unfreeze_grant_in_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    grant_id: object::ID,
-    intent_witness: IW,
-) {
-    let action = oracle_actions::new_emergency_unfreeze_grant(grant_id);
-    intents::add_typed_action(
-        intent,
-        type_name::with_defining_ids<oracle_actions::EmergencyUnfreezeGrant>().into_string().to_string(),
-        bcs::to_bytes(&action),
-        intent_witness,
-    );
-}
-
 /// Create a unique key for an oracle intent
 public fun create_oracle_key(operation: String, clock: &Clock): String {
     let mut key = b"oracle_".to_string();

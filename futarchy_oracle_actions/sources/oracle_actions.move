@@ -40,8 +40,6 @@ use futarchy_markets_operations::price_based_unlocks_oracle as pass_through_orac
 
 public struct CreateOracleGrant has drop {}
 public struct CancelGrant has drop {}
-public struct EmergencyFreezeGrant has drop {}
-public struct EmergencyUnfreezeGrant has drop {}
 
 // === Constants ===
 
@@ -59,7 +57,6 @@ const EPriceBelowLaunchpad: u64 = 3;
 const ETierAlreadyExecuted: u64 = 4;
 const ENotRecipient: u64 = 5;
 const EAlreadyCanceled: u64 = 6;
-const EEmergencyFrozen: u64 = 7;
 const EInsufficientVested: u64 = 8;
 const ETimeCalculationOverflow: u64 = 9;
 const EDaoDissolving: u64 = 10;
@@ -67,7 +64,6 @@ const EGrantNotCancelable: u64 = 11;
 const EExecutionTooEarly: u64 = 14;
 const EGrantExpired: u64 = 15;
 const EWrongAccount: u64 = 16;
-const EGrantNotFrozen: u64 = 17;
 const EEmptyTiers: u64 = 18;
 
 // === Core Structs ===
@@ -123,9 +119,6 @@ public struct PriceBasedMintGrant<phantom AssetType, phantom StableType> has key
     earliest_execution: Option<u64>,
     latest_execution: Option<u64>,
 
-    // === EMERGENCY CONTROLS ===
-    emergency_frozen: bool,
-
     // === STATE ===
     cancelable: bool,
     canceled: bool,
@@ -169,16 +162,6 @@ public struct TokensClaimed has copy, drop {
 }
 
 public struct GrantCanceled has copy, drop {
-    grant_id: ID,
-    timestamp: u64,
-}
-
-public struct GrantFrozen has copy, drop {
-    grant_id: ID,
-    timestamp: u64,
-}
-
-public struct GrantUnfrozen has copy, drop {
     grant_id: ID,
     timestamp: u64,
 }
@@ -300,7 +283,6 @@ public fun create_grant<AssetType, StableType>(
         },
         earliest_execution: earliest_execution_opt,
         latest_execution: latest_execution_opt,
-        emergency_frozen: false,
         cancelable,
         canceled: false,
         description,
@@ -337,34 +319,6 @@ public fun tier_count<A, S>(grant: &PriceBasedMintGrant<A, S>): u64 {
 }
 
 // === Emergency Controls ===
-
-/// Emergency freeze - prevents all claims
-public fun emergency_freeze<A, S>(
-    grant: &mut PriceBasedMintGrant<A, S>,
-    clock: &Clock,
-) {
-    assert!(!grant.emergency_frozen, EEmergencyFrozen);
-    grant.emergency_frozen = true;
-
-    event::emit(GrantFrozen {
-        grant_id: object::id(grant),
-        timestamp: clock.timestamp_ms(),
-    });
-}
-
-/// Remove emergency freeze
-public fun emergency_unfreeze<A, S>(
-    grant: &mut PriceBasedMintGrant<A, S>,
-    clock: &Clock,
-) {
-    assert!(grant.emergency_frozen, EGrantNotFrozen);
-    grant.emergency_frozen = false;
-
-    event::emit(GrantUnfrozen {
-        grant_id: object::id(grant),
-        timestamp: clock.timestamp_ms(),
-    });
-}
 
 /// Cancel a grant
 public fun cancel_grant<A, S>(
@@ -411,8 +365,6 @@ fun validate_claim_eligibility<AssetType, StableType>(
 
     // Check grant is not canceled/frozen
     assert!(!grant.canceled, EAlreadyCanceled);
-    assert!(!grant.emergency_frozen, EEmergencyFrozen);
-
     let now = clock.timestamp_ms();
 
     // Check time bounds
@@ -755,14 +707,6 @@ public struct CancelGrantAction has store, drop, copy {
     grant_id: ID,
 }
 
-public struct EmergencyFreezeGrantAction has store, drop, copy {
-    grant_id: ID,
-}
-
-public struct EmergencyUnfreezeGrantAction has store, drop, copy {
-    grant_id: ID,
-}
-
 // === Action Constructors ===
 
 public fun new_create_oracle_grant<AssetType, StableType>(
@@ -799,14 +743,6 @@ public fun new_tier_spec(
 
 public fun new_cancel_grant(grant_id: ID): CancelGrantAction {
     CancelGrantAction { grant_id }
-}
-
-public fun new_emergency_freeze_grant(grant_id: ID): EmergencyFreezeGrantAction {
-    EmergencyFreezeGrantAction { grant_id }
-}
-
-public fun new_emergency_unfreeze_grant(grant_id: ID): EmergencyUnfreezeGrantAction {
-    EmergencyUnfreezeGrantAction { grant_id }
 }
 
 // === Helper Functions for BCS Deserialization ===
@@ -978,40 +914,6 @@ public fun do_cancel_grant<AssetType, StableType, Outcome: store, IW: drop>(
     executable::increment_action_idx(executable);
 }
 
-public fun do_emergency_freeze_grant<AssetType, StableType, Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    _account: &mut Account,
-    _version: VersionWitness,
-    _witness: IW,
-    grant: &mut PriceBasedMintGrant<AssetType, StableType>,
-    clock: &Clock,
-    _ctx: &mut TxContext,
-) {
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<EmergencyFreezeGrant>(spec);
-
-    emergency_freeze(grant, clock);
-    executable::increment_action_idx(executable);
-}
-
-public fun do_emergency_unfreeze_grant<AssetType, StableType, Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    _account: &mut Account,
-    _version: VersionWitness,
-    _witness: IW,
-    grant: &mut PriceBasedMintGrant<AssetType, StableType>,
-    clock: &Clock,
-    _ctx: &mut TxContext,
-) {
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<EmergencyUnfreezeGrant>(spec);
-
-    emergency_unfreeze(grant, clock);
-    executable::increment_action_idx(executable);
-}
-
 // === Garbage Collection ===
 
 /// Delete create oracle grant action from expired intent
@@ -1050,24 +952,6 @@ public fun delete_create_oracle_grant<AssetType, StableType>(expired: &mut inten
 
 /// Delete cancel grant action from expired intent
 public fun delete_cancel_grant(expired: &mut intents::Expired) {
-    let action_spec = intents::remove_action_spec(expired);
-    let action_data = intents::action_spec_action_data(action_spec);
-    let mut reader = bcs::new(action_data);
-    reader.peel_address(); // grant_id as ID
-    let _ = reader.into_remainder_bytes();
-}
-
-/// Delete emergency freeze grant action from expired intent
-public fun delete_emergency_freeze_grant(expired: &mut intents::Expired) {
-    let action_spec = intents::remove_action_spec(expired);
-    let action_data = intents::action_spec_action_data(action_spec);
-    let mut reader = bcs::new(action_data);
-    reader.peel_address(); // grant_id as ID
-    let _ = reader.into_remainder_bytes();
-}
-
-/// Delete emergency unfreeze grant action from expired intent
-public fun delete_emergency_unfreeze_grant(expired: &mut intents::Expired) {
     let action_spec = intents::remove_action_spec(expired);
     let action_data = intents::action_spec_action_data(action_spec);
     let mut reader = bcs::new(action_data);

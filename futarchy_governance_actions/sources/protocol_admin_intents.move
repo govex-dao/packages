@@ -3,13 +3,9 @@
 
 module futarchy_governance_actions::protocol_admin_intents;
 
-use account_protocol::account::{Self, Account, Auth};
-use account_protocol::executable::Executable;
-use account_protocol::intent_interface;
-use account_protocol::intents::{Self, Intent, Params};
-use account_protocol::owned;
+use account_protocol::account::{Self, Account};
+use account_protocol::intents::{Self, Intent};
 use account_protocol::package_registry::PackageRegistry;
-use futarchy_core::futarchy_config::FutarchyConfig;
 use futarchy_core::version;
 use futarchy_factory::factory::{FactoryOwnerCap, ValidatorAdminCap};
 use futarchy_governance_actions::protocol_admin_actions;
@@ -17,191 +13,15 @@ use futarchy_markets_core::fee::FeeAdminCap;
 use std::bcs;
 use std::string::String;
 use std::type_name::{Self, TypeName};
-use sui::object::ID;
-use sui::transfer::Receiving;
 
-// === Aliases ===
-use fun intent_interface::process_intent as Account.process_intent;
-
-// === Intent Witness Types ===
-
-/// Intent to accept the FactoryOwnerCap into the DAO's custody
-public struct AcceptFactoryOwnerCapIntent() has copy, drop;
-
-/// Intent to accept the FeeAdminCap into the DAO's custody
-public struct AcceptFeeAdminCapIntent() has copy, drop;
-
-/// Intent to accept the ValidatorAdminCap into the DAO's custody
-public struct AcceptValidatorAdminCapIntent() has copy, drop;
-
-// === Request Functions ===
-
-/// Request to accept the FactoryOwnerCap into the DAO's custody
-public fun request_accept_factory_owner_cap<Outcome: store>(
-    auth: Auth,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    params: Params,
-    outcome: Outcome,
-    cap_id: ID,
-    ctx: &mut TxContext,
-) {
-    account.verify(auth);
-    params.assert_single_execution();
-
-    intent_interface::build_intent!(
-        account,
-        registry,
-        params,
-        outcome,
-        b"Accept FactoryOwnerCap into protocol DAO custody".to_string(),
-        version::current(),
-        AcceptFactoryOwnerCapIntent(),
-        ctx,
-        |intent, iw| {
-            owned::new_withdraw_object(intent, account, cap_id, iw);
-        },
-    );
-}
-
-/// Request to accept the FeeAdminCap into the DAO's custody
-public fun request_accept_fee_admin_cap<Outcome: store>(
-    auth: Auth,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    params: Params,
-    outcome: Outcome,
-    cap_id: ID,
-    ctx: &mut TxContext,
-) {
-    account.verify(auth);
-    params.assert_single_execution();
-
-    intent_interface::build_intent!(
-        account,
-        registry,
-        params,
-        outcome,
-        b"Accept FeeAdminCap into protocol DAO custody".to_string(),
-        version::current(),
-        AcceptFeeAdminCapIntent(),
-        ctx,
-        |intent, iw| {
-            owned::new_withdraw_object(intent, account, cap_id, iw);
-        },
-    );
-}
-
-/// Request to accept the ValidatorAdminCap into the DAO's custody
-public fun request_accept_validator_admin_cap<Outcome: store>(
-    auth: Auth,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    params: Params,
-    outcome: Outcome,
-    cap_id: ID,
-    ctx: &mut TxContext,
-) {
-    account.verify(auth);
-    params.assert_single_execution();
-
-    intent_interface::build_intent!(
-        account,
-        registry,
-        params,
-        outcome,
-        b"Accept ValidatorAdminCap into protocol DAO custody".to_string(),
-        version::current(),
-        AcceptValidatorAdminCapIntent(),
-        ctx,
-        |intent, iw| {
-            owned::new_withdraw_object(intent, account, cap_id, iw);
-        },
-    );
-}
-
-// === Execution Functions ===
-
-/// Execute the intent to accept FactoryOwnerCap
-public fun execute_accept_factory_owner_cap<Outcome: store>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    receiving: Receiving<FactoryOwnerCap>,
-) {
-    account.process_intent!(
-        registry,
-        executable,
-        version::current(),
-        AcceptFactoryOwnerCapIntent(),
-        |executable, iw| {
-            let cap = owned::do_withdraw_object(executable, account, receiving, iw);
-
-            // Store the cap in the account's managed assets
-            account::add_managed_asset(
-                account,
-                registry,
-                b"protocol:factory_owner_cap".to_string(),
-                cap,
-                version::current(),
-            );
-        },
-    );
-}
-
-/// Execute the intent to accept FeeAdminCap
-public fun execute_accept_fee_admin_cap<Outcome: store>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    receiving: Receiving<FeeAdminCap>,
-) {
-    account.process_intent!(
-        registry,
-        executable,
-        version::current(),
-        AcceptFeeAdminCapIntent(),
-        |executable, iw| {
-            let cap = owned::do_withdraw_object(executable, account, receiving, iw);
-
-            // Store the cap in the account's managed assets
-            account::add_managed_asset(
-                account,
-                registry,
-                b"protocol:fee_admin_cap".to_string(),
-                cap,
-                version::current(),
-            );
-        },
-    );
-}
-
-/// Execute the intent to accept ValidatorAdminCap
-public fun execute_accept_validator_admin_cap<Outcome: store>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    receiving: Receiving<ValidatorAdminCap>,
-) {
-    account.process_intent!(
-        registry,
-        executable,
-        version::current(),
-        AcceptValidatorAdminCapIntent(),
-        |executable, iw| {
-            let cap = owned::do_withdraw_object(executable, account, receiving, iw);
-
-            // Store the cap in the account's managed assets
-            account::add_managed_asset(
-                account,
-                registry,
-                b"protocol:validator_admin_cap".to_string(),
-                cap,
-                version::current(),
-            );
-        },
-    );
-}
+// === Cap Acceptance Helper Functions ===
+//
+// NOTE: For accepting admin caps into Protocol DAO custody, use the migration
+// helper functions below OR use the generic WithdrawObjectsAndTransferIntent
+// from the Move Framework's owned_intents module.
+//
+// The cap acceptance intents were removed as they were redundant wrappers
+// around the generic object transfer functionality.
 
 // === Migration Helper Functions ===
 

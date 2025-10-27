@@ -294,42 +294,6 @@ public fun create_update_governance_flexible_intent<Outcome: store + drop + copy
     );
 }
 
-/// Create intent to update queue parameters
-public fun create_update_queue_params_intent<Outcome: store + drop + copy>(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    params: Params,
-    outcome: Outcome,
-    max_proposer_funded: u64,
-    
-    fee_escalation_basis_points: u64,
-    ctx: &mut TxContext,
-) {
-    account.build_intent!(
-        registry,
-        params,
-        outcome,
-        b"config_update_queue_params".to_string(),
-        version::current(),
-        ConfigIntent {},
-        ctx,
-        |intent, iw| {
-            let action = config_actions::new_queue_params_update_action(
-                option::some(max_proposer_funded),
-                
-                option::none(), // max_queue_size - not specified
-                option::some(fee_escalation_basis_points),
-            );
-            let action_bytes = bcs::to_bytes(&action);
-            intent.add_typed_action(
-                type_name::get<config_actions::QueueParamsUpdate>().into_string().to_string(),
-                action_bytes,
-                iw,
-            );
-        },
-    );
-}
-
 /// Create intent to update conditional metadata configuration
 public fun create_update_conditional_metadata_intent<Outcome: store + drop + copy>(
     account: &mut Account,
@@ -471,27 +435,6 @@ public fun create_update_twap_params_intent<Outcome: store + drop + copy>(
         twap_step_max,
         twap_initial_observation,
         twap_threshold,
-        ctx,
-    );
-}
-
-/// Alias for fee params intent (backward compatibility)
-public fun create_update_fee_params_intent<Outcome: store + drop + copy>(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    params: Params,
-    outcome: Outcome,
-    max_proposer_funded: u64,
-    fee_escalation_basis_points: u64,
-    ctx: &mut TxContext,
-) {
-    create_update_queue_params_intent(
-        account,
-        registry,
-        params,
-        outcome,
-        max_proposer_funded,
-        fee_escalation_basis_points,
         ctx,
     );
 }

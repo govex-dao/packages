@@ -52,8 +52,6 @@ public struct TwapConfigUpdate has drop {}
 public struct GovernanceUpdate has drop {}
 /// Update metadata table
 public struct MetadataTableUpdate has drop {}
-/// Update queue parameters
-public struct QueueParamsUpdate has drop {}
 /// Update early resolve configuration
 public struct EarlyResolveConfigUpdate has drop {}
 /// Update sponsorship configuration
@@ -86,7 +84,6 @@ const CONFIG_TYPE_METADATA: u8 = 1;
 const CONFIG_TYPE_TWAP: u8 = 2;
 const CONFIG_TYPE_GOVERNANCE: u8 = 3;
 const CONFIG_TYPE_METADATA_TABLE: u8 = 4;
-const CONFIG_TYPE_QUEUE_PARAMS: u8 = 5;
 
 // === Events ===
 
@@ -226,13 +223,6 @@ public struct MetadataTableUpdateAction has store, drop, copy {
     keys_to_remove: vector<String>,
 }
 
-/// Queue parameters update action
-public struct QueueParamsUpdateAction has store, drop, copy {
-    max_proposer_funded: Option<u64>,
-    max_queue_size: Option<u64>,
-    fee_escalation_basis_points: Option<u64>,
-}
-
 /// Conditional metadata configuration update action
 public struct ConditionalMetadataUpdateAction has store, drop, copy {
     use_outcome_index: Option<bool>,
@@ -271,7 +261,6 @@ public struct ConfigAction has store, drop, copy {
     twap_config: Option<TwapConfigUpdateAction>,
     governance: Option<GovernanceUpdateAction>,
     metadata_table: Option<MetadataTableUpdateAction>,
-    queue_params: Option<QueueParamsUpdateAction>,
 }
 
 // === Basic Execution Functions ===
@@ -918,70 +907,6 @@ public fun do_update_metadata_table<Outcome: store, IW: drop>(
     executable::increment_action_idx(executable);
 }
 
-/// Execute a queue params update action
-public fun do_update_queue_params<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    intent_witness: IW,
-    clock: &Clock,
-    _ctx: &mut TxContext,
-) {
-    // Get action spec
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-
-    // CRITICAL - Type check BEFORE deserialization
-    action_validation::assert_action_type<QueueParamsUpdate>(spec);
-
-    // Get action data
-    let action_data = protocol_intents::action_spec_data(spec);
-
-    // Check version before deserialization
-    let spec_version = protocol_intents::action_spec_version(spec);
-    assert!(spec_version == 1, EUnsupportedActionVersion);
-
-    // Safe deserialization with BCS reader
-    let mut reader = bcs::new(*action_data);
-    let max_proposer_funded = reader.peel_option_u64();
-    let max_queue_size = reader.peel_option_u64();
-    let fee_escalation_basis_points = reader.peel_option_u64();
-
-    // Validate all bytes consumed
-    bcs_validation::validate_all_bytes_consumed(reader);
-
-    // Create action struct for validation
-    let action = QueueParamsUpdateAction {
-        max_proposer_funded,
-        max_queue_size,
-        fee_escalation_basis_points,
-    };
-
-    // Validate parameters
-    validate_queue_params_update(&action);
-
-    // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
-
-    // Apply updates if provided
-    // Note: set_fee_escalation_basis_points doesn't exist yet in futarchy_config
-    // if (action.fee_escalation_basis_points.is_some()) {
-    //     futarchy_config::set_fee_escalation_basis_points(config, *action.fee_escalation_basis_points.borrow());
-    // };
-    let _ = action.fee_escalation_basis_points;
-    // Note: max_proposer_funded and max_queue_size may not have setters in futarchy_config yet
-
-    // Emit event
-    event::emit(GovernanceSettingsChanged {
-        account_id: object::id(account),
-        timestamp: clock.timestamp_ms(),
-    });
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-}
-
 /// Update conditional metadata configuration
 /// This controls how conditional token metadata is derived during proposal creation
 public fun do_update_conditional_metadata<Outcome: store, IW: drop>(
@@ -1238,8 +1163,6 @@ public fun do_batch_config<Outcome: store, IW: drop>(
         assert!(action.governance.is_some(), EInvalidConfigType);
     } else if (action.config_type == CONFIG_TYPE_METADATA_TABLE) {
         assert!(action.metadata_table.is_some(), EInvalidConfigType);
-    } else if (action.config_type == CONFIG_TYPE_QUEUE_PARAMS) {
-        assert!(action.queue_params.is_some(), EInvalidConfigType);
     } else {
         abort EInvalidConfigType
     };
@@ -1312,15 +1235,6 @@ public fun destroy_metadata_table_update(action: MetadataTableUpdateAction) {
         keys: _,
         values: _,
         keys_to_remove: _,
-    } = action;
-}
-
-/// Destroy a QueueParamsUpdateAction
-public fun destroy_queue_params_update(action: QueueParamsUpdateAction) {
-    let QueueParamsUpdateAction {
-        max_proposer_funded: _,
-        max_queue_size: _,
-        fee_escalation_basis_points: _,
     } = action;
 }
 
@@ -1614,21 +1528,6 @@ public fun new_metadata_table_update_action(
     }
 }
 
-/// Create a queue params update action
-public fun new_queue_params_update_action(
-    max_proposer_funded: Option<u64>,
-    max_queue_size: Option<u64>,
-    fee_escalation_basis_points: Option<u64>,
-): QueueParamsUpdateAction {
-    let action = QueueParamsUpdateAction {
-        max_proposer_funded,
-        max_queue_size,
-        fee_escalation_basis_points,
-    };
-    validate_queue_params_update(&action);
-    action
-}
-
 /// Create a conditional metadata update action
 public fun new_conditional_metadata_update_action(
     use_outcome_index: Option<bool>,
@@ -1843,29 +1742,6 @@ public fun new_metadata_table_update<Outcome, IW: drop>(
     destroy_metadata_table_update(action);
 }
 
-/// Add a QueueParamsUpdate action to an intent
-public fun new_queue_params_update<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    max_proposer_funded: Option<u64>,
-    max_queue_size: Option<u64>,
-    fee_escalation_basis_points: Option<u64>,
-    intent_witness: IW,
-) {
-    let action = QueueParamsUpdateAction {
-        max_proposer_funded,
-        max_queue_size,
-        fee_escalation_basis_points,
-    };
-    validate_queue_params_update(&action);
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(
-        type_name::get<QueueParamsUpdate>().into_string().to_string(),
-        action_data,
-        intent_witness
-    );
-    destroy_queue_params_update(action);
-}
-
 /// Add an EarlyResolveConfigUpdate action to an intent
 public fun new_early_resolve_config_update<Outcome, IW: drop>(
     intent: &mut Intent<Outcome>,
@@ -1985,19 +1861,6 @@ public fun get_metadata_table_fields(update: &MetadataTableUpdateAction): (
     )
 }
 
-/// Get queue params update fields
-public fun get_queue_params_fields(update: &QueueParamsUpdateAction): (
-    &Option<u64>,
-    &Option<u64>,
-    &Option<u64>
-) {
-    (
-        &update.max_proposer_funded,
-        &update.max_queue_size,
-        &update.fee_escalation_basis_points
-    )
-}
-
 /// Create a config action for trading params updates
 public fun new_config_action_trading_params(
     params: TradingParamsUpdateAction
@@ -2009,7 +1872,6 @@ public fun new_config_action_trading_params(
         twap_config: option::none(),
         governance: option::none(),
         metadata_table: option::none(),
-        queue_params: option::none(),
     }
 }
 
@@ -2024,7 +1886,6 @@ public fun new_config_action_metadata(
         twap_config: option::none(),
         governance: option::none(),
         metadata_table: option::none(),
-        queue_params: option::none(),
     }
 }
 
@@ -2039,7 +1900,6 @@ public fun new_config_action_twap(
         twap_config: option::some(twap),
         governance: option::none(),
         metadata_table: option::none(),
-        queue_params: option::none(),
     }
 }
 
@@ -2054,7 +1914,6 @@ public fun new_config_action_governance(
         twap_config: option::none(),
         governance: option::some(gov),
         metadata_table: option::none(),
-        queue_params: option::none(),
     }
 }
 
@@ -2069,22 +1928,6 @@ public fun new_config_action_metadata_table(
         twap_config: option::none(),
         governance: option::none(),
         metadata_table: option::some(table),
-        queue_params: option::none(),
-    }
-}
-
-/// Create a config action for queue params updates
-public fun new_config_action_queue_params(
-    queue: QueueParamsUpdateAction
-): ConfigAction {
-    ConfigAction {
-        config_type: CONFIG_TYPE_QUEUE_PARAMS,
-        trading_params: option::none(),
-        metadata: option::none(),
-        twap_config: option::none(),
-        governance: option::none(),
-        metadata_table: option::none(),
-        queue_params: option::some(queue),
     }
 }
 
@@ -2136,16 +1979,6 @@ fun validate_governance_update(action: &GovernanceUpdateAction) {
     };
 }
 
-/// Validate queue params update
-fun validate_queue_params_update(action: &QueueParamsUpdateAction) {
-    if (action.max_proposer_funded.is_some()) {
-        assert!(*action.max_proposer_funded.borrow() > 0, EInvalidParameter);
-    };
-    if (action.max_queue_size.is_some()) {
-        assert!(*action.max_queue_size.borrow() > 0, EInvalidParameter);
-    };
-}
-
 // === Aliases for backwards compatibility ===
 
 /// Alias for do_update_twap_config for compatibility
@@ -2159,19 +1992,6 @@ public fun do_update_twap_params<Outcome: store, IW: drop>(
     ctx: &mut TxContext
 ) {
     do_update_twap_config<Outcome, IW>(executable, account, registry, version, iw, clock, ctx);
-}
-
-/// Alias for queue params update (was called fee params)
-public fun do_update_fee_params<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    iw: IW,
-    clock: &Clock,
-    ctx: &mut TxContext
-) {
-    do_update_queue_params<Outcome, IW>(executable, account, registry, version, iw, clock, ctx);
 }
 
 // === Deserialization Constructors ===
@@ -2292,16 +2112,6 @@ public(package) fun metadata_table_update_action_from_bytes(bytes: vector<u8>): 
     }
 }
 
-/// Deserialize QueueParamsUpdateAction from bytes
-public(package) fun queue_params_update_action_from_bytes(bytes: vector<u8>): QueueParamsUpdateAction {
-    let mut bcs = bcs::new(bytes);
-    QueueParamsUpdateAction {
-        max_proposer_funded: bcs.peel_option_u64(),
-        max_queue_size: bcs.peel_option_u64(),
-        fee_escalation_basis_points: bcs.peel_option_u64(),
-    }
-}
-
 /// Deserialize EarlyResolveConfigUpdateAction from bytes
 public(package) fun early_resolve_config_update_action_from_bytes(bytes: vector<u8>): EarlyResolveConfigUpdateAction {
     let mut bcs = bcs::new(bytes);
@@ -2361,11 +2171,6 @@ public(package) fun config_action_from_bytes(bytes: vector<u8>): ConfigAction {
         },
         metadata_table: if (config_type == CONFIG_TYPE_METADATA_TABLE) {
             option::some(metadata_table_update_action_from_bytes(bcs.into_remainder_bytes()))
-        } else {
-            option::none()
-        },
-        queue_params: if (config_type == CONFIG_TYPE_QUEUE_PARAMS) {
-            option::some(queue_params_update_action_from_bytes(bcs.into_remainder_bytes()))
         } else {
             option::none()
         },

@@ -150,25 +150,6 @@ public fun update_pool_params_to_intent<Outcome: store, IW: drop>(
     // Action struct has drop ability, will be automatically dropped
 }
 
-/// Add a set pool status action
-public fun set_pool_status_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    pool_id: ID,
-    is_paused: bool,
-    intent_witness: IW,
-) {
-    let action = liquidity_actions::new_set_pool_status_action(
-        pool_id,
-        is_paused,
-    );
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(
-        type_name::get<liquidity_actions::SetPoolStatus>().into_string().to_string(),
-        action_data,
-        intent_witness,
-    );
-    // Action struct has drop ability, will be automatically dropped
-}
 
 /// Helper to create pool in an intent
 ///

@@ -127,6 +127,8 @@ fun test_proposal_with_spot_pool_lifecycle() {
             0, // min_lp_out
             ctx,
         );
+        coin::burn_for_testing(_excess_asset);
+        coin::burn_for_testing(_excess_stable);
 
         // Verify spot pool has liquidity
         let (asset_reserve, stable_reserve) = unified_spot_pool::get_reserves(&spot_pool);
@@ -344,6 +346,8 @@ fun test_quantum_split_reserves() {
             0,
             ctx,
         );
+        coin::burn_for_testing(_excess_asset);
+        coin::burn_for_testing(_excess_stable);
 
         // Record initial reserves
         let (initial_asset, initial_stable) = unified_spot_pool::get_reserves(&spot_pool);
@@ -472,6 +476,8 @@ fun test_only_one_active_proposal() {
         let asset_coin = coin::mint_for_testing<TEST_COIN_A>(SPOT_POOL_ASSET, ctx);
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(SPOT_POOL_STABLE, ctx);
         let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(&mut spot_pool, asset_coin, stable_coin, 0, ctx);
+        coin::burn_for_testing(_excess_asset);
+        coin::burn_for_testing(_excess_stable);
 
         transfer::public_share_object(spot_pool);
         transfer::public_transfer(lp_token, LP_PROVIDER_ADDR);

@@ -43,8 +43,6 @@ public struct RemoveLiquidity has drop {}
 public struct Swap has drop {}
 /// Collect trading fees
 public struct CollectFees has drop {}
-/// Set pool status (active/paused)
-public struct SetPoolStatus has drop {}
 /// Withdraw collected fees
 public struct WithdrawFees has drop {}
 use futarchy_core::{
@@ -131,11 +129,6 @@ public struct UpdatePoolParamsAction has store, drop, copy {
     new_minimum_liquidity: u64,
 }
 
-/// Action to pause/unpause a pool
-public struct SetPoolStatusAction has store, drop, copy {
-    pool_id: ID,           // Direct pool ID
-    is_paused: bool,
-}
 
 // === Execution Functions ===
 
@@ -237,48 +230,6 @@ public fun do_update_pool_params<Outcome: store, IW: drop>(
     executable::increment_action_idx(executable);
 }
 
-/// Execute a set pool status action with type validation
-/// Pauses or unpauses trading in a pool
-public fun do_set_pool_status<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    _version: VersionWitness,
-    witness: IW,
-    _ctx: &mut TxContext,
-) {
-    // Get spec and validate type BEFORE deserialization
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<SetPoolStatus>(spec);
-
-    // Check version before deserialization
-    let spec_version = intents::action_spec_version(spec);
-    assert!(spec_version == 1, EUnsupportedActionVersion);
-
-    let action_data = intents::action_spec_data(spec);
-
-    // Safe BCS deserialization - simplified without placeholders
-    let mut reader = bcs::new(*action_data);
-    let pool_id = object::id_from_address(bcs::peel_address(&mut reader));
-    let is_paused = bcs::peel_bool(&mut reader);
-    bcs_validation::validate_all_bytes_consumed(reader);
-    
-    // Verify this pool belongs to the DAO
-    let _config = account::config<FutarchyConfig>(account);
-    // Pool validation would be done against stored pools in the Account
-    // For now, just validate pool_id is not zero
-    assert!(pool_id != object::id_from_address(@0x0), EEmptyPool);
-    
-    // Note: The pool object must be passed by the caller since it's a shared object
-    // This function just validates the action - actual update happens in dispatcher
-    // which has access to the pool object
-
-    // Store the status for future reference
-    let _ = is_paused;
-
-    // Execute and increment
-    executable::increment_action_idx(executable);
-}
 
 /// Fulfill pool creation request with coins from vault
 /// For initial liquidity, all provided coins are used (no excess)
@@ -848,12 +799,6 @@ public fun delete_update_pool_params(expired: &mut Expired) {
     // Expired intent is automatically destroyed when it goes out of scope
 }
 
-/// Delete a set pool status action from an expired intent
-public fun delete_set_pool_status(expired: &mut Expired) {
-    let action_spec = intents::remove_action_spec(expired);
-    // Action spec data will be dropped automatically
-    // Expired intent is automatically destroyed when it goes out of scope
-}
 
 /// Delete a swap action from an expired intent
 public fun delete_swap<AssetType, StableType>(expired: &mut Expired) {
@@ -1010,17 +955,6 @@ public fun new_update_pool_params_action(
     action
 }
 
-/// Create a new set pool status action with serialization
-public fun new_set_pool_status_action(
-    pool_id: ID,
-    is_paused: bool,
-): SetPoolStatusAction {
-    let action = SetPoolStatusAction {
-        pool_id,
-        is_paused,
-    };
-    action
-}
 
 /// Create a new swap action with serialization
 public fun new_swap_action<AssetType, StableType>(
@@ -1164,15 +1098,6 @@ public fun get_new_minimum_liquidity(action: &UpdatePoolParamsAction): u64 {
     action.new_minimum_liquidity
 }
 
-/// Get pool ID from SetPoolStatusAction
-public fun get_status_pool_id(action: &SetPoolStatusAction): ID {
-    action.pool_id
-}
-
-/// Get is paused flag from SetPoolStatusAction
-public fun get_is_paused(action: &SetPoolStatusAction): bool {
-    action.is_paused
-}
 
 /// Get LP token value helper
 public fun lp_value<AssetType, StableType>(lp_token: &LPToken<AssetType, StableType>): u64 {
@@ -1226,13 +1151,6 @@ public fun destroy_withdraw_lp_token_action<AssetType, StableType>(action: Withd
     } = action;
 }
 
-/// Destroy SetPoolStatusAction after use
-public fun destroy_set_pool_status_action(action: SetPoolStatusAction) {
-    let SetPoolStatusAction {
-        pool_id: _,
-        is_paused: _,
-    } = action;
-}
 
 /// Destroy SwapAction after use
 public fun destroy_swap_action<AssetType, StableType>(action: SwapAction<AssetType, StableType>) {
@@ -1328,14 +1246,6 @@ public(package) fun update_pool_params_action_from_bytes(bytes: vector<u8>): Upd
     }
 }
 
-/// Deserialize SetPoolStatusAction from bytes
-public(package) fun set_pool_status_action_from_bytes(bytes: vector<u8>): SetPoolStatusAction {
-    let mut bcs = bcs::new(bytes);
-    SetPoolStatusAction {
-        pool_id: object::id_from_address(bcs::peel_address(&mut bcs)),
-        is_paused: bcs::peel_bool(&mut bcs),
-    }
-}
 
 /// Deserialize SwapAction from bytes
 public(package) fun swap_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): SwapAction<AssetType, StableType> {

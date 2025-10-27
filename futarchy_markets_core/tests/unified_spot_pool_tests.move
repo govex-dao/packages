@@ -112,6 +112,7 @@ fun test_lp_token_amount() {
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
 
     let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+        &mut pool,
         asset_coin,
         stable_coin,
         0, // min_lp_out
@@ -335,6 +336,7 @@ fun test_add_liquidity_slippage_exceeded() {
 
     // Set impossibly high min_lp_out
     let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+        &mut pool,
         asset_coin,
         stable_coin,
         999_999_999_999, // Impossibly high
@@ -1152,14 +1154,14 @@ fun test_fee_schedule_clear() {
     let asset_liq1 = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_liq1 = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
     let (lp_token1, _excess_asset1, _excess_stable1) = unified_spot_pool::add_liquidity(&mut pool_with_schedule, asset_liq1, stable_liq1, 0, ctx);
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(_excess_asset1);
+    coin::burn_for_testing(_excess_stable1);
 
     let asset_liq2 = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_liq2 = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
     let (lp_token2, _excess_asset2, _excess_stable2) = unified_spot_pool::add_liquidity(&mut pool_without_schedule, asset_liq2, stable_liq2, 0, ctx);
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(_excess_asset2);
+    coin::burn_for_testing(_excess_stable2);
 
     // Swap with high fee (pool with schedule)
     let asset_in1 = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);

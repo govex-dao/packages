@@ -14,8 +14,7 @@ use futarchy_core::dao_config::{
     TradingParams,
     TwapConfig,
     GovernanceConfig,
-    MetadataConfig,
-    SecurityConfig
+    MetadataConfig
 };
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
@@ -200,11 +199,6 @@ fun init(witness: FACTORY, ctx: &mut TxContext) {
 }
 
 /// Create a new futarchy DAO with Extensions
-///
-/// optimistic_intent_challenge_enabled:
-///   - none(): Use default (true - 10-day challenge period)
-///   - some(true): Enable 10-day challenge period for MODE_COUNCIL_ONLY actions
-///   - some(false): Disable challenge period (instant execution for MODE_COUNCIL_ONLY actions)
 public fun create_dao<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
     registry: &PackageRegistry,
@@ -228,7 +222,6 @@ public fun create_dao<AssetType: drop, StableType: drop>(
     _agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
-    optimistic_intent_challenge_enabled: Option<bool>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -256,7 +249,6 @@ public fun create_dao<AssetType: drop, StableType: drop>(
         max_outcomes,
         _agreement_lines,
         _agreement_difficulties,
-        optimistic_intent_challenge_enabled,
         treasury_cap,
         coin_metadata,
         vector::empty<InitActionSpecs>(),
@@ -287,7 +279,6 @@ public fun create_dao_with_init_specs<AssetType: drop, StableType: drop>(
     max_outcomes: u64,
     _agreement_lines: vector<UTF8String>,
     _agreement_difficulties: vector<u64>,
-    optimistic_intent_challenge_enabled: Option<bool>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
     init_specs: vector<InitActionSpecs>,
@@ -318,7 +309,6 @@ public fun create_dao_with_init_specs<AssetType: drop, StableType: drop>(
         max_outcomes,
         _agreement_lines,
         _agreement_difficulties,
-        optimistic_intent_challenge_enabled,
         treasury_cap,
         coin_metadata,
         init_specs,
@@ -328,10 +318,6 @@ public fun create_dao_with_init_specs<AssetType: drop, StableType: drop>(
 }
 
 /// Internal function to create a DAO with Extensions and optional TreasuryCap
-///
-/// optimistic_intent_challenge_enabled:
-///   - none(): Use default (true - 10-day challenge period)
-///   - some(enabled): Apply custom setting atomically during creation
 #[allow(lint(share_owned))]
 public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
@@ -354,7 +340,6 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     max_outcomes: u64,
     _agreement_lines: vector<UTF8String>,
     _agreement_difficulties: vector<u64>,
-    optimistic_intent_challenge_enabled: Option<bool>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
     init_specs: vector<InitActionSpecs>,
@@ -412,7 +397,8 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     let governance_config = dao_config::new_governance_config(
         max_outcomes,
         20,
-        1000000,
+        500000, // proposal_creation_fee (0.5 of stable token, e.g., 0.5 USDC)
+        1000000, // proposal_fee_per_outcome (1.0 of stable token per extra outcome)
         true,
         10,
         31_536_000_000,
@@ -425,18 +411,11 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
         description,
     );
 
-    let security_config = dao_config::new_security_config(
-        false, // deadman_enabled
-        2_592_000_000, // recovery_liveness_ms (30 days)
-        false, // require_deadman_council
-    );
-
     let dao_config = dao_config::new_dao_config(
         trading_params,
         twap_config,
         governance_config,
         metadata_config,
-        security_config,
         dao_config::default_conditional_coin_config(),
         dao_config::default_quota_config(),
         dao_config::default_sponsorship_config(),
@@ -459,18 +438,9 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     let spot_pool_id = object::id(&spot_pool);
 
     // Create the futarchy configuration
-    let mut config = futarchy_config::new<AssetType, StableType>(
+    let config = futarchy_config::new<AssetType, StableType>(
         dao_config,
     );
-
-    // Apply builder pattern if custom challenge setting provided
-    if (optimistic_intent_challenge_enabled.is_some()) {
-        config =
-            futarchy_config::with_optimistic_intent_challenge_enabled(
-                config,
-                *optimistic_intent_challenge_enabled.borrow(),
-            );
-    };
 
     // Create the account with PackageRegistry validation for security
     let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);
@@ -664,7 +634,8 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
     let governance_config = dao_config::new_governance_config(
         max_outcomes,
         20,
-        1000000,
+        500000, // proposal_creation_fee (0.5 of stable token, e.g., 0.5 USDC)
+        1000000, // proposal_fee_per_outcome (1.0 of stable token per extra outcome)
         true,
         10,
         31_536_000_000,
@@ -677,18 +648,11 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
         description,
     );
 
-    let security_config = dao_config::new_security_config(
-        false, // deadman_enabled
-        2_592_000_000, // recovery_liveness_ms (30 days)
-        false, // require_deadman_council
-    );
-
     let dao_config = dao_config::new_dao_config(
         trading_params,
         twap_config,
         governance_config,
         metadata_config,
-        security_config,
         dao_config::default_conditional_coin_config(),
         dao_config::default_quota_config(),
         dao_config::default_sponsorship_config(),
@@ -834,10 +798,6 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
 
 /// Create DAO and return it without sharing (for init actions)
 ///
-/// optimistic_intent_challenge_enabled:
-///   - none(): Use default (true - 10-day challenge period)
-///   - some(enabled): Apply custom setting atomically during creation
-///
 /// BREAKING CHANGE: Removed `store` ability requirement from AssetType and StableType.
 /// This enables One-Time Witness (OTW) compliant coin types, which can only have `drop`.
 /// If you need to store coin types in global storage, wrap them in a struct with `store`.
@@ -848,7 +808,6 @@ public(package) fun create_dao_unshared<AssetType: drop, StableType: drop>(
     registry: &PackageRegistry,
     fee_manager: &mut FeeManager,
     payment: Coin<SUI>,
-    optimistic_intent_challenge_enabled: Option<bool>,
     treasury_cap: Option<TreasuryCap<AssetType>>,
     coin_metadata: Option<CoinMetadata<AssetType>>,
     clock: &Clock,
@@ -879,32 +838,20 @@ public(package) fun create_dao_unshared<AssetType: drop, StableType: drop>(
         b"".to_string(), // Empty description (init actions will override)
     );
 
-    let security_config = dao_config::default_security_config();
-
     let dao_config = dao_config::new_dao_config(
         trading_params,
         twap_config,
         governance_config,
         metadata_config,
-        security_config,
         dao_config::default_conditional_coin_config(),
         dao_config::default_quota_config(),
         dao_config::default_sponsorship_config(),
     );
 
     // Create the futarchy config with safe default
-    let mut config = futarchy_config::new<AssetType, StableType>(
+    let config = futarchy_config::new<AssetType, StableType>(
         dao_config,
     );
-
-    // Apply builder pattern if custom challenge setting provided
-    if (optimistic_intent_challenge_enabled.is_some()) {
-        config =
-            futarchy_config::with_optimistic_intent_challenge_enabled(
-                config,
-                *optimistic_intent_challenge_enabled.borrow(),
-            );
-    };
 
     // Create account with config
     let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);

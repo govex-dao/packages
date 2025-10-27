@@ -240,6 +240,10 @@ public fun create_update_governance_intent<Outcome: store + drop + copy>(
                 option::none(), // proposal_intent_expiry_ms - not specified
                 option::none(), // optimistic_challenge_fee - not specified
                 option::none(), // optimistic_challenge_period_ms - not specified
+                option::none(), // proposal_creation_fee - not specified
+                option::none(), // proposal_fee_per_outcome - not specified
+                option::none(), // accept_new_proposals - not specified
+                option::none(), // enable_premarket_reservation_lock - not specified
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
@@ -283,6 +287,10 @@ public fun create_update_governance_flexible_intent<Outcome: store + drop + copy
                 proposal_intent_expiry_ms,
                 optimistic_challenge_fee,
                 optimistic_challenge_period_ms,
+                option::none(), // proposal_creation_fee
+                option::none(), // proposal_fee_per_outcome
+                option::none(), // accept_new_proposals
+                option::none(), // enable_premarket_reservation_lock
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(

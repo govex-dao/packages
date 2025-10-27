@@ -80,17 +80,6 @@ fun create_outcome_messages(count: u64): vector<String> {
     messages
 }
 
-/// Helper to create outcome details
-fun create_outcome_details(count: u64): vector<String> {
-    let mut details = vector::empty<String>();
-    let mut i = 0;
-    while (i < count) {
-        details.push_back(string::utf8(b"Detailed description"));
-        i = i + 1;
-    };
-    details
-}
-
 /// Helper to create test proposal ID
 fun create_test_proposal_id(ctx: &mut TxContext): ID {
     object::id_from_address(@0x1234)
@@ -117,8 +106,6 @@ fun test_initialize_market_basic_two_outcomes() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(20_000_000, ctx);
 
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(2);
-        let fee_escrow = balance::zero<TEST_COIN_B>();
 
         // Create proposal
         let proposal_id = create_test_proposal_id(ctx);
@@ -145,14 +132,13 @@ fun test_initialize_market_basic_two_outcomes() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
             1000, // proposer fee
             false, // uses_dao_liquidity
             false, // used_quota
-            fee_escrow,
+            coin::mint_for_testing<TEST_COIN_B>(0, ctx), // dao_fee_payment (0 for tests)
             option::none<InitActionSpecs>(),
             &clock,
             ctx,
@@ -184,7 +170,6 @@ fun test_initialize_market_three_outcomes() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(30_000_000, ctx);
 
         let outcome_messages = create_outcome_messages(3);
-        let outcome_details = create_outcome_details(3);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -211,7 +196,6 @@ fun test_initialize_market_three_outcomes() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -250,7 +234,6 @@ fun test_initialize_market_zero_liquidity_fails() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(20_000_000, ctx);
 
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(2);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -274,7 +257,6 @@ fun test_initialize_market_zero_liquidity_fails() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -312,7 +294,6 @@ fun test_initialize_market_insufficient_asset_liquidity() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(20_000_000, ctx);
 
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(2);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -336,7 +317,6 @@ fun test_initialize_market_insufficient_asset_liquidity() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -373,7 +353,6 @@ fun test_initialize_market_insufficient_stable_liquidity() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(100, ctx); // Too low
 
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(2);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -397,7 +376,6 @@ fun test_initialize_market_insufficient_stable_liquidity() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -433,9 +411,7 @@ fun test_initialize_market_mismatched_outcome_vectors() {
         let asset_coin = coin::mint_for_testing<TEST_COIN_A>(2_000_000_000, ctx);
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(20_000_000, ctx);
 
-        // Mismatched counts - 2 messages but 3 details
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(3);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -459,7 +435,6 @@ fun test_initialize_market_mismatched_outcome_vectors() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -497,7 +472,6 @@ fun test_initialize_market_too_many_outcomes() {
 
         // 15 outcomes exceeds MAX_OUTCOMES (10)
         let outcome_messages = create_outcome_messages(15);
-        let outcome_details = create_outcome_details(15);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -521,7 +495,6 @@ fun test_initialize_market_too_many_outcomes() {
             string::utf8(b"Test Proposal"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -556,7 +529,6 @@ fun test_new_premarket_basic() {
         let clock = create_test_clock(1000, ctx);
 
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(2);
         let fee_escrow = balance::zero<TEST_COIN_B>();
         let proposal_id = create_test_proposal_id(ctx);
         let dao_id = object::id_from_address(DAO_ADDR);
@@ -583,7 +555,6 @@ fun test_new_premarket_basic() {
             PROPOSER_ADDR,
             false, // uses_dao_liquidity
             false, // used_quota
-            fee_escrow,
             option::none<InitActionSpecs>(),
             &clock,
             ctx,
@@ -674,7 +645,6 @@ fun test_proposal_getters() {
         let clock = create_test_clock(5000, ctx);
 
         let outcome_messages = create_outcome_messages(3);
-        let outcome_details = create_outcome_details(3);
         let outcome_creators = vector[PROPOSER_ADDR, PROPOSER_ADDR, PROPOSER_ADDR];
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
@@ -742,7 +712,6 @@ fun test_outcome_creator_getters() {
         let clock = create_test_clock(5000, ctx);
 
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(2);
         let outcome_creators = vector[PROPOSER_ADDR, DAO_ADDR];
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
@@ -805,7 +774,6 @@ fun test_get_outcome_creator_out_of_bounds() {
         let clock = create_test_clock(5000, ctx);
 
         let outcome_messages = create_outcome_messages(2);
-        let outcome_details = create_outcome_details(2);
         let outcome_creators = vector[PROPOSER_ADDR, PROPOSER_ADDR];
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
@@ -864,7 +832,6 @@ fun test_proposal_with_single_outcome() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(10_000_000, ctx);
 
         let outcome_messages = create_outcome_messages(1);
-        let outcome_details = create_outcome_details(1);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -891,7 +858,6 @@ fun test_proposal_with_single_outcome() {
             string::utf8(b"Single Outcome"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -928,7 +894,6 @@ fun test_proposal_with_max_outcomes() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(100_000_000, ctx);
 
         let outcome_messages = create_outcome_messages(MAX_OUTCOMES);
-        let outcome_details = create_outcome_details(MAX_OUTCOMES);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -955,7 +920,6 @@ fun test_proposal_with_max_outcomes() {
             string::utf8(b"Max Outcomes"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,
@@ -995,7 +959,6 @@ fun test_proposal_liquidity_distribution() {
         let stable_coin = coin::mint_for_testing<TEST_COIN_B>(100_000_000, ctx);
 
         let outcome_messages = create_outcome_messages(3);
-        let outcome_details = create_outcome_details(3);
         let fee_escrow = balance::zero<TEST_COIN_B>();
 
         let proposal_id = create_test_proposal_id(ctx);
@@ -1022,7 +985,6 @@ fun test_proposal_liquidity_distribution() {
             string::utf8(b"Distribution Test"),
             string::utf8(b"metadata"),
             outcome_messages,
-            outcome_details,
             asset_coin,
             stable_coin,
             PROPOSER_ADDR,

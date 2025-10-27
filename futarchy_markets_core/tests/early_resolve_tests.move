@@ -143,7 +143,6 @@ fun test_check_eligibility_disabled_config() {
         string::utf8(b"Test"), // title
         string::utf8(b"metadata"), // metadata
         vector[string::utf8(b"Accept"), string::utf8(b"Reject")], // outcome_messages
-        vector[string::utf8(b"Detail 1"), string::utf8(b"Detail 2")], // outcome_details
         vector[@0x1, @0x1], // outcome_creators
         2, // outcome_count
         86400000, // review_period_ms (1 day)
@@ -156,7 +155,6 @@ fun test_check_eligibility_disabled_config() {
         signed::from_u64(500000), // twap_threshold (0.5)
         30, // amm_total_fee_bps (0.3%)
         option::none(), // winning_outcome
-        sui::balance::zero(), // fee_escrow
         @0xC, // treasury_address
         vector[option::none(), option::none()], // intent_specs
         ctx,
@@ -1052,7 +1050,6 @@ fun test_complete_eligibility_workflow() {
         string::utf8(b"Test"),
         string::utf8(b"metadata"),
         vector[string::utf8(b"Accept"), string::utf8(b"Reject"), string::utf8(b"Abstain")],
-        vector[string::utf8(b"Detail 1"), string::utf8(b"Detail 2"), string::utf8(b"Detail 3")],
         vector[@0x1, @0x1, @0x1],
         3,
         86400000,

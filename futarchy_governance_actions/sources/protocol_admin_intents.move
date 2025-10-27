@@ -180,17 +180,6 @@ public fun add_update_verification_fee_to_intent<Outcome: store, IW: drop>(
     intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateVerificationFee>().into_string().to_string(), action_data, intent_witness);
 }
 
-/// Update recovery fee
-public fun add_update_recovery_fee_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    new_fee: u64,
-    intent_witness: IW,
-) {
-    let action = protocol_admin_actions::new_update_recovery_fee(new_fee);
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateRecoveryFee>().into_string().to_string(), action_data, intent_witness);
-}
-
 /// Withdraw fees to treasury
 public fun add_withdraw_fees_to_treasury_intent<Outcome: store, IW: drop>(
     intent: &mut Intent<Outcome>,
@@ -248,7 +237,6 @@ public fun add_coin_fee_config_to_intent<Outcome: store, IW: drop>(
     decimals: u8,
     dao_creation_fee: u64,
     proposal_fee_per_outcome: u64,
-    recovery_fee: u64,
     intent_witness: IW,
 ) {
     let action = protocol_admin_actions::new_add_coin_fee_config(
@@ -256,7 +244,6 @@ public fun add_coin_fee_config_to_intent<Outcome: store, IW: drop>(
         decimals,
         dao_creation_fee,
         proposal_fee_per_outcome,
-        recovery_fee,
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(type_name::get<protocol_admin_actions::AddCoinFeeConfig>().into_string().to_string(), action_data, intent_witness);
@@ -284,18 +271,6 @@ public fun add_update_coin_proposal_fee_to_intent<Outcome: store, IW: drop>(
     let action = protocol_admin_actions::new_update_coin_proposal_fee(coin_type, new_fee);
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateCoinProposalFee>().into_string().to_string(), action_data, intent_witness);
-}
-
-/// Update coin recovery fee
-public fun add_update_coin_recovery_fee_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    coin_type: TypeName,
-    new_fee: u64,
-    intent_witness: IW,
-) {
-    let action = protocol_admin_actions::new_update_coin_recovery_fee(coin_type, new_fee);
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateCoinRecoveryFee>().into_string().to_string(), action_data, intent_witness);
 }
 
 /// Apply pending coin fees

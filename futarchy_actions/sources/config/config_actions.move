@@ -214,6 +214,10 @@ public struct GovernanceUpdateAction has store, drop, copy {
     proposal_intent_expiry_ms: Option<u64>,
     optimistic_challenge_fee: Option<u64>,
     optimistic_challenge_period_ms: Option<u64>,
+    proposal_creation_fee: Option<u64>,  // DAO-level proposal creation fee (in StableType)
+    proposal_fee_per_outcome: Option<u64>, // DAO-level fee per additional outcome (in StableType)
+    accept_new_proposals: Option<bool>,  // Enable/disable proposal creation
+    enable_premarket_reservation_lock: Option<bool>, // Enable/disable premarket reservation lock
 }
 
 /// Metadata table update action
@@ -762,6 +766,10 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     let proposal_intent_expiry_ms = reader.peel_option_u64();
     let optimistic_challenge_fee = reader.peel_option_u64();
     let optimistic_challenge_period_ms = reader.peel_option_u64();
+    let proposal_creation_fee = reader.peel_option_u64();
+    let proposal_fee_per_outcome = reader.peel_option_u64();
+    let accept_new_proposals = reader.peel_option_bool();
+    let enable_premarket_reservation_lock = reader.peel_option_bool();
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
@@ -775,6 +783,10 @@ public fun do_update_governance<Outcome: store, IW: drop>(
         proposal_intent_expiry_ms,
         optimistic_challenge_fee,
         optimistic_challenge_period_ms,
+        proposal_creation_fee,
+        proposal_fee_per_outcome,
+        accept_new_proposals,
+        enable_premarket_reservation_lock,
     };
 
     // Validate parameters
@@ -806,6 +818,20 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     // For now, we skip these fields
     let _ = action.optimistic_challenge_fee;
     let _ = action.optimistic_challenge_period_ms;
+
+    // Apply proposal fee updates if provided
+    if (action.proposal_creation_fee.is_some()) {
+        futarchy_config::set_proposal_creation_fee(config, *action.proposal_creation_fee.borrow());
+    };
+    if (action.proposal_fee_per_outcome.is_some()) {
+        futarchy_config::set_proposal_fee_per_outcome(config, *action.proposal_fee_per_outcome.borrow());
+    };
+    if (action.accept_new_proposals.is_some()) {
+        futarchy_config::set_accept_new_proposals(config, *action.accept_new_proposals.borrow());
+    };
+    if (action.enable_premarket_reservation_lock.is_some()) {
+        futarchy_config::set_enable_premarket_reservation_lock(config, *action.enable_premarket_reservation_lock.borrow());
+    };
 
     // Emit event
     event::emit(GovernanceSettingsChanged {
@@ -1226,6 +1252,10 @@ public fun destroy_governance_update(action: GovernanceUpdateAction) {
         proposal_intent_expiry_ms: _,
         optimistic_challenge_fee: _,
         optimistic_challenge_period_ms: _,
+        proposal_creation_fee: _,
+        proposal_fee_per_outcome: _,
+        accept_new_proposals: _,
+        enable_premarket_reservation_lock: _,
     } = action;
 }
 
@@ -1500,6 +1530,10 @@ public fun new_governance_update_action(
     proposal_intent_expiry_ms: Option<u64>,
     optimistic_challenge_fee: Option<u64>,
     optimistic_challenge_period_ms: Option<u64>,
+    proposal_creation_fee: Option<u64>,
+    proposal_fee_per_outcome: Option<u64>,
+    accept_new_proposals: Option<bool>,
+    enable_premarket_reservation_lock: Option<bool>,
 ): GovernanceUpdateAction {
     let action = GovernanceUpdateAction {
         max_outcomes,
@@ -1509,6 +1543,10 @@ public fun new_governance_update_action(
         proposal_intent_expiry_ms,
         optimistic_challenge_fee,
         optimistic_challenge_period_ms,
+        proposal_creation_fee,
+        proposal_fee_per_outcome,
+        accept_new_proposals,
+        enable_premarket_reservation_lock,
     };
     validate_governance_update(&action);
     action
@@ -1698,6 +1736,10 @@ public fun new_governance_update<Outcome, IW: drop>(
     proposal_intent_expiry_ms: Option<u64>,
     optimistic_challenge_fee: Option<u64>,
     optimistic_challenge_period_ms: Option<u64>,
+    proposal_creation_fee: Option<u64>,
+    proposal_fee_per_outcome: Option<u64>,
+    accept_new_proposals: Option<bool>,
+    enable_premarket_reservation_lock: Option<bool>,
     intent_witness: IW,
 ) {
     let action = GovernanceUpdateAction {
@@ -1708,6 +1750,10 @@ public fun new_governance_update<Outcome, IW: drop>(
         proposal_intent_expiry_ms,
         optimistic_challenge_fee,
         optimistic_challenge_period_ms,
+        proposal_creation_fee,
+        proposal_fee_per_outcome,
+        accept_new_proposals,
+        enable_premarket_reservation_lock,
     };
     validate_governance_update(&action);
     let action_data = bcs::to_bytes(&action);
@@ -2072,6 +2118,10 @@ public(package) fun governance_update_action_from_bytes(bytes: vector<u8>): Gove
         proposal_intent_expiry_ms: bcs.peel_option_u64(),
         optimistic_challenge_fee: bcs.peel_option_u64(),
         optimistic_challenge_period_ms: bcs.peel_option_u64(),
+        proposal_creation_fee: bcs.peel_option_u64(),
+        proposal_fee_per_outcome: bcs.peel_option_u64(),
+        accept_new_proposals: bcs.peel_option_bool(),
+        enable_premarket_reservation_lock: bcs.peel_option_bool(),
     }
 }
 

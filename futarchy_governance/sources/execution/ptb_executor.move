@@ -21,7 +21,6 @@ use account_protocol::{
 use futarchy_governance_actions::intent_janitor;
 use futarchy_core::{
     futarchy_config::{Self, FutarchyConfig, FutarchyOutcome},
-    proposal_fee_manager::{Self, ProposalFeeManager},
 };
 use futarchy_governance::proposal_lifecycle;
 use futarchy_governance_actions::governance_intents;
@@ -50,7 +49,6 @@ public struct ProposalIntentExecuted has copy, drop {
 
 /// Begin execution for an approved proposal by creating the governance executable.
 /// - Verifies market finalization and approval.
-/// - Deposits the execution fee.
 /// - Synthesizes the intent from the stored InitActionSpecs.
 /// Returns the executable hot potato and intent key for cleanup.
 public fun begin_execution<AssetType, StableType>(
@@ -58,8 +56,6 @@ public fun begin_execution<AssetType, StableType>(
     registry: &PackageRegistry,
     proposal: &mut Proposal<AssetType, StableType>,
     market: &MarketState,
-    fee_manager: &mut ProposalFeeManager<StableType>,
-    fee_coin: Coin<StableType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Executable<FutarchyOutcome>, String) {
@@ -70,12 +66,6 @@ public fun begin_execution<AssetType, StableType>(
     assert!(
         proposal::has_intent_spec(proposal, winning_outcome),
         EIntentMissing
-    );
-
-    proposal_fee_manager::deposit_proposal_fee(
-        fee_manager,
-        proposal::get_id(proposal),
-        fee_coin,
     );
 
     let outcome = futarchy_config::new_futarchy_outcome_full(

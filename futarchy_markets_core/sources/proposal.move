@@ -14,7 +14,7 @@ use std::type_name;
 use std::option;
 use std::type_name::TypeName;
 use std::vector;
-use sui::balance::{Balance};
+use sui::balance::{Self as balance, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 use sui::event;
@@ -34,7 +34,6 @@ const EAssetLiquidityTooLow: u64 = 4;
 const EStableLiquidityTooLow: u64 = 5;
 const EPoolNotFound: u64 = 6;
 const EOutcomeOutOfBounds: u64 = 7;
-const EInvalidOutcomeVectors: u64 = 8;
 const ESpotTwapNotReady: u64 = 9;
 const ETooManyOutcomes: u64 = 10;
 const EInvalidOutcome: u64 = 11;
@@ -133,7 +132,7 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     title: String,
     details: vector<String>,
     metadata: String,
-    
+
     // Grouped configurations
     timing: ProposalTiming,
     liquidity_config: LiquidityConfig,
@@ -143,7 +142,7 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     // Fee-related fields
     amm_total_fee_bps: u64,
     conditional_liquidity_ratio_percent: u64,  // Percentage of spot liquidity to move to conditional markets (1-99%, base 100)
-    fee_escrow: Balance<StableType>,
+    fee_escrow: Balance<StableType>, // DAO-level fees held for refund to losing outcome creators
     treasury_address: address,
 }
 
@@ -244,7 +243,7 @@ public fun initialize_market<AssetType, StableType>(
     proposer_fee_paid: u64,
     uses_dao_liquidity: bool,
     used_quota: bool,
-    fee_escrow: Balance<StableType>, // DAO fees if any
+    dao_fee_payment: Coin<StableType>, // DAO-level proposal creation fee
     mut intent_spec_for_yes: Option<InitActionSpecs>, // Intent spec for YES outcome
     clock: &Clock,
     ctx: &mut TxContext,
@@ -256,7 +255,6 @@ public fun initialize_market<AssetType, StableType>(
     let outcome_count = initial_outcome_messages.length();
 
     // Validate outcome count
-    assert!(outcome_count == initial_outcome_details.length(), EInvalidOutcomeVectors);
     assert!(outcome_count <= max_outcomes, ETooManyOutcomes);
 
     // Liquidity is split evenly among all outcomes
@@ -459,7 +457,7 @@ public fun initialize_market<AssetType, StableType>(
         },
         amm_total_fee_bps,
         conditional_liquidity_ratio_percent,
-        fee_escrow,
+        fee_escrow: dao_fee_payment.into_balance(), // Store DAO-level creation fee in escrow
         treasury_address,
     };
 
@@ -511,7 +509,6 @@ public fun new_premarket<AssetType, StableType>(
     proposer: address,
     uses_dao_liquidity: bool,
     used_quota: bool, // Track if proposal used admin budget
-    fee_escrow: Balance<StableType>,
     intent_spec_for_yes: Option<InitActionSpecs>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -573,7 +570,7 @@ public fun new_premarket<AssetType, StableType>(
         },
         amm_total_fee_bps,
         conditional_liquidity_ratio_percent,
-        fee_escrow,
+        fee_escrow: balance::zero(), // No DAO fees for premarket proposals yet
         treasury_address,
     };
 
@@ -800,9 +797,8 @@ public fun add_outcome<AssetType, StableType>(
     });
 }
 
-/// SECURE entry function: Adds outcome with actual fee collection
-/// This collects the fee payment and stores it in the proposal's fee escrow
-/// for later refund if the outcome wins.
+/// Add an outcome to a PREMARKET proposal with DAO-level fee payment
+/// The fee is deposited into the proposal's escrow for potential refund if the outcome loses
 public entry fun add_outcome_with_fee<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     fee_payment: Coin<StableType>,
@@ -814,16 +810,13 @@ public entry fun add_outcome_with_fee<AssetType, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    use sui::coin;
-
     // Get the actual fee paid
     let fee_paid = fee_payment.value();
 
-    // SECURITY: Deposit fee into proposal's escrow (for later refund)
-    // This ensures fees are tracked per-proposal, not mixed with protocol revenue
+    // Deposit DAO-level fee into proposal's escrow
     proposal.fee_escrow.join(fee_payment.into_balance());
 
-    // Add the outcome with validated fee
+    // Add the outcome with tracked fee
     add_outcome(
         proposal,
         message,
@@ -873,7 +866,8 @@ public fun emit_market_initialized(
     });
 }
 
-/// Takes the escrowed fee balance out of the proposal, leaving a zero balance behind.
+/// Takes the escrowed DAO-level fee balance out of the proposal
+/// Used for refunding fees to losing outcome creators
 public fun take_fee_escrow<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
 ): Balance<StableType> {
@@ -1117,10 +1111,6 @@ public fun proposer<AssetType, StableType>(proposal: &Proposal<AssetType, Stable
 
 public fun created_at<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): u64 {
     proposal.timing.created_at
-}
-
-public fun get_details<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): &vector<String> {
-    &proposal.details
 }
 
 public fun get_metadata<AssetType, StableType>(
@@ -1628,10 +1618,6 @@ public fun set_outcome_creator<AssetType, StableType>(
     *creator_ref = creator;
 }
 
-public fun get_details_mut<AssetType, StableType>(proposal: &mut Proposal<AssetType, StableType>): &mut vector<String> {
-    &mut proposal.details
-}
-
 // === Test Functions ===
 
 #[test_only]
@@ -1643,7 +1629,6 @@ public fun new_for_testing<AssetType, StableType>(
     title: String,
     metadata: String,
     outcome_messages: vector<String>,
-    outcome_details: vector<String>,
     outcome_creators: vector<address>,
     outcome_count: u8,
     review_period_ms: u64,
@@ -1656,7 +1641,6 @@ public fun new_for_testing<AssetType, StableType>(
     twap_threshold: SignedU128,
     amm_total_fee_bps: u64,
     winning_outcome: Option<u64>,
-    fee_escrow: Balance<StableType>,
     treasury_address: address,
     intent_specs: vector<Option<InitActionSpecs>>,
     ctx: &mut TxContext
@@ -1677,7 +1661,7 @@ public fun new_for_testing<AssetType, StableType>(
         conditional_treasury_caps: bag::new(ctx),
         conditional_metadata: bag::new(ctx),
         title,
-        details: outcome_details,
+        details: initial_outcome_details,
         metadata,
         timing: ProposalTiming {
             created_at: 0,
@@ -1711,7 +1695,7 @@ public fun new_for_testing<AssetType, StableType>(
         },
         amm_total_fee_bps,
         conditional_liquidity_ratio_percent: 50,  // 50% (base 100, not bps!)
-        fee_escrow,
+        fee_escrow: balance::zero(), // No fees for test proposals
         treasury_address,
     }
 }
@@ -1998,10 +1982,6 @@ public fun create_test_proposal<AssetType, StableType>(
         string::utf8(b"Outcome")
     });
 
-    let outcome_details = vector::tabulate!(outcome_count as u64, |i| {
-        string::utf8(b"Details")
-    });
-
     let outcome_creators = vector::tabulate!(outcome_count as u64, |_| @0xAAA);
 
     let intent_specs = vector::tabulate!(outcome_count as u64, |_| option::none());
@@ -2013,7 +1993,6 @@ public fun create_test_proposal<AssetType, StableType>(
         string::utf8(b"Test"),      // title
         string::utf8(b"Metadata"),  // metadata
         outcome_messages,
-        outcome_details,
         outcome_creators,
         outcome_count,
         60000,                      // review_period_ms (1 min)
@@ -2058,7 +2037,6 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
         conditional_treasury_caps,
         conditional_metadata,
         title: _,
-        details: _,
         metadata: _,
         timing: ProposalTiming {
             created_at: _,

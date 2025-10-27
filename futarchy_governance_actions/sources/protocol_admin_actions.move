@@ -64,14 +64,10 @@ public struct SetFactoryPaused has drop {}
 public struct UpdateCoinCreationFee has drop {}
 /// Update coin proposal fee
 public struct UpdateCoinProposalFee has drop {}
-/// Update coin recovery fee
-public struct UpdateCoinRecoveryFee has drop {}
 /// Update DAO creation fee
 public struct UpdateDaoCreationFee has drop {}
 /// Update proposal fee
 public struct UpdateProposalFee has drop {}
-/// Update recovery fee
-public struct UpdateRecoveryFee has drop {}
 /// Update verification fee
 public struct UpdateVerificationFee has drop {}
 /// Withdraw fees to treasury
@@ -152,11 +148,6 @@ public struct RequestVerificationAction has store, drop {
     attestation_url: String,
 }
 
-/// Update the recovery fee
-public struct UpdateRecoveryFeeAction has store, drop {
-    new_fee: u64,
-}
-
 /// Withdraw accumulated fees to treasury
 public struct WithdrawFeesToTreasuryAction has store, drop {
     amount: u64,
@@ -170,7 +161,6 @@ public struct AddCoinFeeConfigAction has store, drop {
     decimals: u8,
     dao_creation_fee: u64,
     proposal_fee_per_outcome: u64,
-    recovery_fee: u64,
 }
 
 /// Update creation fee for a specific coin type (with 6-month delay)
@@ -183,12 +173,6 @@ public struct UpdateCoinCreationFeeAction has store, drop {
 public struct UpdateCoinProposalFeeAction has store, drop {
     coin_type: TypeName,
     new_fee_per_outcome: u64,
-}
-
-/// Update recovery fee for a specific coin type (with 6-month delay)
-public struct UpdateCoinRecoveryFeeAction has store, drop {
-    coin_type: TypeName,
-    new_fee: u64,
 }
 
 // === Public Functions ===
@@ -237,10 +221,6 @@ public fun new_request_verification(level: u8, attestation_url: String): Request
     RequestVerificationAction { level, attestation_url }
 }
 
-public fun new_update_recovery_fee(new_fee: u64): UpdateRecoveryFeeAction {
-    UpdateRecoveryFeeAction { new_fee }
-}
-
 public fun new_withdraw_fees_to_treasury(amount: u64): WithdrawFeesToTreasuryAction {
     WithdrawFeesToTreasuryAction { amount }
 }
@@ -252,14 +232,12 @@ public fun new_add_coin_fee_config(
     decimals: u8,
     dao_creation_fee: u64,
     proposal_fee_per_outcome: u64,
-    recovery_fee: u64,
 ): AddCoinFeeConfigAction {
     AddCoinFeeConfigAction {
         coin_type,
         decimals,
         dao_creation_fee,
         proposal_fee_per_outcome,
-        recovery_fee,
     }
 }
 
@@ -275,13 +253,6 @@ public fun new_update_coin_proposal_fee(
     new_fee_per_outcome: u64,
 ): UpdateCoinProposalFeeAction {
     UpdateCoinProposalFeeAction { coin_type, new_fee_per_outcome }
-}
-
-public fun new_update_coin_recovery_fee(
-    coin_type: TypeName,
-    new_fee: u64,
-): UpdateCoinRecoveryFeeAction {
-    UpdateCoinRecoveryFeeAction { coin_type, new_fee }
 }
 
 public fun new_apply_pending_coin_fees(
@@ -674,40 +645,6 @@ public fun do_request_verification<Outcome: store, IW: drop>(
     // The actual verification will be done by approve_verification or reject_verification
 }
 
-/// Execute update recovery fee action
-public fun do_update_recovery_fee<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    witness: IW,
-    fee_manager: &mut FeeManager,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Get spec and validate type BEFORE deserialization
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<UpdateRecoveryFee>(spec);
-
-    // Deserialize the action data
-    let action_data = intents::action_spec_data(spec);
-    let mut bcs = bcs::new(*action_data);
-    let new_fee = bcs::peel_u64(&mut bcs);
-    let action = UpdateRecoveryFeeAction { new_fee };
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-    
-    let cap = account::borrow_managed_asset<String, FeeAdminCap>(
-        account,
-        registry, b"protocol:fee_admin_cap".to_string(),
-        version
-    );
-    
-    fee::update_recovery_fee(fee_manager, cap, action.new_fee, clock, ctx);
-}
-
 /// Execute withdraw fees to treasury action
 public fun do_withdraw_fees_to_treasury<Outcome: store, IW: drop>(
     executable: &mut Executable<Outcome>,
@@ -770,13 +707,11 @@ public fun do_add_coin_fee_config<Outcome: store, IW: drop, StableType>(
     let decimals = bcs::peel_u8(&mut bcs);
     let dao_creation_fee = bcs::peel_u64(&mut bcs);
     let proposal_fee_per_outcome = bcs::peel_u64(&mut bcs);
-    let recovery_fee = bcs::peel_u64(&mut bcs);
     let action = AddCoinFeeConfigAction {
         coin_type: type_name::get<StableType>(),
         decimals,
         dao_creation_fee,
         proposal_fee_per_outcome,
-        recovery_fee,
     };
 
     // Increment action index
@@ -795,7 +730,6 @@ public fun do_add_coin_fee_config<Outcome: store, IW: drop, StableType>(
         action.decimals,
         action.dao_creation_fee,
         action.proposal_fee_per_outcome,
-        action.recovery_fee,
         clock,
         ctx
     );
@@ -878,47 +812,6 @@ public fun do_update_coin_proposal_fee<Outcome: store, IW: drop, StableType>(
         cap,
         action.coin_type,
         action.new_fee_per_outcome,
-        clock,
-        ctx
-    );
-}
-
-/// Execute action to update coin recovery fee
-public fun do_update_coin_recovery_fee<Outcome: store, IW: drop, StableType>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    witness: IW,
-    fee_manager: &mut FeeManager,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Get spec and validate type BEFORE deserialization
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<UpdateCoinRecoveryFee>(spec);
-
-    // Deserialize the action data
-    let action_data = intents::action_spec_data(spec);
-    let mut bcs = bcs::new(*action_data);
-    let new_fee = bcs::peel_u64(&mut bcs);
-    let action = UpdateCoinRecoveryFeeAction { coin_type: type_name::get<StableType>(), new_fee };
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-    
-    let cap = account::borrow_managed_asset<String, FeeAdminCap>(
-        account,
-        registry, b"protocol:fee_admin_cap".to_string(),
-        version
-    );
-    
-    fee::update_coin_recovery_fee(
-        fee_manager,
-        cap,
-        action.coin_type,
-        action.new_fee,
         clock,
         ctx
     );

@@ -30,6 +30,7 @@ const EInvalidQuotaParams: u64 = 14; // Invalid quota parameters
 const ENoConditionalMetadata: u64 = 15; // No conditional metadata available (neither CoinMetadata nor fallback config)
 const ESponsoredThresholdMustBeNonPositive: u64 = 17; // Sponsored threshold must be ≤ 0
 const ESponsoredThresholdExceedsProtocolMax: u64 = 18; // Sponsored threshold magnitude exceeds ±5%
+const EProposalFeeExceedsMax: u64 = 19; // Proposal fee exceeds maximum allowed
 
 // === Constants ===
 // Most constants are now in futarchy_utils::constants
@@ -48,6 +49,12 @@ const ESponsoredThresholdExceedsProtocolMax: u64 = 18; // Sponsored threshold ma
 const PROTOCOL_MIN_LIQUIDITY_AMOUNT: u64 = 100000;
 
 // Protocol-level threshold bounds: ±5% maximum (duplicated here to avoid circular dependency)
+
+// Maximum DAO-level proposal fees (10,000 tokens with 6 decimals)
+// Prevents malicious DAOs from setting prohibitively high fees that block governance
+// 10,000 tokens is high enough for any legitimate use case but prevents griefing
+const MAX_PROPOSAL_CREATION_FEE: u64 = 10_000_000_000; // 10,000 tokens (6 decimals)
+const MAX_PROPOSAL_FEE_PER_OUTCOME: u64 = 10_000_000_000; // 10,000 tokens (6 decimals)
 const PROTOCOL_MAX_THRESHOLD_NEGATIVE: u128 = 50_000_000_000; // -5% (stored as magnitude, 0.05 * 1e12)
 
 // === Structs ===
@@ -84,7 +91,8 @@ public struct TwapConfig has copy, drop, store {
 public struct GovernanceConfig has copy, drop, store {
     max_outcomes: u64,
     max_actions_per_outcome: u64,
-    proposal_fee_per_outcome: u64,
+    proposal_creation_fee: u64, // Base fee to create a proposal (DAO-level, in StableType)
+    proposal_fee_per_outcome: u64, // Fee per additional outcome beyond initial 2 (DAO-level, in StableType)
     accept_new_proposals: bool,
     max_intents_per_outcome: u64,
     proposal_intent_expiry_ms: u64,
@@ -96,13 +104,6 @@ public struct MetadataConfig has copy, drop, store {
     dao_name: AsciiString,
     icon_url: Url,
     description: String,
-}
-
-/// Security configuration for dead-man switch
-public struct SecurityConfig has copy, drop, store {
-    deadman_enabled: bool, // If true, dead-man switch recovery is enabled
-    recovery_liveness_ms: u64, // Inactivity threshold for dead-man switch (e.g., 30 days)
-    require_deadman_council: bool, // If true, all councils must support dead-man switch
 }
 
 /// Conditional coin metadata configuration for proposals
@@ -143,7 +144,6 @@ public struct DaoConfig has copy, drop, store {
     twap_config: TwapConfig,
     governance_config: GovernanceConfig,
     metadata_config: MetadataConfig,
-    security_config: SecurityConfig,
     conditional_coin_config: ConditionalCoinConfig,
     quota_config: QuotaConfig,
     sponsorship_config: SponsorshipConfig,
@@ -225,6 +225,7 @@ public fun new_twap_config(
 public fun new_governance_config(
     max_outcomes: u64,
     max_actions_per_outcome: u64,
+    proposal_creation_fee: u64,
     proposal_fee_per_outcome: u64,
     accept_new_proposals: bool,
     max_intents_per_outcome: u64,
@@ -237,12 +238,14 @@ public fun new_governance_config(
         max_actions_per_outcome > 0 && max_actions_per_outcome <= constants::protocol_max_actions_per_outcome(),
         EMaxActionsExceedsProtocol,
     );
+    assert!(proposal_creation_fee > 0, EInvalidProposalFee);
     assert!(proposal_fee_per_outcome > 0, EInvalidProposalFee);
     assert!(max_intents_per_outcome > 0, EInvalidMaxOutcomes);
 
     GovernanceConfig {
         max_outcomes,
         max_actions_per_outcome,
+        proposal_creation_fee,
         proposal_fee_per_outcome,
         accept_new_proposals,
         max_intents_per_outcome,
@@ -261,19 +264,6 @@ public fun new_metadata_config(
         dao_name,
         icon_url,
         description,
-    }
-}
-
-/// Create a new security configuration
-public fun new_security_config(
-    deadman_enabled: bool,
-    recovery_liveness_ms: u64,
-    require_deadman_council: bool,
-): SecurityConfig {
-    SecurityConfig {
-        deadman_enabled,
-        recovery_liveness_ms,
-        require_deadman_council,
     }
 }
 
@@ -367,7 +357,6 @@ public fun new_dao_config(
     twap_config: TwapConfig,
     governance_config: GovernanceConfig,
     metadata_config: MetadataConfig,
-    security_config: SecurityConfig,
     conditional_coin_config: ConditionalCoinConfig,
     quota_config: QuotaConfig,
     sponsorship_config: SponsorshipConfig,
@@ -377,7 +366,6 @@ public fun new_dao_config(
         twap_config,
         governance_config,
         metadata_config,
-        security_config,
         conditional_coin_config,
         quota_config,
         sponsorship_config,
@@ -435,13 +423,15 @@ public fun threshold(twap: &TwapConfig): &SignedU128 {
 // Governance config getters
 public fun governance_config(config: &DaoConfig): &GovernanceConfig { &config.governance_config }
 
-public(package) fun governance_config_mut(config: &mut DaoConfig): &mut GovernanceConfig {
+public fun governance_config_mut(config: &mut DaoConfig): &mut GovernanceConfig {
     &mut config.governance_config
 }
 
 public fun max_outcomes(gov: &GovernanceConfig): u64 { gov.max_outcomes }
 
 public fun max_actions_per_outcome(gov: &GovernanceConfig): u64 { gov.max_actions_per_outcome }
+
+public fun proposal_creation_fee(gov: &GovernanceConfig): u64 { gov.proposal_creation_fee }
 
 public fun proposal_fee_per_outcome(gov: &GovernanceConfig): u64 { gov.proposal_fee_per_outcome }
 
@@ -467,19 +457,6 @@ public fun dao_name(meta: &MetadataConfig): &AsciiString { &meta.dao_name }
 public fun icon_url(meta: &MetadataConfig): &Url { &meta.icon_url }
 
 public fun description(meta: &MetadataConfig): &String { &meta.description }
-
-// Security config getters
-public fun security_config(config: &DaoConfig): &SecurityConfig { &config.security_config }
-
-public(package) fun security_config_mut(config: &mut DaoConfig): &mut SecurityConfig {
-    &mut config.security_config
-}
-
-public fun deadman_enabled(sec: &SecurityConfig): bool { sec.deadman_enabled }
-
-public fun recovery_liveness_ms(sec: &SecurityConfig): u64 { sec.recovery_liveness_ms }
-
-public fun require_deadman_council(sec: &SecurityConfig): bool { sec.require_deadman_council }
 
 // Conditional coin config getters
 public fun conditional_coin_config(config: &DaoConfig): &ConditionalCoinConfig {
@@ -720,8 +697,15 @@ public(package) fun set_max_actions_per_outcome(gov: &mut GovernanceConfig, max:
     gov.max_actions_per_outcome = max;
 }
 
-public(package) fun set_proposal_fee_per_outcome(gov: &mut GovernanceConfig, fee: u64) {
+public fun set_proposal_creation_fee(gov: &mut GovernanceConfig, fee: u64) {
     assert!(fee > 0, EInvalidProposalFee);
+    assert!(fee <= MAX_PROPOSAL_CREATION_FEE, EProposalFeeExceedsMax);
+    gov.proposal_creation_fee = fee;
+}
+
+public fun set_proposal_fee_per_outcome(gov: &mut GovernanceConfig, fee: u64) {
+    assert!(fee > 0, EInvalidProposalFee);
+    assert!(fee <= MAX_PROPOSAL_FEE_PER_OUTCOME, EProposalFeeExceedsMax);
     gov.proposal_fee_per_outcome = fee;
 }
 
@@ -757,20 +741,6 @@ public(package) fun set_icon_url(meta: &mut MetadataConfig, url: Url) {
 
 public(package) fun set_description(meta: &mut MetadataConfig, desc: String) {
     meta.description = desc;
-}
-
-// Security config direct setters
-
-public(package) fun set_deadman_enabled(sec: &mut SecurityConfig, val: bool) {
-    sec.deadman_enabled = val;
-}
-
-public(package) fun set_recovery_liveness_ms(sec: &mut SecurityConfig, ms: u64) {
-    sec.recovery_liveness_ms = ms;
-}
-
-public(package) fun set_require_deadman_council(sec: &mut SecurityConfig, val: bool) {
-    sec.require_deadman_council = val;
 }
 
 // Conditional coin config direct setters
@@ -866,7 +836,6 @@ public fun update_trading_params(config: &DaoConfig, new_params: TradingParams):
         twap_config: config.twap_config,
         governance_config: config.governance_config,
         metadata_config: config.metadata_config,
-        security_config: config.security_config,
         conditional_coin_config: config.conditional_coin_config,
         quota_config: config.quota_config,
         sponsorship_config: config.sponsorship_config,
@@ -880,7 +849,6 @@ public fun update_twap_config(config: &DaoConfig, new_twap: TwapConfig): DaoConf
         twap_config: new_twap,
         governance_config: config.governance_config,
         metadata_config: config.metadata_config,
-        security_config: config.security_config,
         conditional_coin_config: config.conditional_coin_config,
         quota_config: config.quota_config,
         sponsorship_config: config.sponsorship_config,
@@ -894,7 +862,6 @@ public fun update_governance_config(config: &DaoConfig, new_gov: GovernanceConfi
         twap_config: config.twap_config,
         governance_config: new_gov,
         metadata_config: config.metadata_config,
-        security_config: config.security_config,
         conditional_coin_config: config.conditional_coin_config,
         quota_config: config.quota_config,
         sponsorship_config: config.sponsorship_config,
@@ -908,27 +875,11 @@ public fun update_metadata_config(config: &DaoConfig, new_meta: MetadataConfig):
         twap_config: config.twap_config,
         governance_config: config.governance_config,
         metadata_config: new_meta,
-        security_config: config.security_config,
         conditional_coin_config: config.conditional_coin_config,
         quota_config: config.quota_config,
         sponsorship_config: config.sponsorship_config,
     }
 }
-
-/// Update security configuration (returns new config)
-public fun update_security_config(config: &DaoConfig, new_sec: SecurityConfig): DaoConfig {
-    DaoConfig {
-        trading_params: config.trading_params,
-        twap_config: config.twap_config,
-        governance_config: config.governance_config,
-        metadata_config: config.metadata_config,
-        security_config: new_sec,
-        conditional_coin_config: config.conditional_coin_config,
-        quota_config: config.quota_config,
-        sponsorship_config: config.sponsorship_config,
-    }
-}
-
 
 /// Update conditional coin configuration (returns new config)
 public fun update_conditional_coin_config(
@@ -940,7 +891,6 @@ public fun update_conditional_coin_config(
         twap_config: config.twap_config,
         governance_config: config.governance_config,
         metadata_config: config.metadata_config,
-        security_config: config.security_config,
         conditional_coin_config: new_coin_config,
         quota_config: config.quota_config,
         sponsorship_config: config.sponsorship_config,
@@ -954,7 +904,6 @@ public fun update_quota_config(config: &DaoConfig, new_quota: QuotaConfig): DaoC
         twap_config: config.twap_config,
         governance_config: config.governance_config,
         metadata_config: config.metadata_config,
-        security_config: config.security_config,
         conditional_coin_config: config.conditional_coin_config,
         quota_config: new_quota,
         sponsorship_config: config.sponsorship_config,
@@ -968,7 +917,6 @@ public fun update_sponsorship_config(config: &DaoConfig, new_sponsorship: Sponso
         twap_config: config.twap_config,
         governance_config: config.governance_config,
         metadata_config: config.metadata_config,
-        security_config: config.security_config,
         conditional_coin_config: config.conditional_coin_config,
         quota_config: config.quota_config,
         sponsorship_config: new_sponsorship,
@@ -1007,20 +955,12 @@ public fun default_governance_config(): GovernanceConfig {
     GovernanceConfig {
         max_outcomes: constants::default_max_outcomes(),
         max_actions_per_outcome: constants::default_max_actions_per_outcome(),
-        proposal_fee_per_outcome: 1000000,
+        proposal_creation_fee: 500000, // 0.5 of stable token
+        proposal_fee_per_outcome: 1000000, // 1.0 of stable token per outcome
         accept_new_proposals: true,
         max_intents_per_outcome: 10,
         proposal_intent_expiry_ms: constants::default_proposal_intent_expiry_ms(),
         enable_premarket_reservation_lock: true,
-    }
-}
-
-/// Get default security configuration
-public fun default_security_config(): SecurityConfig {
-    SecurityConfig {
-        deadman_enabled: false, // Opt-in feature
-        recovery_liveness_ms: 2_592_000_000, // 30 days default
-        require_deadman_council: false, // Optional
     }
 }
 

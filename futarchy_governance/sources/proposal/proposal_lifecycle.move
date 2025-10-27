@@ -9,7 +9,6 @@ use account_protocol::account::{Self, Account};
 use account_protocol::executable::{Self, Executable};
 use account_protocol::intents::{Self, Intent};
 use futarchy_core::futarchy_config::{Self, FutarchyConfig, FutarchyOutcome};
-use futarchy_core::proposal_fee_manager::{Self, ProposalFeeManager};
 use futarchy_core::version;
 use futarchy_governance_actions::governance_intents;
 use futarchy_markets_primitives::coin_escrow;
@@ -116,7 +115,6 @@ public fun finalize_proposal_market<AssetType, StableType>(
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
     spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    fee_manager: &mut ProposalFeeManager<StableType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -126,7 +124,6 @@ public fun finalize_proposal_market<AssetType, StableType>(
         escrow,
         market_state,
         spot_pool,
-        fee_manager,
         false,
         clock,
         ctx,
@@ -140,7 +137,6 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
     spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    fee_manager: &mut ProposalFeeManager<StableType>,
     _is_early_resolution: bool,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -234,7 +230,7 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
     // - Encourages healthy debate without perverse incentives
     // - Winning creator gets bonus to incentivize quality
     if (winning_outcome > 0) {
-        let config = account::config(account);
+        let config: &FutarchyConfig = account::config(account);
         let num_outcomes = proposal::get_num_outcomes(proposal);
 
         // 1. Refund fees to ALL creators of outcomes 1-N from proposal's fee escrow
@@ -262,26 +258,6 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
         } else {
             fee_escrow_coin.destroy_zero();
         };
-
-        // 2. Pay bonus reward to WINNING outcome creator (if configured)
-        // Note: Reward is paid in SUI from protocol revenue
-        // DAOs can set this to 0 to disable, or any amount to incentivize quality outcomes
-        // IMPORTANT: Skip reward if proposal used admin budget/quota
-        let win_reward = futarchy_config::outcome_win_reward(config);
-        let used_quota = proposal::get_used_quota(proposal);
-        if (win_reward > 0 && !used_quota) {
-            let winner = proposal::get_outcome_creator(proposal, winning_outcome);
-            let reward_coin = proposal_fee_manager::pay_outcome_creator_reward(
-                fee_manager,
-                win_reward,
-                ctx,
-            );
-            if (reward_coin.value() > 0) {
-                transfer::public_transfer(reward_coin, winner);
-            } else {
-                reward_coin.destroy_zero();
-            };
-        };
     };
     // If outcome 0 wins, DAO keeps all fees - no refunds or rewards
     // --- END OUTCOME CREATOR FEE REFUNDS & REWARDS ---
@@ -304,7 +280,6 @@ public entry fun try_early_resolve<AssetType, StableType>(
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
     spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    fee_manager: &mut ProposalFeeManager<StableType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -380,35 +355,17 @@ public entry fun try_early_resolve<AssetType, StableType>(
         escrow,
         market_state,
         spot_pool,
-        fee_manager,
         clock,
         ctx,
     );
 
-    // Keeper reward payment: Use outcome creator reward mechanism
-    // The keeper gets rewarded from protocol fees
-    let keeper_reward = if (keeper_reward_bps > 0) {
-        // Use outcome creator reward function for keeper payment
-        let reward_amount = 100_000_000u64; // 0.1 SUI fixed reward
-        let reward_coin = proposal_fee_manager::pay_outcome_creator_reward(
-            fee_manager,
-            reward_amount,
-            ctx,
-        );
-        let actual_reward = reward_coin.value();
-        transfer::public_transfer(reward_coin, ctx.sender());
-        actual_reward
-    } else {
-        0
-    };
-
-    // Emit early resolution event (create our own copy since early_resolve::ProposalEarlyResolved is package-only)
+    // Emit early resolution event
     event::emit(ProposalEarlyResolvedEvent {
         proposal_id: proposal::get_id(proposal),
         winning_outcome: winner_idx,
         proposal_age_ms,
         keeper: ctx.sender(),
-        keeper_reward,
+        keeper_reward: 0, // Keeper rewards removed with ProposalFeeManager
         timestamp: clock.timestamp_ms(),
     });
 }

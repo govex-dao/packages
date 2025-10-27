@@ -265,7 +265,6 @@ public fun pre_create_dao_for_raise<RaiseToken: drop, StableCoin: drop>(
         registry,
         fee_manager,
         payment,
-        option::none(), // optimistic_intent_challenge_enabled
         option::none(), // treasury_cap - added later via init_actions on raise completion
         option::none(), // coin_metadata - added later via init_actions on raise completion
         clock,

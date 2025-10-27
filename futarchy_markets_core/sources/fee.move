@@ -58,7 +58,6 @@ public struct FeeManager has key, store {
     proposal_creation_fee_per_outcome: u64,
     verification_fees: Table<u8, u64>, // Dynamic table mapping level -> fee
     sui_balance: Balance<SUI>,
-    recovery_fee: u64, // Fee for dead-man switch recovery
     launchpad_creation_fee: u64, // Fee for creating a launchpad
 }
 
@@ -72,17 +71,14 @@ public struct CoinFeeConfig has store {
     decimals: u8,
     dao_creation_fee: u64,
     proposal_creation_fee_per_outcome: u64,
-    recovery_fee: u64,
     verification_fees: Table<u8, u64>,
     // Pending updates with 6-month delay
     pending_creation_fee: Option<u64>,
     pending_proposal_fee: Option<u64>,
-    pending_recovery_fee: Option<u64>,
     pending_fees_effective_timestamp: Option<u64>,
     // 10x cap tracking - baseline fees that reset every 6 months
     creation_fee_baseline: u64,
     proposal_fee_baseline: u64,
-    recovery_fee_baseline: u64,
     baseline_reset_timestamp: u64,
 }
 
@@ -167,27 +163,6 @@ public struct StableFeesWithdrawn has copy, drop {
     timestamp: u64,
 }
 
-public struct RecoveryFeeUpdated has copy, drop {
-    old_fee: u64,
-    new_fee: u64,
-    admin: address,
-    timestamp: u64,
-}
-
-public struct RecoveryRequested has copy, drop {
-    dao_id: ID,
-    council_id: ID,
-    fee: u64,
-    requester: address,
-    timestamp: u64,
-}
-
-public struct RecoveryExecuted has copy, drop {
-    dao_id: ID,
-    new_council_id: ID,
-    timestamp: u64,
-}
-
 // === Public Functions ===
 fun init(witness: FEE, ctx: &mut TxContext) {
     // Verify that the witness is valid and one-time only.
@@ -208,7 +183,6 @@ fun init(witness: FEE, ctx: &mut TxContext) {
         proposal_creation_fee_per_outcome: DEFAULT_PROPOSAL_CREATION_FEE_PER_OUTCOME,
         verification_fees,
         sui_balance: balance::zero<SUI>(),
-        recovery_fee: 5_000_000_000, // 5 SUI default (~$5k equivalent)
         launchpad_creation_fee: DEFAULT_LAUNCHPAD_CREATION_FEE,
     };
 
@@ -294,28 +268,6 @@ public fun deposit_proposal_creation_payment(
     event::emit(ProposalCreationFeeCollected {
         amount: payment_amount,
         payer: ctx.sender(),
-        timestamp: clock.timestamp_ms(),
-    });
-}
-
-// Function to collect recovery fee for dead-man switch
-public fun deposit_recovery_payment(
-    fee_manager: &mut FeeManager,
-    dao_id: ID,
-    council_id: ID,
-    payment: Coin<SUI>,
-    clock: &Clock,
-    ctx: &TxContext,
-) {
-    let fee_due = fee_manager.recovery_fee;
-    assert!(payment.value() == fee_due, EInvalidPayment);
-    let bal = payment.into_balance();
-    fee_manager.sui_balance.join(bal);
-    event::emit(RecoveryRequested {
-        dao_id,
-        council_id,
-        fee: fee_due,
-        requester: ctx.sender(),
         timestamp: clock.timestamp_ms(),
     });
 }
@@ -469,30 +421,6 @@ public entry fun update_verification_fee(
         admin: ctx.sender(),
         timestamp: clock.timestamp_ms(),
     });
-}
-
-// Admin function to update recovery fee
-public entry fun update_recovery_fee(
-    fee_manager: &mut FeeManager,
-    admin_cap: &FeeAdminCap,
-    new_fee: u64,
-    clock: &Clock,
-    ctx: &TxContext,
-) {
-    assert!(object::id(admin_cap) == fee_manager.admin_cap_id, EInvalidAdminCap);
-    let old_fee = fee_manager.recovery_fee;
-    fee_manager.recovery_fee = new_fee;
-    event::emit(RecoveryFeeUpdated {
-        old_fee,
-        new_fee,
-        admin: ctx.sender(),
-        timestamp: clock.timestamp_ms(),
-    });
-}
-
-// View function for recovery fee
-public fun get_recovery_fee(fee_manager: &FeeManager): u64 {
-    fee_manager.recovery_fee
 }
 
 // === AMM Fees ===
@@ -733,7 +661,6 @@ public fun add_coin_fee_config(
     decimals: u8,
     dao_creation_fee: u64,
     proposal_fee_per_outcome: u64,
-    recovery_fee: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -749,16 +676,13 @@ public fun add_coin_fee_config(
         decimals,
         dao_creation_fee,
         proposal_creation_fee_per_outcome: proposal_fee_per_outcome,
-        recovery_fee,
         verification_fees,
         pending_creation_fee: option::none(),
         pending_proposal_fee: option::none(),
-        pending_recovery_fee: option::none(),
         pending_fees_effective_timestamp: option::none(),
         // Initialize baselines to current fees
         creation_fee_baseline: dao_creation_fee,
         proposal_fee_baseline: proposal_fee_per_outcome,
-        recovery_fee_baseline: recovery_fee,
         baseline_reset_timestamp: clock.timestamp_ms(),
     };
 
@@ -841,42 +765,6 @@ public fun update_coin_proposal_fee(
     };
 }
 
-/// Update recovery fee for a specific coin type (with 6-month delay and 10x cap)
-public fun update_coin_recovery_fee(
-    fee_manager: &mut FeeManager,
-    admin_cap: &FeeAdminCap,
-    coin_type: TypeName,
-    new_fee: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    assert!(object::id(admin_cap) == fee_manager.admin_cap_id, EInvalidAdminCap);
-    assert!(dynamic_field::exists_(&fee_manager.id, coin_type), EStableTypeNotFound);
-
-    let config: &mut CoinFeeConfig = dynamic_field::borrow_mut(&mut fee_manager.id, coin_type);
-    let current_time = clock.timestamp_ms();
-
-    // Check if 6 months have passed since baseline was set - if so, reset baseline
-    if (current_time >= config.baseline_reset_timestamp + FEE_BASELINE_RESET_PERIOD_MS) {
-        config.recovery_fee_baseline = config.recovery_fee;
-        config.baseline_reset_timestamp = current_time;
-    };
-
-    // Enforce 10x cap from baseline
-    assert!(new_fee <= config.recovery_fee_baseline * MAX_FEE_MULTIPLIER, EFeeExceedsTenXCap);
-
-    // Allow immediate decrease, delayed increase
-    if (new_fee <= config.recovery_fee) {
-        // Fee decrease - apply immediately
-        config.recovery_fee = new_fee;
-    } else {
-        // Fee increase - apply after delay
-        let effective_timestamp = current_time + FEE_UPDATE_DELAY_MS;
-        config.pending_recovery_fee = option::some(new_fee);
-        config.pending_fees_effective_timestamp = option::some(effective_timestamp);
-    };
-}
-
 /// Apply pending fee updates if the delay has passed
 public fun apply_pending_coin_fees(
     fee_manager: &mut FeeManager,
@@ -902,11 +790,6 @@ public fun apply_pending_coin_fees(
             if (config.pending_proposal_fee.is_some()) {
                 config.proposal_creation_fee_per_outcome = *config.pending_proposal_fee.borrow();
                 config.pending_proposal_fee = option::none();
-            };
-
-            if (config.pending_recovery_fee.is_some()) {
-                config.recovery_fee = *config.pending_recovery_fee.borrow();
-                config.pending_recovery_fee = option::none();
             };
 
             config.pending_fees_effective_timestamp = option::none();
@@ -938,7 +821,6 @@ public fun create_fee_manager_for_testing(ctx: &mut TxContext) {
         proposal_creation_fee_per_outcome: DEFAULT_PROPOSAL_CREATION_FEE_PER_OUTCOME,
         verification_fees,
         sui_balance: balance::zero<SUI>(),
-        recovery_fee: 5_000_000_000, // 5 SUI default
         launchpad_creation_fee: DEFAULT_LAUNCHPAD_CREATION_FEE,
     };
 

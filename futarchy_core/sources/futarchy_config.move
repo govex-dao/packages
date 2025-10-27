@@ -81,6 +81,57 @@ public struct EarlyResolveConfig has copy, drop, store {
     keeper_reward_bps: u64, // e.g., 10 bps (0.1%) of protocol fees
 }
 
+/// Pure Futarchy configuration struct
+/// All dynamic state and object references are stored on the Account object
+public struct FutarchyConfig has copy, drop, store {
+    // Type information
+    asset_type: String,
+    stable_type: String,
+    // Core DAO configuration
+    config: DaoConfig,
+    // Reward configuration (paid from protocol revenue in SUI)
+    outcome_win_reward: u64, // Reward for winning outcome creator (in SUI, default: 0)
+    // Verification configuration
+    verification_level: u8, // 0 = unverified, 1 = basic, 2 = standard, 3 = premium
+    dao_score: u64, // DAO quality score (0-unlimited, higher = better, admin-set only)
+    // Write-once immutable starting price from launchpad raise
+    // Once set to Some(price), can NEVER be changed
+    // Used to enforce: 1) AMM initialization ratio, 2) founder reward minimum price
+    launchpad_initial_price: Option<u128>,
+    // Early resolve configuration
+    early_resolve_config: EarlyResolveConfig,
+}
+
+/// Dynamic state stored on Account via dynamic fields
+public struct DaoState has store {
+    operational_state: u8,
+    active_proposals: u64,
+    total_proposals: u64,
+    attestation_url: String,
+    verification_pending: bool,
+    // Dissolution fields (set when DAO terminated)
+    terminated_at_ms: Option<u64>,  // When DAO was terminated
+    dissolution_unlock_delay_ms: Option<u64>,  // How long to wait before redemption
+    dissolution_capability_created: bool,  // Prevent multiple capability creation
+}
+
+/// Key for storing DaoState as a dynamic field
+public struct DaoStateKey has copy, drop, store {}
+
+/// Key for storing SpotAMM as a dynamic field
+public struct SpotAMMKey has copy, drop, store {}
+
+/// Key for storing FeeManager as a dynamic field
+public struct FeeManagerKey has copy, drop, store {}
+
+/// Key for storing OperatingAgreement as a dynamic field
+public struct OperatingAgreementKey has copy, drop, store {}
+
+/// Key for storing Treasury as a dynamic field
+public struct TreasuryKey has copy, drop, store {}
+
+// === Constructors ===
+
 /// Create default early resolve config (disabled by default: min = max)
 public fun default_early_resolve_config(): EarlyResolveConfig {
     EarlyResolveConfig {
@@ -116,6 +167,70 @@ public fun new_early_resolve_config(
         enable_twap_scaling,
         keeper_reward_bps,
     }
+}
+
+/// Creates a new pure FutarchyConfig
+public fun new<AssetType: drop, StableType: drop>(
+    dao_config: DaoConfig,
+): FutarchyConfig {
+    FutarchyConfig {
+        asset_type: type_name::get<AssetType>().into_string().to_string(),
+        stable_type: type_name::get<StableType>().into_string().to_string(),
+        config: dao_config,
+        outcome_win_reward: 0, // No default reward (DAO must configure)
+        verification_level: 0, // Unverified by default
+        dao_score: 0, // No score by default
+        launchpad_initial_price: option::none(), // Not set initially
+        early_resolve_config: default_early_resolve_config(), // Disabled by default
+    }
+}
+
+/// Creates a new DaoState for dynamic storage
+public fun new_dao_state(): DaoState {
+    DaoState {
+        operational_state: DAO_STATE_ACTIVE,
+        active_proposals: 0,
+        total_proposals: 0,
+        attestation_url: b"".to_string(),
+        verification_pending: false,
+        terminated_at_ms: option::none(),
+        dissolution_unlock_delay_ms: option::none(),
+        dissolution_capability_created: false,
+    }
+}
+
+// === Getters for FutarchyConfig ===
+
+public fun asset_type(config: &FutarchyConfig): &String {
+    &config.asset_type
+}
+
+public fun stable_type(config: &FutarchyConfig): &String {
+    &config.stable_type
+}
+
+public fun dao_config(config: &FutarchyConfig): &DaoConfig {
+    &config.config
+}
+
+public fun dao_config_mut(config: &mut FutarchyConfig): &mut DaoConfig {
+    &mut config.config
+}
+
+public fun outcome_win_reward(config: &FutarchyConfig): u64 {
+    config.outcome_win_reward
+}
+
+public fun verification_level(config: &FutarchyConfig): u8 {
+    config.verification_level
+}
+
+public fun dao_score(config: &FutarchyConfig): u64 {
+    config.dao_score
+}
+
+public fun early_resolve_config(config: &FutarchyConfig): &EarlyResolveConfig {
+    &config.early_resolve_config
 }
 
 // === Getters for EarlyResolveConfig ===
@@ -155,160 +270,6 @@ public fun early_resolve_flip_window_duration(config: &EarlyResolveConfig): u64 
 
 public fun early_resolve_twap_scaling_enabled(config: &EarlyResolveConfig): bool {
     config.enable_twap_scaling
-}
-
-/// Pure Futarchy configuration struct
-/// All dynamic state and object references are stored on the Account object
-public struct FutarchyConfig has copy, drop, store {
-    // Type information
-    asset_type: String,
-    stable_type: String,
-    // Core DAO configuration
-    config: DaoConfig,
-    // Reward configurations (paid from protocol revenue in SUI)
-    // Set to 0 to disable rewards (default), or configure per DAO
-    proposal_pass_reward: u64, // Reward for proposal creator when proposal passes (in SUI, default: 0)
-    outcome_win_reward: u64, // Reward for winning outcome creator (in SUI, default: 0)
-    review_to_trading_fee: u64, // Fee to advance from review to trading (in SUI)
-    finalization_fee: u64, // Fee to finalize proposal after trading (in SUI)
-    // Verification configuration
-    verification_level: u8, // 0 = unverified, 1 = basic, 2 = standard, 3 = premium
-    dao_score: u64, // DAO quality score (0-unlimited, higher = better, admin-set only)
-    // Optimistic Intent Challenge Period
-    // If true: Optimistic actions have challenge period (DAO can challenge)
-    // If false: Optimistic actions execute instantly
-    // Default: true (safer, gives DAO oversight)
-    optimistic_intent_challenge_enabled: bool,
-    // Write-once immutable starting price from launchpad raise
-    // Once set to Some(price), can NEVER be changed
-    // Used to enforce: 1) AMM initialization ratio, 2) founder reward minimum price
-    launchpad_initial_price: Option<u128>,
-    // Early resolve configuration
-    early_resolve_config: EarlyResolveConfig,
-    // Quota refund on eviction
-    // If true: When a proposal using quota is evicted, restore their quota slot
-    // If false: Eviction consumes the quota slot permanently
-    // Default: false (eviction counts as usage)
-    refund_quota_on_eviction: bool,
-}
-
-/// Dynamic state stored on Account via dynamic fields
-public struct DaoState has store {
-    operational_state: u8,
-    active_proposals: u64,
-    total_proposals: u64,
-    attestation_url: String,
-    verification_pending: bool,
-    // Dissolution fields (set when DAO terminated)
-    terminated_at_ms: Option<u64>,  // When DAO was terminated
-    dissolution_unlock_delay_ms: Option<u64>,  // How long to wait before redemption
-    dissolution_capability_created: bool,  // Prevent multiple capability creation
-}
-
-/// Key for storing DaoState as a dynamic field
-public struct DaoStateKey has copy, drop, store {}
-
-/// Key for storing SpotAMM as a dynamic field
-public struct SpotAMMKey has copy, drop, store {}
-
-/// Key for storing FeeManager as a dynamic field
-public struct FeeManagerKey has copy, drop, store {}
-
-/// Key for storing OperatingAgreement as a dynamic field
-public struct OperatingAgreementKey has copy, drop, store {}
-
-/// Key for storing Treasury as a dynamic field
-public struct TreasuryKey has copy, drop, store {}
-
-// === Public Functions ===
-
-/// Creates a new pure FutarchyConfig
-public fun new<AssetType: drop, StableType: drop>(
-    dao_config: DaoConfig,
-): FutarchyConfig {
-    FutarchyConfig {
-        asset_type: type_name::get<AssetType>().into_string().to_string(),
-        stable_type: type_name::get<StableType>().into_string().to_string(),
-        config: dao_config,
-        proposal_pass_reward: 0, // No default reward (DAO must configure)
-        outcome_win_reward: 0, // No default reward (DAO must configure)
-        review_to_trading_fee: 1_000_000_000, // 1 SUI default
-        finalization_fee: 1_000_000_000, // 1 SUI default
-        verification_level: 0, // Unverified by default
-        dao_score: 0, // No score by default
-        optimistic_intent_challenge_enabled: true, // Safe default: require 10-day challenge period
-        launchpad_initial_price: option::none(), // Not set initially
-        early_resolve_config: default_early_resolve_config(), // Disabled by default
-        refund_quota_on_eviction: false, // Default: eviction counts as usage
-    }
-}
-
-/// Creates a new DaoState for dynamic storage
-public fun new_dao_state(): DaoState {
-    DaoState {
-        operational_state: DAO_STATE_ACTIVE,
-        active_proposals: 0,
-        total_proposals: 0,
-        attestation_url: b"".to_string(),
-        verification_pending: false,
-        terminated_at_ms: option::none(),
-        dissolution_unlock_delay_ms: option::none(),
-        dissolution_capability_created: false,
-    }
-}
-
-// === Getters for FutarchyConfig ===
-
-public fun asset_type(config: &FutarchyConfig): &String {
-    &config.asset_type
-}
-
-public fun stable_type(config: &FutarchyConfig): &String {
-    &config.stable_type
-}
-
-public fun dao_config(config: &FutarchyConfig): &DaoConfig {
-    &config.config
-}
-
-public fun dao_config_mut(config: &mut FutarchyConfig): &mut DaoConfig {
-    &mut config.config
-}
-
-public fun proposal_pass_reward(config: &FutarchyConfig): u64 {
-    config.proposal_pass_reward
-}
-
-public fun outcome_win_reward(config: &FutarchyConfig): u64 {
-    config.outcome_win_reward
-}
-
-public fun review_to_trading_fee(config: &FutarchyConfig): u64 {
-    config.review_to_trading_fee
-}
-
-public fun finalization_fee(config: &FutarchyConfig): u64 {
-    config.finalization_fee
-}
-
-public fun verification_level(config: &FutarchyConfig): u8 {
-    config.verification_level
-}
-
-public fun dao_score(config: &FutarchyConfig): u64 {
-    config.dao_score
-}
-
-public fun optimistic_intent_challenge_enabled(config: &FutarchyConfig): bool {
-    config.optimistic_intent_challenge_enabled
-}
-
-public fun early_resolve_config(config: &FutarchyConfig): &EarlyResolveConfig {
-    &config.early_resolve_config
-}
-
-public fun refund_quota_on_eviction(config: &FutarchyConfig): bool {
-    config.refund_quota_on_eviction
 }
 
 // === Getters for DaoState ===
@@ -419,96 +380,6 @@ public fun set_verification_level(config: &mut FutarchyConfig, level: u8) {
 
 public fun set_dao_score(config: &mut FutarchyConfig, score: u64) {
     config.dao_score = score;
-}
-
-// === Configuration Update Functions ===
-// These return a new config since FutarchyConfig has copy
-
-public fun with_rewards(
-    config: FutarchyConfig,
-    proposal_pass_reward: u64,
-    outcome_win_reward: u64,
-    review_to_trading_fee: u64,
-    finalization_fee: u64,
-): FutarchyConfig {
-    FutarchyConfig {
-        asset_type: config.asset_type,
-        stable_type: config.stable_type,
-        config: config.config,
-        proposal_pass_reward,
-        outcome_win_reward,
-        review_to_trading_fee,
-        finalization_fee,
-        verification_level: config.verification_level,
-        dao_score: config.dao_score,
-        optimistic_intent_challenge_enabled: config.optimistic_intent_challenge_enabled,
-        launchpad_initial_price: config.launchpad_initial_price,
-        early_resolve_config: config.early_resolve_config,
-        refund_quota_on_eviction: config.refund_quota_on_eviction,
-    }
-}
-
-public fun with_verification_level(config: FutarchyConfig, verification_level: u8): FutarchyConfig {
-    FutarchyConfig {
-        asset_type: config.asset_type,
-        stable_type: config.stable_type,
-        config: config.config,
-        proposal_pass_reward: config.proposal_pass_reward,
-        outcome_win_reward: config.outcome_win_reward,
-        review_to_trading_fee: config.review_to_trading_fee,
-        finalization_fee: config.finalization_fee,
-        verification_level,
-        dao_score: config.dao_score,
-        optimistic_intent_challenge_enabled: config.optimistic_intent_challenge_enabled,
-        launchpad_initial_price: config.launchpad_initial_price,
-        early_resolve_config: config.early_resolve_config,
-        refund_quota_on_eviction: config.refund_quota_on_eviction,
-    }
-}
-
-public fun with_dao_score(config: FutarchyConfig, dao_score: u64): FutarchyConfig {
-    FutarchyConfig {
-        asset_type: config.asset_type,
-        stable_type: config.stable_type,
-        config: config.config,
-        proposal_pass_reward: config.proposal_pass_reward,
-        outcome_win_reward: config.outcome_win_reward,
-        review_to_trading_fee: config.review_to_trading_fee,
-        finalization_fee: config.finalization_fee,
-        verification_level: config.verification_level,
-        dao_score,
-        optimistic_intent_challenge_enabled: config.optimistic_intent_challenge_enabled,
-        launchpad_initial_price: config.launchpad_initial_price,
-        early_resolve_config: config.early_resolve_config,
-        refund_quota_on_eviction: config.refund_quota_on_eviction,
-    }
-}
-
-/// Builder function: Set optimistic intent challenge enabled
-///
-/// If true: Optimistic actions require challenge period (DAO can challenge)
-/// If false: Optimistic actions execute instantly
-///
-/// Default: true (safer - gives DAO oversight)
-public fun with_optimistic_intent_challenge_enabled(
-    config: FutarchyConfig,
-    enabled: bool,
-): FutarchyConfig {
-    FutarchyConfig {
-        asset_type: config.asset_type,
-        stable_type: config.stable_type,
-        config: config.config,
-        proposal_pass_reward: config.proposal_pass_reward,
-        outcome_win_reward: config.outcome_win_reward,
-        review_to_trading_fee: config.review_to_trading_fee,
-        finalization_fee: config.finalization_fee,
-        verification_level: config.verification_level,
-        dao_score: config.dao_score,
-        optimistic_intent_challenge_enabled: enabled,
-        launchpad_initial_price: config.launchpad_initial_price,
-        early_resolve_config: config.early_resolve_config,
-        refund_quota_on_eviction: config.refund_quota_on_eviction,
-    }
 }
 
 // === FutarchyOutcome Type ===
@@ -780,6 +651,21 @@ public fun set_proposal_intent_expiry_ms(config: &mut FutarchyConfig, expiry: u6
     dao_config::set_proposal_intent_expiry_ms(gov_cfg, expiry);
 }
 
+public fun set_proposal_creation_fee(config: &mut FutarchyConfig, fee: u64) {
+    let gov_cfg = dao_config::governance_config_mut(&mut config.config);
+    dao_config::set_proposal_creation_fee(gov_cfg, fee);
+}
+
+public fun set_proposal_fee_per_outcome(config: &mut FutarchyConfig, fee: u64) {
+    let gov_cfg = dao_config::governance_config_mut(&mut config.config);
+    dao_config::set_proposal_fee_per_outcome(gov_cfg, fee);
+}
+
+public fun set_accept_new_proposals(config: &mut FutarchyConfig, accept: bool) {
+    let gov_cfg = dao_config::governance_config_mut(&mut config.config);
+    dao_config::set_accept_new_proposals(gov_cfg, accept);
+}
+
 // Removed: queue_fullness_multiplier_bps field no longer exists in GovernanceConfig
 // public fun set_queue_fullness_multiplier_bps(config: &mut FutarchyConfig, points: u64) {
 //     let gov_cfg = dao_config::governance_config_mut(&mut config.config);
@@ -822,19 +708,11 @@ public fun set_conditional_metadata(
     dao_config::set_conditional_metadata(coin_config, metadata);
 }
 
-public fun set_optimistic_intent_challenge_enabled(config: &mut FutarchyConfig, enabled: bool) {
-    config.optimistic_intent_challenge_enabled = enabled;
-}
-
 public fun set_early_resolve_config(
     config: &mut FutarchyConfig,
     early_resolve_config: EarlyResolveConfig,
 ) {
     config.early_resolve_config = early_resolve_config;
-}
-
-public fun set_refund_quota_on_eviction(config: &mut FutarchyConfig, refund: bool) {
-    config.refund_quota_on_eviction = refund;
 }
 
 /// Set proposal enablement state
@@ -997,16 +875,11 @@ public(package) fun destroy_for_migration(config: FutarchyConfig) {
         asset_type: _,
         stable_type: _,
         config: _,
-        proposal_pass_reward: _,
         outcome_win_reward: _,
-        review_to_trading_fee: _,
-        finalization_fee: _,
         verification_level: _,
         dao_score: _,
-        optimistic_intent_challenge_enabled: _,
         launchpad_initial_price: _,
         early_resolve_config: _,
-        refund_quota_on_eviction: _,
     } = config;
 
     // Could add validation logic here to ensure:

@@ -154,10 +154,3 @@ public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
 
     key_copy
 }
-
-// === Notes ===
-// For actual action execution, use the appropriate modules directly:
-// - Transfers: account_actions::vault_intents
-// - Config: futarchy::config_intents
-// - Liquidity: futarchy::liquidity_intents
-// - Streaming: futarchy::stream_intents

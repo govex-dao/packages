@@ -4,41 +4,21 @@
 /// Unified package registry intents for governance
 module futarchy_governance_actions::package_registry_intents;
 
-use account_protocol::account::{Self, Account};
 use account_protocol::intents::Intent;
-use account_protocol::package_registry::{PackageAdminCap, PackageRegistry};
-use futarchy_core::version;
 use futarchy_governance_actions::package_registry_actions;
 use std::bcs;
 use std::string::String;
 use std::type_name;
 
-// === Cap Acceptance Helper Functions ===
+// === Cap Acceptance ===
 //
-// NOTE: For accepting PackageAdminCap into Protocol DAO custody, use the migration
-// helper function below OR use the generic WithdrawObjectsAndTransferIntent
-// from the Move Framework's owned_intents module.
+// NOTE: For accepting PackageAdminCap into Protocol DAO custody, use the generic
+// access_control::lock_cap() function from the Move Framework.
 //
-// The AcceptPackageAdminCapIntent was removed as it was a redundant wrapper
-// around the generic object transfer functionality.
-
-// === Migration Helper Functions ===
-
-/// One-time migration function to transfer PackageAdminCap to the protocol DAO
-entry fun migrate_package_admin_cap_to_dao(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    cap: PackageAdminCap,
-    ctx: &mut TxContext,
-) {
-    account::add_managed_asset(
-        account,
-        registry,
-        b"protocol:package_admin_cap".to_string(),
-        cap,
-        version::current(),
-    );
-}
+// Example:
+//   access_control::lock_cap<Config, PackageAdminCap>(auth, account, registry, cap)
+//
+// This stores the capability in the Account's managed assets using a type-based key.
 
 // === Intent Helper Functions ===
 

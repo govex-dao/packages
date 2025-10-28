@@ -3,111 +3,23 @@
 
 module futarchy_governance_actions::protocol_admin_intents;
 
-use account_protocol::account::{Self, Account};
-use account_protocol::intents::{Self, Intent};
-use account_protocol::package_registry::PackageRegistry;
-use futarchy_core::version;
-use futarchy_factory::factory::{FactoryOwnerCap, ValidatorAdminCap};
+use account_protocol::intents::Intent;
 use futarchy_governance_actions::protocol_admin_actions;
-use futarchy_markets_core::fee::FeeAdminCap;
 use std::bcs;
 use std::string::String;
 use std::type_name::{Self, TypeName};
 
-// === Cap Acceptance Helper Functions ===
+// === Cap Acceptance ===
 //
-// NOTE: For accepting admin caps into Protocol DAO custody, use the migration
-// helper functions below OR use the generic WithdrawObjectsAndTransferIntent
-// from the Move Framework's owned_intents module.
+// NOTE: For accepting admin caps into Protocol DAO custody, use the generic
+// access_control::lock_cap() function from the Move Framework.
 //
-// The cap acceptance intents were removed as they were redundant wrappers
-// around the generic object transfer functionality.
+// Example:
+//   access_control::lock_cap<Config, FactoryOwnerCap>(auth, account, registry, cap)
+//
+// This stores the capability in the Account's managed assets using a type-based key.
 
-// === Migration Helper Functions ===
-
-/// One-time migration function to transfer all admin caps to the protocol DAO
-/// This should be called by the current admin cap holders to transfer control
-public entry fun migrate_admin_caps_to_dao(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    factory_cap: FactoryOwnerCap,
-    fee_cap: FeeAdminCap,
-    validator_cap: ValidatorAdminCap,
-    ctx: &mut TxContext,
-) {
-    // Store all caps in the DAO's account
-    account::add_managed_asset(
-        account,
-        registry,
-        b"protocol:factory_owner_cap".to_string(),
-        factory_cap,
-        version::current(),
-    );
-
-    account::add_managed_asset(
-        account,
-        registry,
-        b"protocol:fee_admin_cap".to_string(),
-        fee_cap,
-        version::current(),
-    );
-
-    account::add_managed_asset(
-        account,
-        registry,
-        b"protocol:validator_admin_cap".to_string(),
-        validator_cap,
-        version::current(),
-    );
-}
-
-/// Transfer a specific admin cap to the protocol DAO (for gradual migration)
-public entry fun migrate_factory_cap_to_dao(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    cap: FactoryOwnerCap,
-    ctx: &mut TxContext,
-) {
-    account::add_managed_asset(
-        account,
-        registry,
-        b"protocol:factory_owner_cap".to_string(),
-        cap,
-        version::current(),
-    );
-}
-
-public entry fun migrate_fee_cap_to_dao(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    cap: FeeAdminCap,
-    ctx: &mut TxContext,
-) {
-    account::add_managed_asset(
-        account,
-        registry,
-        b"protocol:fee_admin_cap".to_string(),
-        cap,
-        version::current(),
-    );
-}
-
-public entry fun migrate_validator_cap_to_dao(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    cap: ValidatorAdminCap,
-    ctx: &mut TxContext,
-) {
-    account::add_managed_asset(
-        account,
-        registry,
-        b"protocol:validator_admin_cap".to_string(),
-        cap,
-        version::current(),
-    );
-}
-
-// === New Intent Helper Functions for All Protocol Admin Actions ===
+// === Intent Helper Functions for All Protocol Admin Actions ===
 
 // === Factory Admin Intent Helpers ===
 

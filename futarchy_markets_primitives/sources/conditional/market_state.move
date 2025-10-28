@@ -32,22 +32,6 @@ public struct MarketStatus has copy, drop, store {
     finalized: bool,
 }
 
-/// Records a single flip event for analysis
-public struct FlipEvent has copy, drop, store {
-    timestamp_ms: u64,
-    old_winner: u64,
-    new_winner: u64,
-    instant_price_spread: u128, // Spread at flip time (for analysis)
-}
-
-/// Early resolution metrics for tracking proposal stability
-/// Tracks flip history across ALL N markets
-public struct EarlyResolveMetrics has copy, drop, store {
-    current_winner_index: u64, // Which outcome is currently winning
-    last_flip_time_ms: u64, // When did winner last change
-    recent_flips: vector<FlipEvent>, // Last N flips (for window-based checks)
-}
-
 public struct MarketState has key, store {
     id: UID,
     market_id: ID,
@@ -63,8 +47,6 @@ public struct MarketState has key, store {
     trading_start: u64,
     trading_end: Option<u64>,
     finalization_time: Option<u64>,
-    // Early resolution metrics (optional)
-    early_resolve_metrics: Option<EarlyResolveMetrics>,
     // Price leaderboard cache for O(1) winner lookups and O(log N) updates
     // Initialized lazily on first swap (after init actions complete)
     price_leaderboard: Option<PriceLeaderboard>,
@@ -115,7 +97,6 @@ public fun new(
         trading_start: 0,
         trading_end: option::none(),
         finalization_time: option::none(),
-        early_resolve_metrics: option::none(), // Initialized when trading starts
         price_leaderboard: option::none(), // Initialized lazily on first swap (after init actions)
     }
 }
@@ -283,118 +264,6 @@ public fun get_finalization_time(state: &MarketState): Option<u64> {
     state.finalization_time
 }
 
-// === Early Resolve Metrics Functions ===
-
-/// Create a new EarlyResolveMetrics struct (helper for initialization)
-public fun new_early_resolve_metrics(
-    initial_winner_index: u64,
-    current_time_ms: u64,
-): EarlyResolveMetrics {
-    EarlyResolveMetrics {
-        current_winner_index: initial_winner_index,
-        last_flip_time_ms: current_time_ms,
-        recent_flips: vector::empty(), // Start with no flip history
-    }
-}
-
-/// Check if early resolve metrics are initialized
-public fun has_early_resolve_metrics(state: &MarketState): bool {
-    state.early_resolve_metrics.is_some()
-}
-
-/// Initialize early resolve metrics when proposal starts
-public(package) fun init_early_resolve_metrics(
-    state: &mut MarketState,
-    initial_winner_index: u64,
-    current_time_ms: u64,
-) {
-    assert!(state.early_resolve_metrics.is_none(), 0); // Can only init once
-    let metrics = EarlyResolveMetrics {
-        current_winner_index: initial_winner_index,
-        last_flip_time_ms: current_time_ms,
-        recent_flips: vector::empty(),
-    };
-    option::fill(&mut state.early_resolve_metrics, metrics);
-}
-
-/// Borrow early resolve metrics immutably
-public fun borrow_early_resolve_metrics(state: &MarketState): &EarlyResolveMetrics {
-    state.early_resolve_metrics.borrow()
-}
-
-/// Borrow early resolve metrics mutably
-public(package) fun borrow_early_resolve_metrics_mut(
-    state: &mut MarketState,
-): &mut EarlyResolveMetrics {
-    state.early_resolve_metrics.borrow_mut()
-}
-
-/// Get current winner index from metrics
-public fun get_current_winner_index(state: &MarketState): u64 {
-    let metrics = state.early_resolve_metrics.borrow();
-    metrics.current_winner_index
-}
-
-/// Get last flip time from metrics
-public fun get_last_flip_time_ms(state: &MarketState): u64 {
-    let metrics = state.early_resolve_metrics.borrow();
-    metrics.last_flip_time_ms
-}
-
-/// Update metrics when winner changes (called by early_resolve module)
-/// Records the flip event and updates current winner
-public fun update_winner_metrics(
-    state: &mut MarketState,
-    new_winner_index: u64,
-    current_time_ms: u64,
-    instant_price_spread: u128, // Spread at time of flip
-) {
-    let metrics = state.early_resolve_metrics.borrow_mut();
-
-    // Record the flip event
-    let flip_event = FlipEvent {
-        timestamp_ms: current_time_ms,
-        old_winner: metrics.current_winner_index,
-        new_winner: new_winner_index,
-        instant_price_spread,
-    };
-
-    // Add to flip history (keep last 100 for memory efficiency)
-    vector::push_back(&mut metrics.recent_flips, flip_event);
-    if (vector::length(&metrics.recent_flips) > 100) {
-        vector::remove(&mut metrics.recent_flips, 0); // Remove oldest
-    };
-
-    // Update current state
-    metrics.current_winner_index = new_winner_index;
-    metrics.last_flip_time_ms = current_time_ms;
-}
-
-/// Get flip history for analysis
-public fun get_flip_history(state: &MarketState): &vector<FlipEvent> {
-    let metrics = state.early_resolve_metrics.borrow();
-    &metrics.recent_flips
-}
-
-/// Count flips within a time window
-/// Returns number of flips that occurred after cutoff_time_ms
-public fun count_flips_in_window(state: &MarketState, cutoff_time_ms: u64): u64 {
-    let metrics = state.early_resolve_metrics.borrow();
-    let flips = &metrics.recent_flips;
-    let mut count = 0u64;
-    let mut i = 0u64;
-
-    while (i < vector::length(flips)) {
-        let flip = vector::borrow(flips, i);
-        if (flip.timestamp_ms >= cutoff_time_ms) {
-            count = count + 1;
-        };
-        i = i + 1;
-    };
-
-    count
-}
-
 // === Price Leaderboard Functions ===
 
 /// Check if price leaderboard is initialized
@@ -543,35 +412,4 @@ public fun test_set_finalized(state: &mut MarketState) {
 public fun borrow_amm_pool_mut(state: &mut MarketState, outcome_idx: u64): &mut LiquidityPool {
     let pools = state.amm_pools.borrow_mut();
     &mut pools[outcome_idx]
-}
-
-#[test_only]
-/// Test helper to set early resolve metrics directly (bypasses initialization check)
-public fun set_early_resolve_metrics(state: &mut MarketState, metrics: EarlyResolveMetrics) {
-    if (state.early_resolve_metrics.is_some()) {
-        state.early_resolve_metrics.extract();
-    };
-    option::fill(&mut state.early_resolve_metrics, metrics);
-}
-
-#[test_only]
-/// Test helper to destroy early resolve metrics
-public fun destroy_early_resolve_metrics_for_testing(state: &mut MarketState) {
-    if (state.early_resolve_metrics.is_some()) {
-        state.early_resolve_metrics.extract();
-    };
-}
-
-#[test_only]
-/// Test helper to update last flip time directly
-public fun update_last_flip_time_for_testing(state: &mut MarketState, time_ms: u64) {
-    let metrics = state.early_resolve_metrics.borrow_mut();
-    metrics.last_flip_time_ms = time_ms;
-}
-
-#[test_only]
-/// Test helper to get current winner index
-public fun get_current_winner_index_for_testing(state: &MarketState): u64 {
-    let metrics = state.early_resolve_metrics.borrow();
-    metrics.current_winner_index
 }

@@ -227,15 +227,10 @@ fun test_finalize_swap_session_success() {
     // Initialize AMM pools first (needed for early resolve metrics)
     initialize_amm_pools(&mut escrow, ctx);
 
-    // Initialize early resolve metrics in market state
-    let market_state = coin_escrow::get_market_state_mut(&mut escrow);
-    let metrics = futarchy_markets_core::early_resolve::new_metrics(0, 1000000);
-    market_state::set_early_resolve_metrics(market_state, metrics);
-
     let session = swap_core::begin_swap_session(&escrow);
 
-    // Finalize session (updates metrics)
-    swap_core::finalize_swap_session(session, &mut proposal, &mut escrow, &clock);
+    // Finalize session
+    swap_core::finalize_swap_session(session, &mut escrow);
 
     // Cleanup
     sui::test_utils::destroy(proposal);
@@ -260,7 +255,7 @@ fun test_finalize_swap_session_wrong_market() {
     let session = swap_core::begin_swap_session(&escrow1);
 
     // Try to finalize with escrow2 (should fail)
-    swap_core::finalize_swap_session(session, &mut proposal, &mut escrow2, &clock);
+    swap_core::finalize_swap_session(session, &mut escrow2);
 
     sui::test_utils::destroy(proposal);
     coin_escrow::destroy_for_testing(escrow1);
@@ -709,11 +704,6 @@ fun test_complete_swap_session_workflow() {
     let market_state_ref = coin_escrow::get_market_state(&escrow);
     let market_id = market_state::market_id(market_state_ref);
 
-    // Initialize early resolve metrics
-    let market_state = coin_escrow::get_market_state_mut(&mut escrow);
-    let metrics = futarchy_markets_core::early_resolve::new_metrics(0, 1000000);
-    market_state::set_early_resolve_metrics(market_state, metrics);
-
     let mut balance = conditional_balance::new<TEST_COIN_A, TEST_COIN_B>(market_id, 2, ctx);
     conditional_balance::add_to_balance(&mut balance, 0, true, 10000);
     conditional_balance::add_to_balance(&mut balance, 1, false, 15000);
@@ -743,8 +733,8 @@ fun test_complete_swap_session_workflow() {
         ctx,
     );
 
-    // 3. Finalize session (updates metrics once)
-    swap_core::finalize_swap_session(session, &mut proposal, &mut escrow, &clock);
+    // 3. Finalize session
+    swap_core::finalize_swap_session(session, &mut escrow);
 
     // Cleanup
     sui::test_utils::destroy(proposal);

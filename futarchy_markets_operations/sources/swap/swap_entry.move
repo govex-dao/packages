@@ -132,7 +132,7 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
         );
 
         // Finalize swap session
-        swap_core::finalize_swap_session(session, proposal, escrow, clock);
+        swap_core::finalize_swap_session(session, escrow);
 
         // Ensure no-arb band is respected after auto-arb
         let market_state = coin_escrow::get_market_state(escrow);
@@ -261,7 +261,7 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
             ctx,
         );
 
-        swap_core::finalize_swap_session(session, proposal, escrow, clock);
+        swap_core::finalize_swap_session(session, escrow);
 
         // Ensure no-arb band is respected after auto-arb
         let market_state = coin_escrow::get_market_state(escrow);
@@ -558,8 +558,8 @@ public fun finalize_conditional_swaps<AssetType, StableType>(
         coin::zero<StableType>(ctx)
     };
 
-    // Finalize session (updates early resolve metrics ONCE for entire batch)
-    swap_core::finalize_swap_session(session, proposal, escrow, clock);
+    // Finalize session
+    swap_core::finalize_swap_session(session, escrow);
 
     // Ensure no-arb band is respected after batch swaps
     let market_state = coin_escrow::get_market_state(escrow);

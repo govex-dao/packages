@@ -7,23 +7,21 @@
 /// Users don't call this directly - use swap_entry.move instead.
 module futarchy_markets_core::swap_core;
 
-use futarchy_markets_core::early_resolve;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_balance;
-use futarchy_one_shot_utils::math;
 use sui::clock::Clock;
-use sui::coin::{Self, Coin};
-use sui::object::{Self, ID};
+use sui::coin::Coin;
+use sui::object::ID;
 
 // === Introduction ===
 // Core swap functions for TreasuryCap-based conditional coins
 // Swaps work by: burn input → update AMM reserves → mint output
 //
-// Hot potato pattern ensures early resolve metrics are updated once per PTB:
+// Hot potato pattern ensures session validation:
 // 1. begin_swap_session() - creates SwapSession hot potato
 // 2. swap_*() - validates session, performs swaps
-// 3. finalize_swap_session() - consumes hot potato, updates metrics ONCE
+// 3. finalize_swap_session() - consumes hot potato
 
 // === Errors ===
 const EInvalidOutcome: u64 = 0;
@@ -37,7 +35,7 @@ const STATE_TRADING: u8 = 2; // Must match proposal.move STATE_TRADING
 
 // === Structs ===
 
-/// Hot potato that enforces early resolve metrics update at end of swap session
+/// Hot potato that enforces session finalization
 /// No abilities = must be consumed by finalize_swap_session()
 public struct SwapSession {
     market_id: ID, // Track which market this session is for
@@ -60,23 +58,11 @@ public fun begin_swap_session<AssetType, StableType>(
     }
 }
 
-/// Finalize swap session (consumes hot potato and updates metrics)
+/// Finalize swap session (consumes hot potato)
 /// Must be called at end of PTB to consume the SwapSession
-/// This is where early resolve metrics are updated ONCE for efficiency
-///
-/// **Idempotency Guarantee:** update_early_resolve_metrics is idempotent when called
-/// multiple times at the same timestamp with unchanged state. If winner hasn't flipped,
-/// the second call is a no-op (just gas cost, no state changes). This ensures correctness
-/// even if accidentally called multiple times in same PTB.
-///
-/// **Flip Recalculation:** This function recalculates the winning outcome from current
-/// AMM prices AFTER all swaps complete, ensuring flip detection happens exactly once
-/// per transaction with up-to-date market state.
 public fun finalize_swap_session<AssetType, StableType>(
     session: SwapSession,
-    proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
-    clock: &Clock,
 ) {
     let SwapSession { market_id } = session;
 
@@ -84,10 +70,6 @@ public fun finalize_swap_session<AssetType, StableType>(
     let market_state = coin_escrow::get_market_state_mut(escrow);
     let escrow_market_id = futarchy_markets_primitives::market_state::market_id(market_state);
     assert!(market_id == escrow_market_id, ESessionMismatch);
-
-    // Update early resolve metrics once per session (efficient!)
-    // Recalculates winner from current prices after all swaps complete
-    early_resolve::update_metrics(proposal, market_state, clock);
 }
 
 // === Core Swap Functions ===

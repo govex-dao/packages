@@ -376,52 +376,6 @@ public fun create_update_sponsorship_config_intent<Outcome: store + drop + copy>
     );
 }
 
-/// Create intent to update early resolve configuration
-public fun create_update_early_resolve_config_intent<Outcome: store + drop + copy>(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    params: Params,
-    outcome: Outcome,
-    min_proposal_duration_ms: u64,
-    max_proposal_duration_ms: u64,
-    min_winner_spread: u128,
-    min_time_since_last_flip_ms: u64,
-    max_flips_in_window: u64,
-    flip_window_duration_ms: u64,
-    enable_twap_scaling: bool,
-    keeper_reward_bps: u64,
-    ctx: &mut TxContext,
-) {
-
-    account.build_intent!(
-        registry,
-        params,
-        outcome,
-        b"config_update_early_resolve".to_string(),
-        version::current(),
-        ConfigIntent {},
-        ctx,
-        |intent, iw| {
-            let action = config_actions::new_early_resolve_config_update_action(
-                min_proposal_duration_ms,
-                max_proposal_duration_ms,
-                min_winner_spread,
-                min_time_since_last_flip_ms,
-                max_flips_in_window,
-                flip_window_duration_ms,
-                enable_twap_scaling,
-                keeper_reward_bps,
-            );
-            let action_bytes = bcs::to_bytes(&action);
-            intent.add_typed_action(
-                type_name::get<config_actions::EarlyResolveConfigUpdate>().into_string().to_string(),
-                action_bytes,
-                iw,
-            );
-        },
-    );
-}
-
 // === Backward compatibility aliases ===
 
 /// Alias for TWAP params intent (backward compatibility)

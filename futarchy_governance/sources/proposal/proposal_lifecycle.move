@@ -14,7 +14,6 @@ use futarchy_core::version;
 use futarchy_governance_actions::governance_intents;
 use futarchy_markets_primitives::coin_escrow;
 use futarchy_markets_primitives::conditional_amm;
-use futarchy_markets_core::early_resolve;
 use futarchy_markets_primitives::market_state::{Self, MarketState};
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_core::quantum_lp_manager;
@@ -39,9 +38,7 @@ const EProposalNotApproved: u64 = 3;
 const ENoIntentKey: u64 = 4;
 const EInvalidWinningOutcome: u64 = 5;
 const EIntentExpiryTooLong: u64 = 6;
-const ENotEligibleForEarlyResolve: u64 = 7;
-const EInsufficientSpread: u64 = 8;
-const EProposalCreationBlocked: u64 = 9; // Pool launch fee decay in progress
+const EProposalCreationBlocked: u64 = 7; // Pool launch fee decay in progress
 
 // === Constants ===
 const OUTCOME_ACCEPTED: u64 = 0;
@@ -87,16 +84,6 @@ public(package) fun new_proposal_intent_executed(
         intent_key,
         timestamp,
     }
-}
-
-/// Emitted when a proposal is resolved early
-public struct ProposalEarlyResolvedEvent has copy, drop {
-    proposal_id: ID,
-    winning_outcome: u64,
-    proposal_age_ms: u64,
-    keeper: address,
-    keeper_reward: u64,
-    timestamp: u64,
 }
 
 /// Emitted when the next proposal is reserved (locked) into PREMARKET
@@ -348,105 +335,6 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
     });
 }
 
-/// Try to resolve a proposal early if it meets eligibility criteria
-/// This function can be called by anyone (typically keepers) to trigger early resolution
-public entry fun try_early_resolve<AssetType, StableType>(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    proposal: &mut Proposal<AssetType, StableType>,
-    escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
-    market_state: &mut MarketState,
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Extract values we need from config before using mutable account
-    let config = account::config(account);
-    let early_resolve_config = futarchy_config::early_resolve_config(config);
-    let min_spread = futarchy_config::early_resolve_min_spread(early_resolve_config);
-    let keeper_reward_bps = futarchy_config::early_resolve_keeper_reward_bps(early_resolve_config);
-
-    // Check basic eligibility (time-based checks, stability, etc.)
-    let (is_eligible, _reason) = early_resolve::check_eligibility(
-        proposal,
-        market_state,
-        early_resolve_config,
-        clock,
-    );
-
-    // Abort if not eligible
-    assert!(is_eligible, ENotEligibleForEarlyResolve);
-
-    // Calculate current winner and check spread requirement
-    let (winner_idx, _winner_twap, spread) = proposal::calculate_current_winner(
-        proposal,
-        escrow,
-        clock,
-    );
-    assert!(spread >= min_spread, EInsufficientSpread);
-
-    // NEW: Additional flip count check with TWAP scaling
-    let max_flips = futarchy_config::early_resolve_max_flips_in_window(early_resolve_config);
-    let flip_window = futarchy_config::early_resolve_flip_window_duration(early_resolve_config);
-    let twap_scaling_enabled = futarchy_config::early_resolve_twap_scaling_enabled(
-        early_resolve_config,
-    );
-
-    let current_time = clock.timestamp_ms();
-    let cutoff_time = if (current_time > flip_window) {
-        current_time - flip_window
-    } else {
-        0
-    };
-    let flips_in_window = market_state::count_flips_in_window(market_state, cutoff_time);
-
-    // Calculate effective max flips with TWAP scaling if enabled
-    let effective_max_flips = if (twap_scaling_enabled && min_spread > 0) {
-        // Scale flip tolerance based on current spread
-        // Formula: base + (base * scale_factor) = base * (1 + scale_factor)
-        // Example at 4% spread (min_spread = 4%):
-        //   scale_factor = 1, effective = 1 + 1 = 2 flips
-        // Example at 8% spread:
-        //   scale_factor = 2, effective = 1 + 2 = 3 flips
-        let scale_factor = (spread / min_spread) as u64;
-        max_flips + (max_flips * scale_factor)
-    } else {
-        max_flips
-    };
-
-    // Check if flips exceed effective maximum
-    assert!(flips_in_window <= effective_max_flips, ENotEligibleForEarlyResolve);
-
-    // Get proposal age for event
-    let start_time = if (proposal::get_market_initialized_at(proposal) > 0) {
-        proposal::get_market_initialized_at(proposal)
-    } else {
-        proposal::get_created_at(proposal)
-    };
-    let proposal_age_ms = clock.timestamp_ms() - start_time;
-
-    // Call standard finalization
-    finalize_proposal_market(
-        account,
-        registry,
-        proposal,
-        escrow,
-        market_state,
-        spot_pool,
-        clock,
-        ctx,
-    );
-
-    // Emit early resolution event
-    event::emit(ProposalEarlyResolvedEvent {
-        proposal_id: proposal::get_id(proposal),
-        winning_outcome: winner_idx,
-        proposal_age_ms,
-        keeper: ctx.sender(),
-        keeper_reward: 0, // Keeper rewards removed with ProposalFeeManager
-        timestamp: clock.timestamp_ms(),
-    });
-}
 
 // === Proposal State Transitions with Quantum Split ===
 

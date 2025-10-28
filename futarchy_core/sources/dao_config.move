@@ -121,7 +121,7 @@ public struct GovernanceConfig has copy, drop, store {
     // Categories: true (show proposal details in UI), false (hide details, show only intents)
     // WARNING: Proposal details are unverified text that may not match actual intent execution
     // Recommended: false (hide details by default for security)
-    show_proposal_details: bool,  // don’t show per outcome description in UI if true
+    show_proposal_details: bool,  // show per outcome description in UI if true
 }
 
 /// Metadata configuration

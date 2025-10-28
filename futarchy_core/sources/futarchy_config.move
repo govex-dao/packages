@@ -105,6 +105,8 @@ public struct FutarchyConfig has copy, drop, store {
     verification_level: u8, // 0 = unverified, 1 = basic, 2 = standard, 3 = premium
     // Range: 0 to u64::MAX (higher = better, admin-set only)
     dao_score: u64, // DAO quality score (0-unlimited, higher = better, admin-set only)
+    // Admin review text for verification
+    admin_review_text: String, // Admin's review notes/commentary
     // Write-once immutable starting price from launchpad raise
     // Once set to Some(price), can NEVER be changed
     // Used to enforce: 1) AMM initialization ratio, 2) founder reward minimum price
@@ -199,6 +201,7 @@ public fun new<AssetType: drop, StableType: drop>(
         outcome_win_reward: 0, // No default reward (DAO must configure)
         verification_level: 0, // Unverified by default
         dao_score: 0, // No score by default
+        admin_review_text: string::utf8(b""), // Empty by default
         launchpad_initial_price: option::none(), // Not set initially
         early_resolve_config: default_early_resolve_config(), // Disabled by default
     }
@@ -246,6 +249,10 @@ public fun verification_level(config: &FutarchyConfig): u8 {
 
 public fun dao_score(config: &FutarchyConfig): u64 {
     config.dao_score
+}
+
+public fun admin_review_text(config: &FutarchyConfig): &String {
+    &config.admin_review_text
 }
 
 public fun early_resolve_config(config: &FutarchyConfig): &EarlyResolveConfig {
@@ -399,6 +406,10 @@ public fun set_verification_level(config: &mut FutarchyConfig, level: u8) {
 
 public fun set_dao_score(config: &mut FutarchyConfig, score: u64) {
     config.dao_score = score;
+}
+
+public fun set_admin_review_text(config: &mut FutarchyConfig, review_text: String) {
+    config.admin_review_text = review_text;
 }
 
 // === FutarchyOutcome Type ===
@@ -904,6 +915,7 @@ public(package) fun destroy_for_migration(config: FutarchyConfig) {
         outcome_win_reward: _,
         verification_level: _,
         dao_score: _,
+        admin_review_text: _,
         launchpad_initial_price: _,
         early_resolve_config: _,
     } = config;

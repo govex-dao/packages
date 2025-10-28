@@ -169,25 +169,29 @@ fun test_set_admin_trust_score() {
         let mut raise = ts::take_shared<launchpad::Raise<ADMIN_TOKEN, ADMIN_STABLE>>(&scenario);
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let validator_cap = ts::take_from_sender<factory::ValidatorAdminCap>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
-        // Verify trust score is none before setting
-        assert!(launchpad::admin_trust_score(&raise).is_none(), 0);
-        assert!(launchpad::admin_review_text(&raise).is_none(), 1);
+        // Verify verification level is 0 and review text is empty before setting
+        assert!(launchpad::verification_level(&raise) == 0, 0);
+        assert!(launchpad::admin_review_text(&raise).is_empty(), 1);
 
-        // Set trust score and review
-        launchpad::set_admin_trust_score(
+        // Set verification level and review
+        launchpad::set_launchpad_verification(
             &mut raise,
             &validator_cap,
-            85, // trust score out of 100
-            b"Verified team, solid project plan".to_string()
+            2, // verification level (0=unverified, 1=basic, 2=standard, 3=premium)
+            b"https://twitter.com/project/status/123".to_string(),
+            b"Verified team, solid project plan".to_string(),
+            &clock,
+            ts::ctx(&mut scenario)
         );
 
-        // Verify trust score is set
-        assert!(launchpad::admin_trust_score(&raise).is_some(), 2);
-        assert!(*launchpad::admin_trust_score(&raise).borrow() == 85, 3);
+        // Verify verification level is set
+        assert!(launchpad::verification_level(&raise) == 2, 2);
+        assert!(!launchpad::admin_review_text(&raise).is_empty(), 3);
+        assert!(launchpad::attestation_url(&raise).length() > 0, 4);
 
-        assert!(launchpad::admin_review_text(&raise).is_some(), 4);
-
+        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, validator_cap);
         ts::return_shared(raise);
         ts::return_shared(factory);

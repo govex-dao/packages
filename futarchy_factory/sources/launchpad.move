@@ -120,8 +120,9 @@ public struct Raise<phantom RaiseToken, phantom StableCoin> has key, store {
     dao_id: Option<ID>,
     intents_locked: bool,
 
-    admin_trust_score: Option<u64>,
-    admin_review_text: Option<String>,
+    verification_level: u8,
+    attestation_url: String,
+    admin_review_text: String,
 
     crank_fee_vault: Balance<sui::sui::SUI>,
 }
@@ -231,6 +232,15 @@ public struct ProtocolFeesSwept has copy, drop {
     raise_id: ID,
     amount: u64,
     recipient: address,
+    timestamp: u64,
+}
+
+public struct LaunchpadVerificationSet has copy, drop {
+    raise_id: ID,
+    level: u8,
+    attestation_url: String,
+    admin_review_text: String,
+    validator: address,
     timestamp: u64,
 }
 
@@ -657,10 +667,15 @@ fun complete_raise_internal<RaiseToken: drop, StableCoin: drop>(
         (raise.tokens_for_sale_amount as u128),
     );
 
-    futarchy_config::set_launchpad_initial_price(
-        futarchy_config::internal_config_mut(&mut account, registry, version::current()),
-        raise_price,
-    );
+    let config = futarchy_config::internal_config_mut(&mut account, registry, version::current());
+    futarchy_config::set_launchpad_initial_price(config, raise_price);
+
+    // Inherit verification state from launchpad to DAO
+    futarchy_config::set_verification_level(config, raise.verification_level);
+    futarchy_config::set_admin_review_text(config, raise.admin_review_text);
+
+    // Note: attestation_url is stored in the launchpad Raise object and can be queried from there
+    // DaoState.attestation_url is used for verification request workflow, not for inherited state
 
     // Deposit raised funds to DAO treasury
     let raised_funds = coin::from_balance(raise.stable_coin_vault.split(raise.final_raise_amount), ctx);
@@ -1195,8 +1210,9 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
         final_raise_amount: 0,
         dao_id: option::none(),
         intents_locked: false,
-        admin_trust_score: option::none(),
-        admin_review_text: option::none(),
+        verification_level: 0,
+        attestation_url: string::utf8(b""),
+        admin_review_text: string::utf8(b""),
         crank_fee_vault: balance::zero(),
     };
 
@@ -1298,24 +1314,41 @@ public fun allowed_caps<RT, SC>(r: &Raise<RT, SC>): &vector<u64> { &r.allowed_ca
 
 public fun cap_sums<RT, SC>(r: &Raise<RT, SC>): &vector<u64> { &r.cap_sums }
 
-public fun admin_trust_score<RT, SC>(r: &Raise<RT, SC>): &Option<u64> {
-    &r.admin_trust_score
+public fun verification_level<RT, SC>(r: &Raise<RT, SC>): u8 {
+    r.verification_level
 }
 
-public fun admin_review_text<RT, SC>(r: &Raise<RT, SC>): &Option<String> {
+public fun attestation_url<RT, SC>(r: &Raise<RT, SC>): &String {
+    &r.attestation_url
+}
+
+public fun admin_review_text<RT, SC>(r: &Raise<RT, SC>): &String {
     &r.admin_review_text
 }
 
 // === Admin Functions ===
 
-public fun set_admin_trust_score<RT, SC>(
+public fun set_launchpad_verification<RT, SC>(
     raise: &mut Raise<RT, SC>,
     _validator_cap: &factory::ValidatorAdminCap,
-    trust_score: u64,
+    level: u8,
+    attestation_url: String,
     review_text: String,
+    clock: &Clock,
+    ctx: &mut TxContext,
 ) {
-    raise.admin_trust_score = option::some(trust_score);
-    raise.admin_review_text = option::some(review_text);
+    raise.verification_level = level;
+    raise.attestation_url = attestation_url;
+    raise.admin_review_text = review_text;
+
+    event::emit(LaunchpadVerificationSet {
+        raise_id: object::id(raise),
+        level,
+        attestation_url,
+        admin_review_text: review_text,
+        validator: ctx.sender(),
+        timestamp: clock.timestamp_ms(),
+    });
 }
 
 // === Test Functions ===
@@ -1374,10 +1407,15 @@ public fun complete_raise_test<RaiseToken: drop, StableCoin: drop>(
         (raise.tokens_for_sale_amount as u128),
     );
 
-    futarchy_config::set_launchpad_initial_price(
-        futarchy_config::internal_config_mut(&mut account, registry, version::current()),
-        raise_price,
-    );
+    let config = futarchy_config::internal_config_mut(&mut account, registry, version::current());
+    futarchy_config::set_launchpad_initial_price(config, raise_price);
+
+    // Inherit verification state from launchpad to DAO
+    futarchy_config::set_verification_level(config, raise.verification_level);
+    futarchy_config::set_admin_review_text(config, raise.admin_review_text);
+
+    // Note: attestation_url is stored in the launchpad Raise object and can be queried from there
+    // DaoState.attestation_url is used for verification request workflow, not for inherited state
 
     // Deposit raised funds to DAO treasury
     let raised_funds = coin::from_balance(raise.stable_coin_vault.split(raise.final_raise_amount), ctx);

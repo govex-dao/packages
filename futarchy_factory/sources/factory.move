@@ -27,7 +27,7 @@ use futarchy_types::init_action_specs::InitActionSpecs;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use std::ascii::String as AsciiString;
 use std::option::Option;
-use std::string::String as UTF8String;
+use std::string::{String, String as UTF8String};
 use std::type_name::{Self, TypeName};
 use std::vector;
 use sui::clock::Clock;
@@ -141,7 +141,8 @@ public struct VerificationApproved has copy, drop {
     dao_id: ID,
     verification_id: ID,
     level: u8,
-    attestation_url: UTF8String,
+    attestation_url: String,
+    admin_review_text: String,
     validator: address,
     timestamp: u64,
 }
@@ -149,7 +150,7 @@ public struct VerificationApproved has copy, drop {
 public struct VerificationRejected has copy, drop {
     dao_id: ID,
     verification_id: ID,
-    reason: UTF8String,
+    reason: String,
     validator: address,
     timestamp: u64,
 }
@@ -157,7 +158,7 @@ public struct VerificationRejected has copy, drop {
 public struct DaoScoreSet has copy, drop {
     dao_id: ID,
     score: u64,
-    reason: UTF8String,
+    reason: String,
     validator: address,
     timestamp: u64,
 }
@@ -1060,15 +1061,17 @@ public entry fun approve_verification(
     registry: &PackageRegistry,
     verification_id: ID,
     level: u8,
-    attestation_url: UTF8String,
+    attestation_url: String,
+    admin_review_text: String,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     let dao_id = object::id(target_dao);
 
-    // Get mutable config to update verification level
+    // Get mutable config to update verification level and review text
     let config = futarchy_config::internal_config_mut(target_dao, registry, version::current());
     futarchy_config::set_verification_level(config, level);
+    futarchy_config::set_admin_review_text(config, admin_review_text);
 
     // Get mutable state to update pending flag and URL
     let dao_state = futarchy_config::state_mut_from_account(target_dao, registry);
@@ -1081,6 +1084,7 @@ public entry fun approve_verification(
         verification_id,
         level,
         attestation_url,
+        admin_review_text,
         validator: ctx.sender(),
         timestamp: clock.timestamp_ms(),
     });
@@ -1093,7 +1097,7 @@ public entry fun reject_verification(
     target_dao: &mut Account,
     registry: &PackageRegistry,
     verification_id: ID,
-    reason: UTF8String,
+    reason: String,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -1121,7 +1125,7 @@ public entry fun set_dao_score(
     target_dao: &mut Account,
     registry: &PackageRegistry,
     score: u64,
-    reason: UTF8String,
+    reason: String,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {

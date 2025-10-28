@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "4AB634DF15775E8A71F24949E5D194B888EE85FC6E61DBCD1C15C716AA26C08E"
+manifest_digest = "F19354AD08EBEEAF128EDFB3EFD465B8D2CB5CFA05707EECAF5BDC3DED29A1E5"
 deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
 dependencies = [
   { id = "AccountProtocol", name = "AccountProtocol" },
@@ -25,7 +25,7 @@ dependencies = [
 
 [[move.package]]
 id = "Bridge"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "f63c9fc78e2171fa174dc43e757ded416c204558", subdir = "crates/sui-framework/packages/bridge" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "61dcfdbe2ddc7ad05d27fc10cd09d4c6cc151acd", subdir = "crates/sui-framework/packages/bridge" }
 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
@@ -35,11 +35,11 @@ dependencies = [
 
 [[move.package]]
 id = "MoveStdlib"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "f63c9fc78e2171fa174dc43e757ded416c204558", subdir = "crates/sui-framework/packages/move-stdlib" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "61dcfdbe2ddc7ad05d27fc10cd09d4c6cc151acd", subdir = "crates/sui-framework/packages/move-stdlib" }
 
 [[move.package]]
 id = "Sui"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "f63c9fc78e2171fa174dc43e757ded416c204558", subdir = "crates/sui-framework/packages/sui-framework" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "61dcfdbe2ddc7ad05d27fc10cd09d4c6cc151acd", subdir = "crates/sui-framework/packages/sui-framework" }
 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
@@ -47,7 +47,7 @@ dependencies = [
 
 [[move.package]]
 id = "SuiSystem"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "f63c9fc78e2171fa174dc43e757ded416c204558", subdir = "crates/sui-framework/packages/sui-system" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "61dcfdbe2ddc7ad05d27fc10cd09d4c6cc151acd", subdir = "crates/sui-framework/packages/sui-system" }
 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
@@ -62,7 +62,7 @@ flavor = "sui"
 [env]
 
 [env.devnet]
-chain-id = "01d7a1c8"
-original-published-id = "0x3761d62661f0d297e2f4419493bf9d84211d84a2e1a8449ae5e3ad1cc8d30823"
-latest-published-id = "0x3761d62661f0d297e2f4419493bf9d84211d84a2e1a8449ae5e3ad1cc8d30823"
+chain-id = "4e8248fb"
+original-published-id = "0x75c59ba5279bd1c4e9a3be412ace1839ed17125301c320cabb04616c910f87f8"
+latest-published-id = "0x75c59ba5279bd1c4e9a3be412ace1839ed17125301c320cabb04616c910f87f8"
 published-version = "1"

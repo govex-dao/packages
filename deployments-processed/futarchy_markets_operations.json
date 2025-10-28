@@ -1,0 +1,27 @@
+{
+  "packageName": "futarchy_markets_operations",
+  "transactionDigest": "DgXGfpocd2r8fPqLFzHZrWr19WxH7h1iY29WnhDBgWkB",
+  "packageId": "0xd45f9f77e71954038636f46a184310c66e9d983f7aad47e22243480c22c10390",
+  "upgradeCap": {
+    "objectId": "0x6dae4bbe1bc01b07b80b73d622b31a264622ee05f317f725147ee7fa6c797362",
+    "objectType": "0x2::package::UpgradeCap",
+    "owner": {
+      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+    }
+  },
+  "adminCaps": [],
+  "sharedObjects": [
+    {
+      "name": "PositionImageConfig",
+      "objectId": "0xfaa58375265f8efc48afbf5d5e5b507bab204eaadf336930780b7b4f686093ac",
+      "objectType": "0xd45f9f77e71954038636f46a184310c66e9d983f7aad47e22243480c22c10390::position_nft::PositionImageConfig",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 24
+        }
+      },
+      "initialSharedVersion": 24
+    }
+  ],
+  "ownedObjects": []
+}

@@ -1,0 +1,36 @@
+{
+  "packageName": "futarchy_markets_core",
+  "transactionDigest": "3gjbv5FGkPcUn6Q12jJA7B4MHd6Eap5yHsDkWXkmWGKA",
+  "packageId": "0x88d414f05a9cbfe24c2f8eab213ce3d552761424f5d73ae6df84d1d83cf56fcf",
+  "upgradeCap": {
+    "objectId": "0xc1dce03ad2550ac4335751b369ee931029efd0d4511dadcd927be856f9a2304c",
+    "objectType": "0x2::package::UpgradeCap",
+    "owner": {
+      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+    }
+  },
+  "adminCaps": [
+    {
+      "name": "FeeAdminCap",
+      "objectId": "0x7449d42a2edbfad65fab9e7bd2945e6e4305858fd29b7095908792dc6a24f41c",
+      "objectType": "0x88d414f05a9cbfe24c2f8eab213ce3d552761424f5d73ae6df84d1d83cf56fcf::fee::FeeAdminCap",
+      "owner": {
+        "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+      }
+    }
+  ],
+  "sharedObjects": [
+    {
+      "name": "FeeManager",
+      "objectId": "0xcdc5c97e0ad9e8c1a86766eb651025b32a4c7b62b13737ec8a2f160b51c03812",
+      "objectType": "0x88d414f05a9cbfe24c2f8eab213ce3d552761424f5d73ae6df84d1d83cf56fcf::fee::FeeManager",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 23
+        }
+      },
+      "initialSharedVersion": 23
+    }
+  ],
+  "ownedObjects": []
+}

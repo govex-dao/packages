@@ -1,0 +1,15 @@
+{
+  "packageName": "futarchy_core",
+  "transactionDigest": "hEZFLzGq2byR4NYs6iGiy1J4VDkgTFZKrGwwyZJTBCA",
+  "packageId": "0xd3c702a45d35c25a4491ee66ed7177b7c4dfe9ddfa62ccaa003c4715c398b546",
+  "upgradeCap": {
+    "objectId": "0x3148c62b427bf3a3f949753cdb9421bb7fc483ad30ca108d987875d14bbcc96e",
+    "objectType": "0x2::package::UpgradeCap",
+    "owner": {
+      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+    }
+  },
+  "adminCaps": [],
+  "sharedObjects": [],
+  "ownedObjects": []
+}

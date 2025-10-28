@@ -7,4 +7,4 @@ published-at = "0x0"
 [dependencies]
 
 [addresses]
-futarchy_one_shot_utils = "0x7e7d952d7668c969d6f20b68ccfae73a4ea510906aafc1e78b81d0cd1edecba0"
+futarchy_one_shot_utils = "0x0c9c44770746a6bdc70bbc20545a679c048e2d7f8bf4e3c63fce760d7eda9a4d"

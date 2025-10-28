@@ -9,8 +9,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Deployment tracking
-LOGS_DIR="/Users/admin/monorepo/contracts/deployment-logs"
+LOGS_DIR="/Users/admin/govex/packages/deployment-logs"
+DEPLOYMENTS_DIR="/Users/admin/govex/packages/deployments"
 mkdir -p "$LOGS_DIR"
+mkdir -p "$DEPLOYMENTS_DIR"
 DEPLOYMENT_LOG="$LOGS_DIR/deployment_verified_$(date +%Y%m%d_%H%M%S).log"
 DEPLOYED_PACKAGES=()
 
@@ -42,7 +44,7 @@ resolve_address_conflicts() {
         esac
 
         # Update all Move.toml files with this package's address (only in [addresses] section)
-        for toml_file in $(find /Users/admin/monorepo/contracts -name "Move.toml" -type f); do
+        for toml_file in $(find /Users/admin/govex/packages -name "Move.toml" -type f); do
             awk -v key="$pkg_var" -v addr="$pkg_addr" '
                 BEGIN { in_addr=0 }
                 /^\[addresses\]/ { in_addr=1; print; next }
@@ -71,7 +73,7 @@ deploy_and_verify() {
     sed -i '' "s|^${pkg_var_name} = .*|${pkg_var_name} = \"0x0\"|" Move.toml 2>/dev/null || true
 
     # Also reset this package's address in ALL other Move.toml files (only in [addresses] section)
-    for toml_file in $(find /Users/admin/monorepo/contracts -name "Move.toml" -type f); do
+    for toml_file in $(find /Users/admin/govex/packages -name "Move.toml" -type f); do
         awk -v key="$pkg_var_name" '
             BEGIN { in_addr=0 }
             /^\[addresses\]/ { in_addr=1; print; next }
@@ -156,6 +158,12 @@ deploy_and_verify() {
         fi
     fi
 
+    # Save JSON response to deployments directory before cleanup
+    if [ -s "$json_file" ]; then
+        cp "$json_file" "$DEPLOYMENTS_DIR/${pkg_name}.json"
+        echo "Saved deployment JSON to: $DEPLOYMENTS_DIR/${pkg_name}.json"
+    fi
+
     rm -f "$json_file" "$stderr_file" "$combined_file"
 
     if [ -n "$pkg_id" ] && [ "$pkg_id" != "null" ] && [ "$pkg_id" != "" ]; then
@@ -163,7 +171,7 @@ deploy_and_verify() {
         log "✓ $pkg_name: $pkg_id"
 
         # Update all Move.toml files with new address (only in [addresses] section)
-        for toml_file in $(find /Users/admin/monorepo/contracts -name "Move.toml" -type f); do
+        for toml_file in $(find /Users/admin/govex/packages -name "Move.toml" -type f); do
             awk -v key="$pkg_var_name" -v addr="$pkg_id" '
                 BEGIN { in_addr=0 }
                 /^\[addresses\]/ { in_addr=1; print; next }
@@ -184,21 +192,21 @@ deploy_and_verify() {
 # Package list in deployment order (13 packages total)
 declare -a PACKAGES=(
     # Move Framework packages (2)
-    "AccountProtocol:/Users/admin/monorepo/contracts/move-framework/packages/protocol:account_protocol"
-    "AccountActions:/Users/admin/monorepo/contracts/move-framework/packages/actions:account_actions"
+    "AccountProtocol:/Users/admin/govex/packages/move-framework/packages/protocol:account_protocol"
+    "AccountActions:/Users/admin/govex/packages/move-framework/packages/actions:account_actions"
 
     # Futarchy packages (11)
-    "futarchy_types:/Users/admin/monorepo/contracts/futarchy_types:futarchy_types"
-    "futarchy_one_shot_utils:/Users/admin/monorepo/contracts/futarchy_one_shot_utils:futarchy_one_shot_utils"
-    "futarchy_core:/Users/admin/monorepo/contracts/futarchy_core:futarchy_core"
-    "futarchy_markets_primitives:/Users/admin/monorepo/contracts/futarchy_markets_primitives:futarchy_markets_primitives"
-    "futarchy_markets_core:/Users/admin/monorepo/contracts/futarchy_markets_core:futarchy_markets_core"
-    "futarchy_markets_operations:/Users/admin/monorepo/contracts/futarchy_markets_operations:futarchy_markets_operations"
-    "futarchy_oracle:/Users/admin/monorepo/contracts/futarchy_oracle_actions:futarchy_oracle"
-    "futarchy_actions:/Users/admin/monorepo/contracts/futarchy_actions:futarchy_actions"
-    "futarchy_factory:/Users/admin/monorepo/contracts/futarchy_factory:futarchy_factory"
-    "futarchy_governance_actions:/Users/admin/monorepo/contracts/futarchy_governance_actions:futarchy_governance_actions"
-    "futarchy_governance:/Users/admin/monorepo/contracts/futarchy_governance:futarchy_governance"
+    "futarchy_types:/Users/admin/govex/packages/futarchy_types:futarchy_types"
+    "futarchy_one_shot_utils:/Users/admin/govex/packages/futarchy_one_shot_utils:futarchy_one_shot_utils"
+    "futarchy_core:/Users/admin/govex/packages/futarchy_core:futarchy_core"
+    "futarchy_markets_primitives:/Users/admin/govex/packages/futarchy_markets_primitives:futarchy_markets_primitives"
+    "futarchy_markets_core:/Users/admin/govex/packages/futarchy_markets_core:futarchy_markets_core"
+    "futarchy_markets_operations:/Users/admin/govex/packages/futarchy_markets_operations:futarchy_markets_operations"
+    "futarchy_oracle:/Users/admin/govex/packages/futarchy_oracle_actions:futarchy_oracle"
+    "futarchy_actions:/Users/admin/govex/packages/futarchy_actions:futarchy_actions"
+    "futarchy_factory:/Users/admin/govex/packages/futarchy_factory:futarchy_factory"
+    "futarchy_governance_actions:/Users/admin/govex/packages/futarchy_governance_actions:futarchy_governance_actions"
+    "futarchy_governance:/Users/admin/govex/packages/futarchy_governance:futarchy_governance"
 )
 
 # Main deployment
@@ -208,13 +216,13 @@ main() {
 
     # Clean up any leftover futarchy_utils and kiosk references before deployment
     echo -e "${BLUE}Cleaning up old package references...${NC}"
-    find /Users/admin/monorepo/contracts -name "Move.toml" -type f -exec \
+    find /Users/admin/govex/packages -name "Move.toml" -type f -exec \
         sed -i '' -e '/^futarchy_utils = /d' -e '/^kiosk = /d' {} \; 2>/dev/null || true
 
     # Reset all package addresses to 0x0 for fresh deployment if starting from beginning
     if [ -z "$start_from" ] || [ "$start_from" = "AccountExtensions" ]; then
         echo -e "${BLUE}Resetting all package addresses to 0x0 for fresh deployment...${NC}"
-        find /Users/admin/monorepo/contracts -name "Move.toml" -type f -exec \
+        find /Users/admin/govex/packages -name "Move.toml" -type f -exec \
             sed -i '' 's/= "0x[a-f0-9][a-f0-9]*"/= "0x0"/g' {} \; 2>/dev/null || true
     fi
 
@@ -353,6 +361,23 @@ main() {
         echo -e "${GREEN}Results saved to: $RESULTS_FILE${NC}"
     else
         echo -e "${RED}✗ Only $verified of $total packages could be verified${NC}"
+    fi
+
+    # Auto-process deployment JSONs
+    echo ""
+    echo -e "${BLUE}=== Processing Deployment JSONs ===${NC}"
+    if command -v node &> /dev/null; then
+        SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+        if [ -f "$SCRIPT_DIR/process-deployments.js" ]; then
+            cd "$SCRIPT_DIR"
+            node process-deployments.js
+            echo -e "${GREEN}✓ Deployment JSONs processed successfully${NC}"
+        else
+            echo -e "${YELLOW}Warning: process-deployments.js not found${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Warning: node not found, skipping JSON processing${NC}"
+        echo "Run 'node process-deployments.js' manually to process deployment JSONs"
     fi
 }
 

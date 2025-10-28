@@ -1,0 +1,15 @@
+{
+  "packageName": "AccountActions",
+  "transactionDigest": "8BF8LrxmGTFCeUg3vkAWgQ3eFvh7rMeZJKfjYivY9wwJ",
+  "packageId": "0x75c59ba5279bd1c4e9a3be412ace1839ed17125301c320cabb04616c910f87f8",
+  "upgradeCap": {
+    "objectId": "0x2f7dfa35def97eb065f11d57c5daf1aaac66ebe92cff281f2d079fbeefa85706",
+    "objectType": "0x2::package::UpgradeCap",
+    "owner": {
+      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+    }
+  },
+  "adminCaps": [],
+  "sharedObjects": [],
+  "ownedObjects": []
+}

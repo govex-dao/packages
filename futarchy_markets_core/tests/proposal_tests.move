@@ -143,6 +143,7 @@ fun test_initialize_market_basic_two_outcomes() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(2), // initial_outcome_details
@@ -208,6 +209,7 @@ fun test_initialize_market_three_outcomes() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(3), // initial_outcome_details
@@ -270,6 +272,7 @@ fun test_initialize_market_zero_liquidity_fails() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(2), // initial_outcome_details
@@ -331,6 +334,7 @@ fun test_initialize_market_insufficient_asset_liquidity() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(2), // initial_outcome_details
@@ -391,6 +395,7 @@ fun test_initialize_market_insufficient_stable_liquidity() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(2), // initial_outcome_details
@@ -450,6 +455,7 @@ fun test_initialize_market_mismatched_outcome_vectors() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(3), // initial_outcome_details - deliberately mismatched!
@@ -511,6 +517,7 @@ fun test_initialize_market_too_many_outcomes() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(15), // initial_outcome_details
@@ -568,6 +575,7 @@ fun test_new_premarket_basic() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Premarket Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             outcome_details,
@@ -623,6 +631,7 @@ fun test_new_premarket_too_many_outcomes() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Premarket Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             outcome_details,
@@ -671,6 +680,7 @@ fun test_proposal_getters() {
             PROPOSER_ADDR,
             option::some(PROPOSER_ADDR),
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"Test metadata"),
             outcome_messages,
             outcome_details,
@@ -736,6 +746,7 @@ fun test_outcome_creator_getters() {
             PROPOSER_ADDR,
             option::some(PROPOSER_ADDR),
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             outcome_details,
@@ -797,6 +808,7 @@ fun test_get_outcome_creator_out_of_bounds() {
             PROPOSER_ADDR,
             option::some(PROPOSER_ADDR),
             string::utf8(b"Test"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             outcome_details,
@@ -870,6 +882,7 @@ fun test_proposal_with_single_outcome() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Single Outcome"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(1), // initial_outcome_details
@@ -933,6 +946,7 @@ fun test_proposal_with_max_outcomes() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Max Outcomes"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(MAX_OUTCOMES), // initial_outcome_details
@@ -999,6 +1013,7 @@ fun test_proposal_liquidity_distribution() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Distribution Test"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             create_outcome_messages(3), // initial_outcome_details

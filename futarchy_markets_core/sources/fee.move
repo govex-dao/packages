@@ -37,7 +37,7 @@ const EFeeExceedsTenXCap: u64 = 12;
 const DEFAULT_DAO_CREATION_FEE: u64 = 10_000;
 const DEFAULT_PROPOSAL_CREATION_FEE_PER_OUTCOME: u64 = 1000;
 const DEFAULT_VERIFICATION_FEE: u64 = 10_000; // Default fee for level 1
-const DEFAULT_LAUNCHPAD_CREATION_FEE: u64 = 10_000_000_000; // 10 SUI to create a launchpad
+const DEFAULT_LAUNCHPAD_CREATION_FEE: u64 = 100; // 100 MIST for testing
 const MONTHLY_FEE_PERIOD_MS: u64 = 2_592_000_000; // 30 days
 const FEE_UPDATE_DELAY_MS: u64 = 15_552_000_000; // 6 months (180 days)
 const MAX_FEE_COLLECTION_PERIOD_MS: u64 = 7_776_000_000; // 90 days (3 months) - max retroactive collection
@@ -355,6 +355,18 @@ public entry fun update_proposal_creation_fee(
         admin: ctx.sender(),
         timestamp: clock.timestamp_ms(),
     });
+}
+
+// Admin function to update launchpad creation fee
+public entry fun update_launchpad_creation_fee(
+    fee_manager: &mut FeeManager,
+    admin_cap: &FeeAdminCap,
+    new_fee: u64,
+    _clock: &Clock,
+    _ctx: &mut TxContext,
+) {
+    assert!(object::id(admin_cap) == fee_manager.admin_cap_id, EInvalidAdminCap);
+    fee_manager.launchpad_creation_fee = new_fee;
 }
 
 // Admin function to add a new verification level

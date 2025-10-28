@@ -149,6 +149,7 @@ fun create_test_proposal_trading(
         @0x1, // proposer
         option::none(), // liquidity_provider
         string::utf8(b"Test Proposal"),
+        string::utf8(b"Introduction Details"),
         string::utf8(b"metadata"),
         vector[string::utf8(b"Accept"), string::utf8(b"Reject")],
         vector[string::utf8(b"Detail 1"), string::utf8(b"Detail 2")],

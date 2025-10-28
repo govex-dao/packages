@@ -167,6 +167,7 @@ fun test_proposal_with_spot_pool_lifecycle() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Test Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             outcome_messages,
             outcome_details,
@@ -372,6 +373,7 @@ fun test_quantum_split_reserves() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Reserve Test"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             create_outcome_messages(2),
             create_outcome_messages(2), // outcome_details
@@ -497,6 +499,7 @@ fun test_only_one_active_proposal() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"First Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             create_outcome_messages(2),
             create_outcome_messages(2), // initial_outcome_details
@@ -563,6 +566,7 @@ fun test_only_one_active_proposal() {
             MAX_OUTCOMES,
             TREASURY_ADDR,
             string::utf8(b"Second Proposal"),
+            string::utf8(b"Introduction Details"),
             string::utf8(b"metadata"),
             create_outcome_messages(2),
             create_outcome_messages(2), // initial_outcome_details

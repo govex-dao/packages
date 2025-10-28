@@ -1,0 +1,53 @@
+{
+  "name": "@govex/futarchy-sdk",
+  "version": "0.2.0",
+  "description": "TypeScript SDK for Govex Futarchy Protocol on Sui",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test:launchpad": "tsx scripts/test-launchpad.ts",
+    "contribute": "tsx scripts/contribute-to-raise.ts",
+    "quick-raise": "tsx scripts/create-quick-raise.ts",
+    "settle": "tsx scripts/settle-raise.ts",
+    "finalize": "tsx scripts/quick-finalize.ts"
+  },
+  "keywords": [
+    "sui",
+    "futarchy",
+    "governance",
+    "dao",
+    "prediction-markets",
+    "typescript",
+    "sdk"
+  ],
+  "author": "Govex",
+  "license": "MIT",
+  "dependencies": {
+    "@mysten/sui": "^1.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

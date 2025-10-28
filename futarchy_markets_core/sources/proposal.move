@@ -130,6 +130,7 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
 
     // Proposal content
     title: String,
+    introduction_details: String,
     details: vector<String>,
     metadata: String,
 
@@ -234,6 +235,7 @@ public fun initialize_market<AssetType, StableType>(
     treasury_address: address,
     // Proposal specific parameters
     title: String,
+    introduction_details: String,
     metadata: String,
     initial_outcome_messages: vector<String>,
     initial_outcome_details: vector<String>,
@@ -411,6 +413,7 @@ public fun initialize_market<AssetType, StableType>(
         conditional_treasury_caps: bag::new(ctx),
         conditional_metadata: bag::new(ctx),
         title,
+        introduction_details,
         details: initial_outcome_details,
         metadata,
         timing: ProposalTiming {
@@ -503,6 +506,7 @@ public fun new_premarket<AssetType, StableType>(
     max_outcomes: u64, // DAO's configured max outcomes
     treasury_address: address,
     title: String,
+    introduction_details: String,
     metadata: String,
     outcome_messages: vector<String>,
     outcome_details: vector<String>,
@@ -536,6 +540,7 @@ public fun new_premarket<AssetType, StableType>(
         conditional_treasury_caps: bag::new(ctx),
         conditional_metadata: bag::new(ctx),
         title,
+        introduction_details,
         details: outcome_details,
         metadata,
         timing: ProposalTiming {
@@ -1119,6 +1124,12 @@ public fun get_metadata<AssetType, StableType>(
     &proposal.metadata
 }
 
+public fun get_introduction_details<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): &String {
+    &proposal.introduction_details
+}
+
 public fun get_amm_pool_ids<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
     escrow: &TokenEscrow<AssetType, StableType>,
@@ -1627,6 +1638,7 @@ public fun new_for_testing<AssetType, StableType>(
     proposer: address,
     liquidity_provider: Option<address>,
     title: String,
+    introduction_details: String,
     metadata: String,
     outcome_messages: vector<String>,
     initial_outcome_details: vector<String>,
@@ -1662,6 +1674,7 @@ public fun new_for_testing<AssetType, StableType>(
         conditional_treasury_caps: bag::new(ctx),
         conditional_metadata: bag::new(ctx),
         title,
+        introduction_details,
         details: initial_outcome_details,
         metadata,
         timing: ProposalTiming {
@@ -1992,6 +2005,7 @@ public fun create_test_proposal<AssetType, StableType>(
         @0x2,                       // proposer
         option::some(@0x3),         // liquidity_provider
         string::utf8(b"Test"),      // title
+        string::utf8(b"Introduction Details"),  // introduction_details
         string::utf8(b"Metadata"),  // metadata
         outcome_messages,
         outcome_messages,           // initial_outcome_details (reuse outcome_messages)
@@ -2038,6 +2052,7 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
         conditional_treasury_caps,
         conditional_metadata,
         title: _,
+        introduction_details: _,
         details: _,
         metadata: _,
         timing: ProposalTiming {

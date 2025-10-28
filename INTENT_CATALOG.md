@@ -94,8 +94,7 @@ PROTCOL CONTROLLING TENANNT DAO ONLY (for govex dao only)
   - Update verification fee by level
   - Withdraw fees to treasury
 
-MIX
- 1) Verification:
+PROTOCOL CONTROLLING TENANT DAO ONLY (continued)
+ 1) Verification (Protocol DAO only):
   - Add verification level
   - Remove verification level
-  - Request verification

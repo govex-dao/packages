@@ -128,18 +128,6 @@ public fun remove_verification_level_from_intent<Outcome: store, IW: drop>(
     intent.add_typed_action(type_name::get<protocol_admin_actions::RemoveVerificationLevel>().into_string().to_string(), action_data, intent_witness);
 }
 
-/// Request DAO verification (DAO requests its own verification)
-public fun add_request_verification_to_intent<Outcome: store, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    level: u8,
-    attestation_url: String,
-    intent_witness: IW,
-) {
-    let action = protocol_admin_actions::new_request_verification(level, attestation_url);
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::RequestVerification>().into_string().to_string(), action_data, intent_witness);
-}
-
 // === Coin Fee Configuration Intent Helpers ===
 
 /// Add coin fee configuration

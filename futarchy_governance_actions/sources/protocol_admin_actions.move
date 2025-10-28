@@ -56,8 +56,6 @@ public struct DisableFactoryPermanently has drop {}
 public struct RemoveStableType has drop {}
 /// Remove verification level
 public struct RemoveVerificationLevel has drop {}
-/// Request verification
-public struct RequestVerification has drop {}
 /// Set factory paused state
 public struct SetFactoryPaused has drop {}
 /// Update coin creation fee
@@ -78,14 +76,6 @@ const EInvalidAdminCap: u64 = 1;
 const ECapNotFound: u64 = 2;
 
 // === Events ===
-public struct VerificationRequested has copy, drop {
-    dao_id: ID,
-    verification_id: ID,
-    requester: address,
-    attestation_url: String,
-    level: u8,
-    timestamp: u64,
-}
 
 const EInvalidFeeAmount: u64 = 3;
 
@@ -140,12 +130,6 @@ public struct AddVerificationLevelAction has store, drop {
 /// Remove a verification level
 public struct RemoveVerificationLevelAction has store, drop {
     level: u8,
-}
-
-/// Request verification for the DAO itself (only the DAO can request its own verification)
-public struct RequestVerificationAction has store, drop {
-    level: u8,
-    attestation_url: String,
 }
 
 /// Withdraw accumulated fees to treasury
@@ -215,10 +199,6 @@ public fun new_add_verification_level(level: u8, fee: u64): AddVerificationLevel
 
 public fun new_remove_verification_level(level: u8): RemoveVerificationLevelAction {
     RemoveVerificationLevelAction { level }
-}
-
-public fun new_request_verification(level: u8, attestation_url: String): RequestVerificationAction {
-    RequestVerificationAction { level, attestation_url }
 }
 
 public fun new_withdraw_fees_to_treasury(amount: u64): WithdrawFeesToTreasuryAction {
@@ -575,74 +555,14 @@ public fun do_remove_verification_level<Outcome: store, IW: drop>(
 
     // Increment action index
     executable::increment_action_idx(executable);
-    
+
     let cap = account::borrow_managed_asset<String, FeeAdminCap>(
         account,
         registry, b"protocol:fee_admin_cap".to_string(),
         version
     );
-    
+
     fee::remove_verification_level(fee_manager, cap, action.level, clock, ctx);
-}
-
-/// Execute request verification action
-/// DAOs can request verification for themselves by paying the required fee
-/// Only the DAO itself can request its own verification (executed through governance)
-/// Multiple verification requests can be pending with unique IDs
-public fun do_request_verification<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    version: VersionWitness,
-    witness: IW,
-    fee_manager: &mut FeeManager,
-    payment: Coin<SUI>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Get spec and validate type BEFORE deserialization
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-    action_validation::assert_action_type<RequestVerification>(spec);
-
-    // Deserialize the action data
-    let action_data = intents::action_spec_data(spec);
-    let mut bcs = bcs::new(*action_data);
-    let level = bcs::peel_u8(&mut bcs);
-    let attestation_url = bcs::peel_vec_u8(&mut bcs).to_string();
-    let action = RequestVerificationAction { level, attestation_url };
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-
-    // Get the DAO's own ID - only the DAO can request verification for itself
-    let dao_id = object::id(account);
-
-    // Generate unique verification ID
-    let verification_uid = object::new(ctx);
-    let verification_id = object::uid_to_inner(&verification_uid);
-    object::delete(verification_uid);
-
-    // Deposit the verification payment to fee manager
-    fee::deposit_verification_payment(
-        fee_manager,
-        payment,
-        action.level,
-        clock,
-        ctx
-    );
-
-    // Emit event for the verification request
-    event::emit(VerificationRequested {
-        dao_id,  // Using the DAO's own ID
-        verification_id,
-        requester: dao_id.id_to_address(),  // The DAO is the requester
-        attestation_url: action.attestation_url,
-        level: action.level,
-        timestamp: clock.timestamp_ms(),
-    });
-
-    // The actual verification will be done by approve_verification or reject_verification
 }
 
 /// Execute withdraw fees to treasury action

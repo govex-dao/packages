@@ -222,7 +222,6 @@ ter
 
   5. Verification Actions - Could Be Simplified ⚠️
 
-  - RequestVerification
   - ApproveVerification
   - RejectVerification
 

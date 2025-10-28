@@ -24,12 +24,7 @@ public struct MemoIntent() has copy, drop;
 
 // === Public Functions ===
 
-/// Create intent to emit a memo with optional reference
-/// Can be used for:
-/// - Simple text memos: memo="This is important", reference_id=None
-/// - Accept decisions: memo="Accept", reference_id=Some(proposal_id)
-/// - Reject decisions: memo="Reject", reference_id=Some(proposal_id)
-/// - Comments on objects: memo="Looks good!", reference_id=Some(object_id)
+/// Create intent to emit a memo
 public fun request_emit_memo<Config: store, Outcome: store>(
     account: &mut Account,
     registry: &PackageRegistry,
@@ -48,7 +43,7 @@ public fun request_emit_memo<Config: store, Outcome: store>(
         MemoIntent(),
         ctx,
         |intent, iw| {
-            memo::new_emit_memo(intent, memo_text, reference_id, iw);
+            memo::new_emit_memo(intent, memo_text, iw);
         },
     );
 }

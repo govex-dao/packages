@@ -3,7 +3,7 @@
 
 /// Generic memo emission actions for Account Protocol
 /// Works with any Account type
-/// Provides text memos with optional references to objects
+/// Provides text memos
 ///
 /// Can be used for:
 /// - Simple text memos: "This is important"
@@ -46,19 +46,17 @@ const MAX_MEMO_LENGTH: u64 = 10000; // Maximum memo length in bytes
 
 // === Action Type Markers ===
 
-/// Emit a text memo with optional object reference
+/// Emit a text memo
 public struct Memo has drop {}
 
 public fun memo(): Memo { Memo {} }
 
 // === Structs ===
 
-/// Action to emit a text memo with optional reference to an object
+/// Action to emit a text memo
 public struct EmitMemoAction has store, drop {
     /// The message to emit
     memo: String,
-    /// Optional reference to what this memo is about
-    reference_id: Option<ID>,
 }
 
 // === Events ===
@@ -68,8 +66,6 @@ public struct MemoEmitted has copy, drop {
     dao_id: ID,
     /// The memo content
     memo: String,
-    /// Optional reference to what this memo is about
-    reference_id: Option<ID>,
     /// When it was emitted
     timestamp: u64,
     /// Who triggered the emission
@@ -80,7 +76,7 @@ public struct MemoEmitted has copy, drop {
 
 /// Destroy an EmitMemoAction after serialization
 public fun destroy_emit_memo_action(action: EmitMemoAction) {
-    let EmitMemoAction { memo: _, reference_id: _ } = action;
+    let EmitMemoAction { memo: _ } = action;
 }
 
 // === Public Functions ===
@@ -89,14 +85,13 @@ public fun destroy_emit_memo_action(action: EmitMemoAction) {
 public fun new_emit_memo<Outcome, IW: drop>(
     intent: &mut Intent<Outcome>,
     memo: String,
-    reference_id: Option<ID>,
     intent_witness: IW,
 ) {
     assert!(memo.length() > 0, EEmptyMemo);
     assert!(memo.length() <= MAX_MEMO_LENGTH, EMemoTooLong);
 
     // Create the action struct
-    let action = EmitMemoAction { memo, reference_id };
+    let action = EmitMemoAction { memo};
 
     // Serialize it
     let action_data = bcs::to_bytes(&action);
@@ -134,7 +129,7 @@ public fun do_emit_memo<Config: store, Outcome: store, IW: drop>(
     assert!(spec_version == 1, EUnsupportedActionVersion);
 
     // Create BCS reader and deserialize
-    // BCS format: String (memo) followed by Option<ID> (reference_id)
+    // BCS format: String (memo)
     let mut reader = bcs::new(*action_data);
     let memo_bytes = reader.peel_vec_u8();
     let memo = string::utf8(memo_bytes);
@@ -142,13 +137,6 @@ public fun do_emit_memo<Config: store, Outcome: store, IW: drop>(
     // Deserialize Option<ID>
     // BCS encodes Option as: 0x00 for None, 0x01 followed by value for Some
     let option_byte = bcs::peel_u8(&mut reader);
-    let reference_id = if (option_byte == 1) {
-        let id_bytes = bcs::peel_vec_u8(&mut reader);
-        option::some(object::id_from_bytes(id_bytes))
-    } else {
-        option::none()
-    };
-
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
 
@@ -160,7 +148,6 @@ public fun do_emit_memo<Config: store, Outcome: store, IW: drop>(
     event::emit(MemoEmitted {
         dao_id: object::id(account),
         memo,
-        reference_id,
         timestamp: clock.timestamp_ms(),
         emitter: tx_context::sender(ctx),
     });

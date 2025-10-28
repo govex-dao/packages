@@ -858,63 +858,6 @@ public fun do_apply_pending_coin_fees<Outcome: store, IW: drop, StableType>(
     );
 }
 
-// === Helper Functions for Security Council ===
-
-// This function is commented out because it has incorrect assumptions about
-// how account::borrow_managed_asset works. The FactoryOwnerCap would need to be
-// stored in the account first, but it's actually a separate object.
-// /// Allow security council to execute factory operations 
-// public fun council_set_factory_paused<Outcome: store>(
-//     council: &mut Account,
-//     executable: &mut Executable<Outcome>,
-//     factory: &mut Factory,
-//     paused: bool,
-//     version: VersionWitness,
-//     ctx: &mut TxContext,
-// ) {
-//     // Security council must have been granted access to the cap
-//     let cap = account::borrow_managed_asset<FactoryOwnerCap>(
-//         council,
-//         b"protocol:factory_owner_cap".to_string(),
-//         version
-//     );
-//     
-//     // Toggle pause state if needed
-//     let current_paused = factory::is_paused(factory);
-//     if (current_paused != paused) {
-//         factory::toggle_pause(factory, cap);
-//     };
-// }
-
-// This function is commented out because it has incorrect assumptions about
-// how account::borrow_managed_asset works. The FeeAdminCap would need to be
-// stored in the account first, but it's actually a separate object.
-// /// Allow security council to execute fee operations
-// public fun council_withdraw_emergency_fees<Outcome: store>(
-//     council: &mut Account,
-//     executable: &mut Executable<Outcome>,
-//     fee_manager: &mut FeeManager,
-//     amount: u64,
-//     version: VersionWitness,
-//     clock: &Clock,
-//     ctx: &mut TxContext,
-// ) {
-//     let cap = account::borrow_managed_asset<FeeAdminCap>(
-//         council,
-//         b"protocol:fee_admin_cap".to_string(),
-//         version
-//     );
-//     
-//     // Withdraw all fees (there's no partial withdraw function)
-//     // Note: This withdraws ALL fees, not just the specified amount
-//     fee::withdraw_all_fees(fee_manager, cap, clock, ctx);
-//     // The fees are sent to tx sender, not to the council account
-//     // This is a limitation of the current fee module
-//     let _ = amount;
-//     let _ = council;
-//     let _ = version;
-// }
-
 // === Garbage Collection ===
 
 /// Delete protocol admin action from expired intent

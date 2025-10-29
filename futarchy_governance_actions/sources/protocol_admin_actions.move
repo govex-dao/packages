@@ -71,6 +71,23 @@ public struct UpdateVerificationFee has drop {}
 /// Withdraw fees to treasury
 public struct WithdrawFeesToTreasury has drop {}
 
+// === Marker Functions ===
+
+public fun set_factory_paused_marker(): SetFactoryPaused { SetFactoryPaused {} }
+public fun add_stable_type_marker(): AddStableType { AddStableType {} }
+public fun remove_stable_type_marker(): RemoveStableType { RemoveStableType {} }
+public fun update_dao_creation_fee_marker(): UpdateDaoCreationFee { UpdateDaoCreationFee {} }
+public fun update_proposal_fee_marker(): UpdateProposalFee { UpdateProposalFee {} }
+public fun update_verification_fee_marker(): UpdateVerificationFee { UpdateVerificationFee {} }
+public fun withdraw_fees_to_treasury_marker(): WithdrawFeesToTreasury { WithdrawFeesToTreasury {} }
+public fun add_verification_level_marker(): AddVerificationLevel { AddVerificationLevel {} }
+public fun remove_verification_level_marker(): RemoveVerificationLevel { RemoveVerificationLevel {} }
+public fun add_coin_fee_config_marker(): AddCoinFeeConfig { AddCoinFeeConfig {} }
+public fun update_coin_creation_fee_marker(): UpdateCoinCreationFee { UpdateCoinCreationFee {} }
+public fun update_coin_proposal_fee_marker(): UpdateCoinProposalFee { UpdateCoinProposalFee {} }
+public fun apply_pending_coin_fees_marker(): ApplyPendingCoinFees { ApplyPendingCoinFees {} }
+public fun disable_factory_permanently_marker(): DisableFactoryPermanently { DisableFactoryPermanently {} }
+
 // === Errors ===
 const EInvalidAdminCap: u64 = 1;
 const ECapNotFound: u64 = 2;

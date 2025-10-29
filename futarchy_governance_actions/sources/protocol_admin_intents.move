@@ -31,7 +31,7 @@ public fun add_set_factory_paused_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_set_factory_paused(paused);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::SetFactoryPaused>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::set_factory_paused_marker(), action_data, intent_witness);
 }
 
 /// Add stable type to factory whitelist
@@ -42,7 +42,7 @@ public fun add_stable_type_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_add_stable_type(stable_type);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::AddStableType>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::add_stable_type_marker(), action_data, intent_witness);
 }
 
 /// Remove stable type from factory whitelist
@@ -53,7 +53,7 @@ public fun remove_stable_type_from_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_remove_stable_type(stable_type);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::RemoveStableType>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::remove_stable_type_marker(), action_data, intent_witness);
 }
 
 // === Fee Management Intent Helpers ===
@@ -66,7 +66,7 @@ public fun add_update_dao_creation_fee_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_update_dao_creation_fee(new_fee);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateDaoCreationFee>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::update_dao_creation_fee_marker(), action_data, intent_witness);
 }
 
 /// Update proposal fee
@@ -77,7 +77,7 @@ public fun add_update_proposal_fee_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_update_proposal_fee(new_fee);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateProposalFee>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::update_proposal_fee_marker(), action_data, intent_witness);
 }
 
 /// Update verification fee
@@ -89,7 +89,7 @@ public fun add_update_verification_fee_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_update_verification_fee(level, new_fee);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateVerificationFee>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::update_verification_fee_marker(), action_data, intent_witness);
 }
 
 /// Withdraw fees to treasury
@@ -100,7 +100,7 @@ public fun add_withdraw_fees_to_treasury_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_withdraw_fees_to_treasury(amount);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::WithdrawFeesToTreasury>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::withdraw_fees_to_treasury_marker(), action_data, intent_witness);
 }
 
 // === Verification Intent Helpers ===
@@ -114,7 +114,7 @@ public fun add_verification_level_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_add_verification_level(level, fee);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::AddVerificationLevel>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::add_verification_level_marker(), action_data, intent_witness);
 }
 
 /// Remove verification level
@@ -125,7 +125,7 @@ public fun remove_verification_level_from_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_remove_verification_level(level);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::RemoveVerificationLevel>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::remove_verification_level_marker(), action_data, intent_witness);
 }
 
 // === Coin Fee Configuration Intent Helpers ===
@@ -146,7 +146,7 @@ public fun add_coin_fee_config_to_intent<Outcome: store, IW: drop>(
         proposal_fee_per_outcome,
     );
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::AddCoinFeeConfig>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::add_coin_fee_config_marker(), action_data, intent_witness);
 }
 
 /// Update coin creation fee
@@ -158,7 +158,7 @@ public fun add_update_coin_creation_fee_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_update_coin_creation_fee(coin_type, new_fee);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateCoinCreationFee>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::update_coin_creation_fee_marker(), action_data, intent_witness);
 }
 
 /// Update coin proposal fee
@@ -170,7 +170,7 @@ public fun add_update_coin_proposal_fee_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_update_coin_proposal_fee(coin_type, new_fee);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::UpdateCoinProposalFee>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::update_coin_proposal_fee_marker(), action_data, intent_witness);
 }
 
 /// Apply pending coin fees
@@ -181,5 +181,5 @@ public fun add_apply_pending_coin_fees_to_intent<Outcome: store, IW: drop>(
 ) {
     let action = protocol_admin_actions::new_apply_pending_coin_fees(coin_type);
     let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(type_name::get<protocol_admin_actions::ApplyPendingCoinFees>().into_string().to_string(), action_data, intent_witness);
+    intent.add_typed_action(protocol_admin_actions::apply_pending_coin_fees_marker(), action_data, intent_witness);
 }

@@ -958,3 +958,11 @@ public fun delete_cancel_grant(expired: &mut intents::Expired) {
     reader.peel_address(); // grant_id as ID
     let _ = reader.into_remainder_bytes();
 }
+
+// === Test-Only Functions ===
+
+#[test_only]
+/// Convert TierSpecs to PriceTiers for testing
+public fun convert_tier_specs_for_testing(tier_specs: vector<TierSpec>): vector<PriceTier> {
+    convert_tier_specs_to_price_tiers(&tier_specs)
+}

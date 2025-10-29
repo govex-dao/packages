@@ -44,7 +44,7 @@ public fun add_package_to_intent<Outcome: store, IW: drop>(
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<package_registry_actions::AddPackage>().into_string().to_string(),
+        package_registry_actions::add_package_marker(),
         action_data,
         intent_witness
     );
@@ -59,7 +59,7 @@ public fun remove_package_from_intent<Outcome: store, IW: drop>(
     let action = package_registry_actions::new_remove_package(name);
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<package_registry_actions::RemovePackage>().into_string().to_string(),
+        package_registry_actions::remove_package_marker(),
         action_data,
         intent_witness
     );
@@ -76,7 +76,7 @@ public fun update_package_version_to_intent<Outcome: store, IW: drop>(
     let action = package_registry_actions::new_update_package_version(name, addr, version);
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<package_registry_actions::UpdatePackageVersion>().into_string().to_string(),
+        package_registry_actions::update_package_version_marker(),
         action_data,
         intent_witness
     );
@@ -100,7 +100,7 @@ public fun update_package_metadata_to_intent<Outcome: store, IW: drop>(
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<package_registry_actions::UpdatePackageMetadata>().into_string().to_string(),
+        package_registry_actions::update_package_metadata_marker(),
         action_data,
         intent_witness
     );

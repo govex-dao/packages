@@ -53,6 +53,13 @@ public struct UpdatePackageMetadataAction has store, drop {
     new_description: String,
 }
 
+// === Marker Functions ===
+
+public fun add_package_marker(): AddPackage { AddPackage {} }
+public fun remove_package_marker(): RemovePackage { RemovePackage {} }
+public fun update_package_version_marker(): UpdatePackageVersion { UpdatePackageVersion {} }
+public fun update_package_metadata_marker(): UpdatePackageMetadata { UpdatePackageMetadata {} }
+
 // === Errors ===
 
 const EUnsupportedActionVersion: u64 = 1;

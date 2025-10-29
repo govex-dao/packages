@@ -137,7 +137,7 @@ fun test_sweep_dust_after_claim_period() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<DUST_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<DUST_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -152,6 +152,7 @@ fun test_sweep_dust_after_claim_period() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Dust sweep test".to_string(),
             vector::empty<String>(),
@@ -235,7 +236,8 @@ fun test_sweep_dust_after_claim_period() {
         let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
         let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::complete_raise_test(&mut raise, &creator_cap, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let final_amount = launchpad::final_raise_amount(&raise);
+        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
 
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
@@ -310,7 +312,7 @@ fun test_sweep_dust_fails_before_claim_period() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<DUST_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<DUST_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -325,6 +327,7 @@ fun test_sweep_dust_fails_before_claim_period() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Early sweep test".to_string(),
             vector::empty<String>(),
@@ -395,7 +398,8 @@ fun test_sweep_dust_fails_before_claim_period() {
         let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
         let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::complete_raise_test(&mut raise, &creator_cap, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let final_amount = launchpad::final_raise_amount(&raise);
+        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
 
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);

@@ -136,7 +136,7 @@ fun test_permissionless_completion_after_delay() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -151,6 +151,7 @@ fun test_permissionless_completion_after_delay() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Permissionless completion test".to_string(),
             vector::empty<String>(),
@@ -213,8 +214,6 @@ fun test_permissionless_completion_after_delay() {
         ts::return_shared(raise);
     };
 
-    // Note: We skip testing premature permissionless completion as it's covered in a separate expected_failure test
-
     // Advance another 24 hours (permissionless window opens)
     clock::increment_for_testing(&mut clock, 24 * 60 * 60 * 1000);
 
@@ -249,7 +248,7 @@ fun test_permissionless_completion_requires_settlement() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -264,6 +263,7 @@ fun test_permissionless_completion_requires_settlement() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Test".to_string(),
             vector::empty<String>(),

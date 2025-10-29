@@ -99,6 +99,7 @@ public struct Raise<phantom RaiseToken, phantom StableCoin> has key, store {
 
     min_raise_amount: u64,
     max_raise_amount: Option<u64>,
+    start_time_ms: u64,
     deadline_ms: u64,
     allow_early_completion: bool,
 
@@ -153,6 +154,7 @@ public struct RaiseCreated has copy, drop {
     stable_coin_type: String,
     min_raise_amount: u64,
     tokens_for_sale: u64,
+    start_time_ms: u64,
     deadline_ms: u64,
     description: String,
     // Generic metadata (parallel vectors for indexing)
@@ -376,6 +378,7 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
     min_raise_amount: u64,
     max_raise_amount: Option<u64>,
     allowed_caps: vector<u64>,
+    start_delay_ms: Option<u64>,
     allow_early_completion: bool,
     description: String,
     // Generic metadata (parallel vectors, emitted in event for indexing)
@@ -423,6 +426,7 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
         min_raise_amount,
         max_raise_amount,
         allowed_caps,
+        start_delay_ms,
         allow_early_completion,
         description,
         metadata_keys,
@@ -443,6 +447,7 @@ public entry fun contribute<RaiseToken, StableCoin>(
     ctx: &mut TxContext,
 ) {
     assert!(raise.state == STATE_FUNDING, ERaiseNotActive);
+    assert!(clock.timestamp_ms() >= raise.start_time_ms, ERaiseNotActive);
     assert!(clock.timestamp_ms() < raise.deadline_ms, ERaiseNotActive);
 
     let amount = payment.value();
@@ -572,6 +577,7 @@ public entry fun end_raise_early<RT, SC>(
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(clock.timestamp_ms() < raise.deadline_ms, EDeadlineNotReached);
     assert!(raise.allow_early_completion, EEarlyCompletionNotAllowed);
+    assert!(raise.stable_coin_vault.value() >= raise.min_raise_amount, EMinRaiseNotMet);
 
     let original_deadline = raise.deadline_ms;
     raise.deadline_ms = clock.timestamp_ms();
@@ -584,10 +590,11 @@ public entry fun end_raise_early<RT, SC>(
     });
 }
 
-/// Complete the raise and activate DAO
+/// Complete the raise and activate DAO (creator with optional final_raise_amount)
 public entry fun complete_raise<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     creator_cap: &CreatorCap,
+    final_raise_amount: u64,
     registry: &PackageRegistry,
     fee_manager: &mut fee::FeeManager,
     payment: Coin<sui::sui::SUI>,
@@ -599,10 +606,22 @@ public entry fun complete_raise<RaiseToken: drop, StableCoin: drop>(
     assert!(clock.timestamp_ms() >= raise.deadline_ms, EDeadlineNotReached);
     assert!(raise.settlement_done, EInvalidStateForAction);
 
+    // Validate final_raise_amount
+    let total_raised = raise.stable_coin_vault.value();
+    assert!(final_raise_amount >= raise.min_raise_amount, EMinRaiseNotMet);
+    assert!(final_raise_amount <= total_raised, EInvalidStateForAction);
+    if (option::is_some(&raise.max_raise_amount)) {
+        let max = *option::borrow(&raise.max_raise_amount);
+        assert!(final_raise_amount <= max, EInvalidStateForAction);
+    };
+
+    // Override the settlement's final_raise_amount with creator's choice
+    raise.final_raise_amount = final_raise_amount;
+
     complete_raise_internal(raise, registry, fee_manager, payment, clock, ctx);
 }
 
-/// Permissionless completion after delay
+/// Permissionless completion after 24h delay (uses max automatically)
 public entry fun complete_raise_permissionless<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     registry: &PackageRegistry,
@@ -617,6 +636,20 @@ public entry fun complete_raise_permissionless<RaiseToken: drop, StableCoin: dro
 
     let permissionless_open = raise.deadline_ms + PERMISSIONLESS_COMPLETION_DELAY_MS;
     assert!(clock.timestamp_ms() >= permissionless_open, EInvalidStateForAction);
+
+    // Permissionless uses the total raised (max possible)
+    let total_raised = raise.stable_coin_vault.value();
+    let mut final_amount = total_raised;
+
+    // But respect max_raise_amount if set
+    if (option::is_some(&raise.max_raise_amount)) {
+        let max = *option::borrow(&raise.max_raise_amount);
+        if (final_amount > max) {
+            final_amount = max;
+        };
+    };
+
+    raise.final_raise_amount = final_amount;
 
     complete_raise_internal(raise, registry, fee_manager, payment, clock, ctx);
 }
@@ -1175,6 +1208,7 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
     min_raise_amount: u64,
     max_raise_amount: Option<u64>,
     allowed_caps: vector<u64>,
+    start_delay_ms: Option<u64>,
     allow_early_completion: bool,
     description: String,
     metadata_keys: vector<String>,
@@ -1186,7 +1220,17 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
     futarchy_one_shot_utils::coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
 
     let minted_tokens = coin::mint(&mut treasury_cap, tokens_for_sale, ctx);
-    let deadline = clock.timestamp_ms() + constants::launchpad_duration_ms();
+
+    // Calculate start_time: creation_time + delay (if delay provided, otherwise start immediately)
+    let current_time = clock.timestamp_ms();
+    let start_time = if (option::is_some(&start_delay_ms)) {
+        current_time + *option::borrow(&start_delay_ms)
+    } else {
+        current_time
+    };
+
+    // Deadline is start_time + duration
+    let deadline = start_time + constants::launchpad_duration_ms();
 
     let mut raise = Raise<RaiseToken, StableCoin> {
         id: object::new(ctx),
@@ -1195,6 +1239,7 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
         state: STATE_FUNDING,
         min_raise_amount,
         max_raise_amount,
+        start_time_ms: start_time,
         deadline_ms: deadline,
         allow_early_completion,
         raise_token_vault: minted_tokens.into_balance(),
@@ -1233,6 +1278,7 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
         stable_coin_type: string::from_ascii(type_name::with_defining_ids<StableCoin>().into_string()),
         min_raise_amount,
         tokens_for_sale,
+        start_time_ms: raise.start_time_ms,
         deadline_ms: raise.deadline_ms,
         description: raise.description,
         metadata_keys,
@@ -1291,6 +1337,8 @@ public fun total_raised<RT, SC>(r: &Raise<RT, SC>): u64 {
 }
 
 public fun state<RT, SC>(r: &Raise<RT, SC>): u8 { r.state }
+
+public fun start_time<RT, SC>(r: &Raise<RT, SC>): u64 { r.start_time_ms }
 
 public fun deadline<RT, SC>(r: &Raise<RT, SC>): u64 { r.deadline_ms }
 
@@ -1359,6 +1407,7 @@ public fun set_launchpad_verification<RT, SC>(
 public fun complete_raise_test<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     creator_cap: &CreatorCap,
+    final_raise_amount: u64,
     registry: &PackageRegistry,
     fee_manager: &mut fee::FeeManager,
     payment: Coin<sui::sui::SUI>,
@@ -1369,9 +1418,19 @@ public fun complete_raise_test<RaiseToken: drop, StableCoin: drop>(
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(clock.timestamp_ms() >= raise.deadline_ms, EDeadlineNotReached);
     assert!(raise.settlement_done, EInvalidStateForAction);
-    assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
-    assert!(raise.settlement_done, EInvalidStateForAction);
     assert!(raise.dao_id.is_some(), EDaoNotPreCreated);
+
+    // Validate final_raise_amount
+    let total_raised = raise.stable_coin_vault.value();
+    assert!(final_raise_amount >= raise.min_raise_amount, EMinRaiseNotMet);
+    assert!(final_raise_amount <= total_raised, EInvalidStateForAction);
+    if (option::is_some(&raise.max_raise_amount)) {
+        let max = *option::borrow(&raise.max_raise_amount);
+        assert!(final_raise_amount <= max, EInvalidStateForAction);
+    };
+
+    // Override the settlement's final_raise_amount with creator's choice
+    raise.final_raise_amount = final_raise_amount;
 
     fee::deposit_dao_creation_payment(fee_manager, payment, clock, ctx);
 

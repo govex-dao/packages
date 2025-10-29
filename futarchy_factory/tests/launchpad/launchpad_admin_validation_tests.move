@@ -134,7 +134,7 @@ fun test_set_admin_trust_score() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -149,6 +149,7 @@ fun test_set_admin_trust_score() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Admin test".to_string(),
             vector::empty<String>(),
@@ -221,7 +222,7 @@ fun test_create_raise_empty_caps_error() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let allowed_caps = vector::empty<u64>(); // EMPTY - should fail
 
@@ -235,6 +236,7 @@ fun test_create_raise_empty_caps_error() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Empty caps test".to_string(),
             vector::empty<String>(),
@@ -271,7 +273,7 @@ fun test_create_raise_unsorted_caps_error() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         // Unsorted caps - should fail
         let mut allowed_caps = vector::empty<u64>();
@@ -289,6 +291,7 @@ fun test_create_raise_unsorted_caps_error() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Unsorted caps test".to_string(),
             vector::empty<String>(),
@@ -325,7 +328,7 @@ fun test_create_raise_last_cap_not_unlimited() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         // Last cap is NOT unlimited - should fail
         let mut allowed_caps = vector::empty<u64>();
@@ -342,6 +345,7 @@ fun test_create_raise_last_cap_not_unlimited() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"No unlimited cap test".to_string(),
             vector::empty<String>(),
@@ -378,7 +382,7 @@ fun test_create_raise_invalid_max_raise() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -394,6 +398,7 @@ fun test_create_raise_invalid_max_raise() {
             10_000_000_000, // min 10k
             option::some(5_000_000_000), // max 5k (INVALID)
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Invalid max raise test".to_string(),
             vector::empty<String>(),
@@ -432,7 +437,7 @@ fun test_max_raise_caps_settlement() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -447,6 +452,7 @@ fun test_max_raise_caps_settlement() {
             10_000_000_000, // min 10k
             option::some(30_000_000_000), // max 30k
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Max raise capping test".to_string(),
             vector::empty<String>(),

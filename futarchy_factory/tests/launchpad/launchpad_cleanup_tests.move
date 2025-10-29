@@ -135,7 +135,7 @@ fun test_cleanup_failed_raise_returns_treasury_cap() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<CLEANUP_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<CLEANUP_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -150,6 +150,7 @@ fun test_cleanup_failed_raise_returns_treasury_cap() {
             100_000_000_000, // min 100k (very high, will fail)
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Cleanup test".to_string(),
             vector::empty<String>(),
@@ -237,7 +238,7 @@ fun test_cleanup_failed_raise_cleans_dao_resources() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<CLEANUP_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<CLEANUP_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -252,6 +253,7 @@ fun test_cleanup_failed_raise_cleans_dao_resources() {
             50_000_000_000, // min 50k (will fail)
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"DAO cleanup test".to_string(),
             vector::empty<String>(),
@@ -334,7 +336,7 @@ fun test_cleanup_cannot_run_on_successful_raise() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<CLEANUP_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<CLEANUP_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -349,6 +351,7 @@ fun test_cleanup_cannot_run_on_successful_raise() {
             10_000_000_000, // min 10k (low, will succeed)
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Success test".to_string(),
             vector::empty<String>(),

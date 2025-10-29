@@ -148,8 +148,8 @@ fun test_basic_launchpad_creation() {
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
 
-        // Create payment for launchpad creation (10 SUI)
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        // Create payment for launchpad creation fee
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         // Setup allowed caps (pro-rata levels)
         let mut allowed_caps = vector::empty<u64>();
@@ -167,6 +167,7 @@ fun test_basic_launchpad_creation() {
             10_000_000_000, // min_raise_amount (10k USDC)
             option::some(100_000_000_000), // max_raise_amount (100k USDC)
             allowed_caps,
+            option::none(), // start_delay_ms
             false, // allow_early_completion
             b"Test Launchpad".to_string(),
             vector::empty<String>(), // metadata_keys
@@ -212,7 +213,7 @@ fun test_launchpad_with_unallowed_stable() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR_2>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR_2>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -228,6 +229,7 @@ fun test_launchpad_with_unallowed_stable() {
             10_000_000_000,
             option::some(100_000_000_000),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Test Launchpad".to_string(),
             vector::empty<String>(),
@@ -264,7 +266,7 @@ fun test_launchpad_contribution() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR_3>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR_3>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, 10_000_000_000); // 10k cap
@@ -281,6 +283,7 @@ fun test_launchpad_contribution() {
             10_000_000_000,
             option::some(100_000_000_000),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Test Launchpad".to_string(),
             vector::empty<String>(),
@@ -353,7 +356,7 @@ fun test_settlement_and_successful_raise() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, 20_000_000_000); // 20k cap
@@ -369,6 +372,7 @@ fun test_settlement_and_successful_raise() {
             10_000_000_000, // min 10k
             option::some(50_000_000_000), // max 50k
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Settlement test".to_string(),
             vector::empty<String>(),
@@ -510,7 +514,7 @@ fun test_pro_rata_allocation_logic() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         // Caps: 10k, 20k, 30k, unlimited
         let mut allowed_caps = vector::empty<u64>();
@@ -529,6 +533,7 @@ fun test_pro_rata_allocation_logic() {
             5_000_000_000, // min 5k
             option::some(100_000_000_000), // max 100k
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Pro rata test".to_string(),
             vector::empty<String>(),
@@ -668,7 +673,7 @@ fun test_failed_raise_settlement() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -683,6 +688,7 @@ fun test_failed_raise_settlement() {
             20_000_000_000, // min 20k
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Fail test".to_string(),
             vector::empty<String>(),
@@ -768,7 +774,7 @@ fun test_claim_tokens_successful_raise() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR_2>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR_2>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -783,6 +789,7 @@ fun test_claim_tokens_successful_raise() {
             10_000_000_000, // min 10k
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Claim test".to_string(),
             vector::empty<String>(),
@@ -854,7 +861,8 @@ fun test_claim_tokens_successful_raise() {
         let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
         let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::complete_raise_test(&mut raise, &creator_cap, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let final_amount = launchpad::final_raise_amount(&raise);
+        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
 
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
@@ -903,7 +911,7 @@ fun test_claim_refund_failed_raise() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR_2>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR_2>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -918,6 +926,7 @@ fun test_claim_refund_failed_raise() {
             50_000_000_000, // min 50k (high, will fail)
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Refund test".to_string(),
             vector::empty<String>(),
@@ -1020,7 +1029,7 @@ fun test_batch_claim_tokens() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR_3>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR_3>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -1035,6 +1044,7 @@ fun test_batch_claim_tokens() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Batch claim test".to_string(),
             vector::empty<String>(),
@@ -1131,7 +1141,8 @@ fun test_batch_claim_tokens() {
         let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
         let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::complete_raise_test(&mut raise, &creator_cap, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let final_amount = launchpad::final_raise_amount(&raise);
+        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
 
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
@@ -1187,7 +1198,7 @@ fun test_early_raise_completion() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -1202,6 +1213,7 @@ fun test_early_raise_completion() {
             10_000_000_000,
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             true, // allow early completion
             b"Early end test".to_string(),
             vector::empty<String>(),
@@ -1299,7 +1311,7 @@ fun test_raised_stables_in_dao_vault() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -1314,6 +1326,7 @@ fun test_raised_stables_in_dao_vault() {
             20_000_000_000, // min 20k
             option::some(50_000_000_000), // max 50k
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Vault test".to_string(),
             vector::empty<String>(),
@@ -1402,7 +1415,8 @@ fun test_raised_stables_in_dao_vault() {
         let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
         let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::complete_raise_test(&mut raise, &creator_cap, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let final_amount = launchpad::final_raise_amount(&raise);
+        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
 
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);

@@ -138,7 +138,7 @@ fun test_batch_refund_for_failed_raise() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<REFUND_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<REFUND_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -153,6 +153,7 @@ fun test_batch_refund_for_failed_raise() {
             100_000_000_000, // min 100k (will fail)
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Batch refund test".to_string(),
             vector::empty<String>(),
@@ -310,7 +311,7 @@ fun test_batch_refund_skips_already_claimed() {
 
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<REFUND_TOKEN>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<REFUND_TOKEN>>(&scenario);
-        let payment = create_payment(10_000_000_000, &mut scenario);
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
@@ -325,6 +326,7 @@ fun test_batch_refund_skips_already_claimed() {
             100_000_000_000, // min 100k (will fail)
             option::none(),
             allowed_caps,
+            option::none(), // start_delay_ms
             false,
             b"Skip already claimed test".to_string(),
             vector::empty<String>(),

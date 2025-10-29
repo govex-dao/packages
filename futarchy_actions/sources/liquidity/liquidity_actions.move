@@ -45,6 +45,18 @@ public struct Swap has drop {}
 public struct CollectFees has drop {}
 /// Withdraw collected fees
 public struct WithdrawFees has drop {}
+
+// === Marker Functions ===
+
+public fun create_pool_marker(): CreatePool { CreatePool {} }
+public fun update_pool_params_marker(): UpdatePoolParams { UpdatePoolParams {} }
+public fun add_liquidity_marker(): AddLiquidity { AddLiquidity {} }
+public fun withdraw_lp_token_marker(): WithdrawLpToken { WithdrawLpToken {} }
+public fun remove_liquidity_marker(): RemoveLiquidity { RemoveLiquidity {} }
+public fun swap_marker(): Swap { Swap {} }
+public fun collect_fees_marker(): CollectFees { CollectFees {} }
+public fun withdraw_fees_marker(): WithdrawFees { WithdrawFees {} }
+
 use futarchy_core::{
     futarchy_config::{Self, FutarchyConfig},
     version,

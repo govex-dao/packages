@@ -54,6 +54,10 @@ const EWrongAssetType: u64 = 6;
 
 public struct CreateDissolutionCapability has drop {}
 
+// === Marker Functions ===
+
+public fun create_dissolution_capability_marker(): CreateDissolutionCapability { CreateDissolutionCapability {} }
+
 // === Structs ===
 
 /// Shared capability proving a DAO is dissolved and ready for redemption

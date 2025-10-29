@@ -34,7 +34,7 @@ public fun create_dissolution_capability_in_intent<Outcome: store, AssetType, IW
     let action = dissolution_actions::new_create_dissolution_capability<AssetType>();
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::with_defining_ids<dissolution_actions::CreateDissolutionCapability>().into_string().to_string(),
+        dissolution_actions::create_dissolution_capability_marker(),
         action_data,
         intent_witness,
     );

@@ -41,6 +41,11 @@ use futarchy_markets_operations::price_based_unlocks_oracle as pass_through_orac
 public struct CreateOracleGrant has drop {}
 public struct CancelGrant has drop {}
 
+// === Marker Functions ===
+
+public fun create_oracle_grant_marker(): CreateOracleGrant { CreateOracleGrant {} }
+public fun cancel_grant_marker(): CancelGrant { CancelGrant {} }
+
 // === Constants ===
 
 const PRICE_MULTIPLIER_SCALE: u64 = 1_000_000_000; // 1e9

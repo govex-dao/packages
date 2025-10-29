@@ -42,7 +42,7 @@ public fun add_liquidity_to_intent<Outcome: store, AssetType, StableType, IW: dr
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<liquidity_actions::AddLiquidity>().into_string().to_string(),
+        liquidity_actions::add_liquidity_marker(),
         action_data,
         intent_witness,
     );
@@ -77,7 +77,7 @@ public fun remove_liquidity_from_intent<Outcome: store, AssetType, StableType, I
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<liquidity_actions::RemoveLiquidity>().into_string().to_string(),
+        liquidity_actions::remove_liquidity_marker(),
         action_data,
         intent_witness,
     );
@@ -97,7 +97,7 @@ public fun withdraw_lp_token_from_intent<Outcome: store, AssetType, StableType, 
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<liquidity_actions::WithdrawLpToken>().into_string().to_string(),
+        liquidity_actions::withdraw_lp_token_marker(),
         action_data,
         intent_witness,
     );
@@ -121,7 +121,7 @@ public fun create_pool_to_intent<Outcome: store, AssetType, StableType, IW: drop
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<liquidity_actions::CreatePool>().into_string().to_string(),
+        liquidity_actions::create_pool_marker(),
         action_data,
         intent_witness,
     );
@@ -143,7 +143,7 @@ public fun update_pool_params_to_intent<Outcome: store, IW: drop>(
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<liquidity_actions::UpdatePoolParams>().into_string().to_string(),
+        liquidity_actions::update_pool_params_marker(),
         action_data,
         intent_witness,
     );

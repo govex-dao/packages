@@ -111,11 +111,6 @@ public fun swap_asset_to_stable<AssetType, StableType, AssetConditionalCoin, Sta
         let market_state = coin_escrow::get_market_state_mut(escrow);
         let market_id = futarchy_markets_primitives::market_state::market_id(market_state);
 
-        // Lazy init price leaderboard on first swap (after init actions complete)
-        if (!futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
-            futarchy_markets_primitives::market_state::init_price_leaderboard(market_state, ctx);
-        };
-
         // Execute swap
         let pool = futarchy_markets_primitives::market_state::get_pool_mut_by_outcome(
             market_state,
@@ -127,14 +122,6 @@ public fun swap_asset_to_stable<AssetType, StableType, AssetConditionalCoin, Sta
             min_amount_out,
             clock,
             ctx,
-        );
-
-        // Update price in leaderboard (O(log N))
-        let new_price = pool.get_current_price();
-        futarchy_markets_primitives::market_state::update_price_in_leaderboard(
-            market_state,
-            outcome_idx,
-            new_price,
         );
 
         amount_out
@@ -190,11 +177,6 @@ public fun swap_stable_to_asset<AssetType, StableType, AssetConditionalCoin, Sta
         let market_state = coin_escrow::get_market_state_mut(escrow);
         let market_id = futarchy_markets_primitives::market_state::market_id(market_state);
 
-        // Lazy init price leaderboard on first swap (after init actions complete)
-        if (!futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
-            futarchy_markets_primitives::market_state::init_price_leaderboard(market_state, ctx);
-        };
-
         // Execute swap
         let pool = futarchy_markets_primitives::market_state::get_pool_mut_by_outcome(
             market_state,
@@ -206,14 +188,6 @@ public fun swap_stable_to_asset<AssetType, StableType, AssetConditionalCoin, Sta
             min_amount_out,
             clock,
             ctx,
-        );
-
-        // Update price in leaderboard (O(log N))
-        let new_price = pool.get_current_price();
-        futarchy_markets_primitives::market_state::update_price_in_leaderboard(
-            market_state,
-            outcome_idx,
-            new_price,
         );
 
         amount_out
@@ -306,9 +280,10 @@ public fun swap_balance_asset_to_stable<AssetType, StableType>(
     assert!((outcome_idx as u64) < market_outcome_count, EInvalidOutcome);
 
     // Lazy init price leaderboard on first swap (after init actions complete)
-    if (!futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
-        futarchy_markets_primitives::market_state::init_price_leaderboard(market_state, ctx);
-    };
+    // TODO: Re-enable when price_leaderboard functions are implemented
+    // if (!futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
+    //     futarchy_markets_primitives::market_state::init_price_leaderboard(market_state, ctx);
+    // };
 
     // Subtract from asset balance (input)
     // Note: sub_from_balance validates balance sufficiency internally
@@ -330,12 +305,13 @@ public fun swap_balance_asset_to_stable<AssetType, StableType>(
     assert!(amount_out >= min_amount_out, EInsufficientOutput);
 
     // Update price in leaderboard (O(log N))
-    let new_price = pool.get_current_price();
-    futarchy_markets_primitives::market_state::update_price_in_leaderboard(
-        market_state,
-        (outcome_idx as u64),
-        new_price,
-    );
+    // TODO: Re-enable when price_leaderboard functions are implemented
+    // let new_price = pool.get_current_price();
+    // futarchy_markets_primitives::market_state::update_price_in_leaderboard(
+    //     market_state,
+    //     (outcome_idx as u64),
+    //     new_price,
+    // );
 
     // Add to stable balance (output)
     conditional_balance::add_to_balance(balance, outcome_idx, false, amount_out);
@@ -392,9 +368,10 @@ public fun swap_balance_stable_to_asset<AssetType, StableType>(
     assert!((outcome_idx as u64) < market_outcome_count, EInvalidOutcome);
 
     // Lazy init price leaderboard on first swap (after init actions complete)
-    if (!futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
-        futarchy_markets_primitives::market_state::init_price_leaderboard(market_state, ctx);
-    };
+    // TODO: Re-enable when price_leaderboard functions are implemented
+    // if (!futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
+    //     futarchy_markets_primitives::market_state::init_price_leaderboard(market_state, ctx);
+    // };
 
     // Subtract from stable balance (input)
     // Note: sub_from_balance validates balance sufficiency internally
@@ -416,12 +393,13 @@ public fun swap_balance_stable_to_asset<AssetType, StableType>(
     assert!(amount_out >= min_amount_out, EInsufficientOutput);
 
     // Update price in leaderboard (O(log N))
-    let new_price = pool.get_current_price();
-    futarchy_markets_primitives::market_state::update_price_in_leaderboard(
-        market_state,
-        (outcome_idx as u64),
-        new_price,
-    );
+    // TODO: Re-enable when price_leaderboard functions are implemented
+    // let new_price = pool.get_current_price();
+    // futarchy_markets_primitives::market_state::update_price_in_leaderboard(
+    //     market_state,
+    //     (outcome_idx as u64),
+    //     new_price,
+    // );
 
     // Add to asset balance (output)
     conditional_balance::add_to_balance(balance, outcome_idx, true, amount_out);

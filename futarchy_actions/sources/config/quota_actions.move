@@ -24,6 +24,10 @@ use futarchy_core::{
 /// Set quotas for addresses
 public struct SetQuotas has drop {}
 
+// === Marker Functions ===
+
+public fun set_quotas_marker(): SetQuotas { SetQuotas {} }
+
 // === Errors ===
 const EUnsupportedActionVersion: u64 = 0;
 

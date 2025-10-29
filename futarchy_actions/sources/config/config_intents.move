@@ -62,7 +62,7 @@ public fun create_set_proposals_enabled_intent<Outcome: store + drop + copy>(
             let action = config_actions::new_set_proposals_enabled_action(enabled);
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::SetProposalsEnabled>().into_string().to_string(),
+                config_actions::set_proposals_enabled_marker(),
                 action_bytes,
                 iw,
             );
@@ -92,7 +92,7 @@ public fun create_update_name_intent<Outcome: store + drop + copy>(
             let action = config_actions::new_update_name_action(new_name);
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::UpdateName>().into_string().to_string(),
+                config_actions::update_name_marker(),
                 action_bytes,
                 iw,
             );
@@ -129,7 +129,7 @@ public fun create_update_metadata_intent<Outcome: store + drop + copy>(
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::MetadataUpdate>().into_string().to_string(),
+                config_actions::metadata_update_marker(),
                 action_bytes,
                 iw,
             );
@@ -167,7 +167,7 @@ public fun create_update_trading_params_intent<Outcome: store + drop + copy>(
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::TradingParamsUpdate>().into_string().to_string(),
+                config_actions::trading_params_update_marker(),
                 action_bytes,
                 iw,
             );
@@ -204,7 +204,7 @@ public fun create_update_twap_config_intent<Outcome: store + drop + copy>(
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::TwapConfigUpdate>().into_string().to_string(),
+                config_actions::twap_config_update_marker(),
                 action_bytes,
                 iw,
             );
@@ -248,7 +248,7 @@ public fun create_update_governance_intent<Outcome: store + drop + copy>(
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::GovernanceUpdate>().into_string().to_string(),
+                config_actions::governance_update_marker(),
                 action_bytes,
                 iw,
             );
@@ -296,7 +296,7 @@ public fun create_update_governance_flexible_intent<Outcome: store + drop + copy
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::GovernanceUpdate>().into_string().to_string(),
+                config_actions::governance_update_marker(),
                 action_bytes,
                 iw,
             );
@@ -330,7 +330,7 @@ public fun create_update_conditional_metadata_intent<Outcome: store + drop + cop
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::UpdateConditionalMetadata>().into_string().to_string(),
+                config_actions::update_conditional_metadata_marker(),
                 action_bytes,
                 iw,
             );
@@ -368,7 +368,7 @@ public fun create_update_sponsorship_config_intent<Outcome: store + drop + copy>
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<config_actions::SponsorshipConfigUpdate>().into_string().to_string(),
+                config_actions::sponsorship_config_update_marker(),
                 action_bytes,
                 iw,
             );

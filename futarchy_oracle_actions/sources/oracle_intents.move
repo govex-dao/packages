@@ -39,7 +39,7 @@ public fun create_grant_in_intent<Outcome: store, AssetType, StableType, IW: dro
 
     intents::add_typed_action(
         intent,
-        type_name::with_defining_ids<oracle_actions::CreateOracleGrant>().into_string().to_string(),
+        oracle_actions::create_oracle_grant_marker(),
         bcs::to_bytes(&action),
         intent_witness,
     );
@@ -54,7 +54,7 @@ public fun cancel_grant_in_intent<Outcome: store, IW: drop>(
     let action = oracle_actions::new_cancel_grant(grant_id);
     intents::add_typed_action(
         intent,
-        type_name::with_defining_ids<oracle_actions::CancelGrant>().into_string().to_string(),
+        oracle_actions::cancel_grant_marker(),
         bcs::to_bytes(&action),
         intent_witness,
     );

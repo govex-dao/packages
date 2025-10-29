@@ -220,16 +220,17 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
 
     // Update price leaderboard after liquidity changes (if initialized)
     // Prices change when liquidity is added, so we need to update the cache
-    if (market_state::has_price_leaderboard(market_state)) {
-        let mut i = 0;
-        let n = market_state::outcome_count(market_state);
-        while (i < n) {
-            let pool = market_state::get_pool_mut_by_outcome(market_state, (i as u8));
-            let new_price = conditional_amm::get_current_price(pool);
-            market_state::update_price_in_leaderboard(market_state, i, new_price);
-            i = i + 1;
-        };
-    };
+    // TODO: Re-enable when price_leaderboard functions are implemented
+    // if (market_state::has_price_leaderboard(market_state)) {
+    //     let mut i = 0;
+    //     let n = market_state::outcome_count(market_state);
+    //     while (i < n) {
+    //         let pool = market_state::get_pool_mut_by_outcome(market_state, (i as u8));
+    //         let new_price = conditional_amm::get_current_price(pool);
+    //         market_state::update_price_in_leaderboard(market_state, i, new_price);
+    //         i = i + 1;
+    //     };
+    // };
 }
 
 /// When proposal ends, automatically recombine winning conditional LP back to spot

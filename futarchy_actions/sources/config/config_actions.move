@@ -57,6 +57,19 @@ public struct SponsorshipConfigUpdate has drop {}
 /// Update conditional metadata
 public struct UpdateConditionalMetadata has drop {}
 
+// === Marker Functions ===
+
+public fun set_proposals_enabled_marker(): SetProposalsEnabled { SetProposalsEnabled {} }
+public fun terminate_dao_marker(): TerminateDao { TerminateDao {} }
+public fun update_name_marker(): UpdateName { UpdateName {} }
+public fun trading_params_update_marker(): TradingParamsUpdate { TradingParamsUpdate {} }
+public fun metadata_update_marker(): MetadataUpdate { MetadataUpdate {} }
+public fun twap_config_update_marker(): TwapConfigUpdate { TwapConfigUpdate {} }
+public fun governance_update_marker(): GovernanceUpdate { GovernanceUpdate {} }
+public fun metadata_table_update_marker(): MetadataTableUpdate { MetadataTableUpdate {} }
+public fun sponsorship_config_update_marker(): SponsorshipConfigUpdate { SponsorshipConfigUpdate {} }
+public fun update_conditional_metadata_marker(): UpdateConditionalMetadata { UpdateConditionalMetadata {} }
+
 // === Aliases ===
 use account_protocol::intents as protocol_intents;
 

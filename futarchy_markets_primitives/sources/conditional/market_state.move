@@ -4,7 +4,6 @@
 module futarchy_markets_primitives::market_state;
 
 use futarchy_markets_primitives::conditional_amm::LiquidityPool;
-use futarchy_markets_primitives::price_leaderboard::{Self, PriceLeaderboard};
 use std::string::String;
 use sui::clock::Clock;
 use sui::event;
@@ -47,9 +46,6 @@ public struct MarketState has key, store {
     trading_start: u64,
     trading_end: Option<u64>,
     finalization_time: Option<u64>,
-    // Price leaderboard cache for O(1) winner lookups and O(log N) updates
-    // Initialized lazily on first swap (after init actions complete)
-    price_leaderboard: Option<PriceLeaderboard>,
 }
 
 // === Events ===
@@ -97,7 +93,6 @@ public fun new(
         trading_start: 0,
         trading_end: option::none(),
         finalization_time: option::none(),
-        price_leaderboard: option::none(), // Initialized lazily on first swap (after init actions)
     }
 }
 
@@ -264,68 +259,6 @@ public fun get_finalization_time(state: &MarketState): Option<u64> {
     state.finalization_time
 }
 
-// === Price Leaderboard Functions ===
-
-/// Check if price leaderboard is initialized
-public fun has_price_leaderboard(state: &MarketState): bool {
-    state.price_leaderboard.is_some()
-}
-
-/// Initialize price leaderboard from current pool prices
-/// Called lazily on first swap (after init actions complete)
-/// Complexity: O(N) using Floyd's heapify algorithm
-public fun init_price_leaderboard(state: &mut MarketState, ctx: &mut TxContext) {
-    assert!(state.price_leaderboard.is_none(), 0); // Can only init once
-    assert!(state.amm_pools.is_some(), 1); // Need pools to get prices
-
-    // Extract prices from all pools
-    let pools = state.amm_pools.borrow();
-    let n = pools.length();
-    let mut prices = vector::empty<u128>();
-
-    let mut i = 0u64;
-    while (i < n) {
-        let pool = &pools[i];
-        let price = futarchy_markets_primitives::conditional_amm::get_current_price(pool);
-        vector::push_back(&mut prices, price);
-        i = i + 1;
-    };
-
-    // Create leaderboard from prices
-    let leaderboard = price_leaderboard::init_from_prices(prices, ctx);
-    option::fill(&mut state.price_leaderboard, leaderboard);
-}
-
-/// Update price for an outcome in the leaderboard
-/// Called after each swap to maintain O(log N) performance
-/// Complexity: O(log N)
-public fun update_price_in_leaderboard(
-    state: &mut MarketState,
-    outcome_index: u64,
-    new_price: u128,
-) {
-    let leaderboard = state.price_leaderboard.borrow_mut();
-    price_leaderboard::update_price(leaderboard, outcome_index, new_price);
-}
-
-/// Get winner and spread from leaderboard
-/// Returns (winner_index, winner_price, spread)
-/// Complexity: O(1)
-public fun get_winner_from_leaderboard(state: &MarketState): (u64, u128, u128) {
-    let leaderboard = state.price_leaderboard.borrow();
-    price_leaderboard::get_winner_and_spread(leaderboard)
-}
-
-/// Destroy price leaderboard and clean up table resources
-/// Called during market cleanup, dissolution, or migration
-/// Safe to call even if leaderboard not initialized
-public fun destroy_price_leaderboard(state: &mut MarketState) {
-    if (state.price_leaderboard.is_some()) {
-        let leaderboard = state.price_leaderboard.extract();
-        price_leaderboard::destroy(leaderboard);
-    };
-}
-
 // === Test Functions ===
 #[test_only]
 public fun create_for_testing(outcomes: u64, ctx: &mut TxContext): MarketState {
@@ -350,7 +283,6 @@ public fun create_for_testing(outcomes: u64, ctx: &mut TxContext): MarketState {
         trading_start: 0,
         trading_end: option::none(),
         finalization_time: option::none(),
-        price_leaderboard: option::none(),
     }
 }
 

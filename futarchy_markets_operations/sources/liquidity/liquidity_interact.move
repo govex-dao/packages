@@ -300,16 +300,6 @@ public entry fun add_liquidity_entry<
         (lp, price)
     }; // pool borrow released here
 
-    // Update price leaderboard after liquidity change (if initialized)
-    // Price changes when liquidity is added, so we need to update the cache
-    if (futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
-        futarchy_markets_primitives::market_state::update_price_in_leaderboard(
-            market_state,
-            outcome_idx,
-            new_price,
-        );
-    };
-
     // Mint LP tokens using TreasuryCap
     let lp_token = coin_escrow::mint_conditional_asset<AssetType, StableType, LPConditionalCoin>(
         escrow,
@@ -377,16 +367,6 @@ public entry fun remove_liquidity_entry<
     // Verify slippage protection
     assert!(asset_amount >= min_asset_out, EMinAmountNotMet);
     assert!(stable_amount >= min_stable_out, EMinAmountNotMet);
-
-    // Update price leaderboard after liquidity change (if initialized)
-    // Price changes when liquidity is removed, so we need to update the cache
-    if (futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
-        futarchy_markets_primitives::market_state::update_price_in_leaderboard(
-            market_state,
-            outcome_idx,
-            new_price,
-        );
-    };
 
     // Mint the asset and stable conditional tokens using TreasuryCaps
     let asset_token = coin_escrow::mint_conditional_asset<

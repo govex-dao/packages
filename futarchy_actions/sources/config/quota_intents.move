@@ -58,7 +58,7 @@ public fun create_set_quotas_intent<Outcome: store + drop + copy>(
             );
             let action_bytes = bcs::to_bytes(&action);
             intent.add_typed_action(
-                type_name::get<quota_actions::SetQuotas>().into_string().to_string(),
+                quota_actions::set_quotas_marker(),
                 action_bytes,
                 iw,
             );

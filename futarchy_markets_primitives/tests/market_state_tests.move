@@ -50,7 +50,6 @@ fun test_new_market_state() {
     assert!(!market_state::is_finalized(&state), 4);
     assert!(market_state::get_creation_time(&state) == 1000, 5);
     assert!(!market_state::has_amm_pools(&state), 6);
-    assert!(!market_state::has_early_resolve_metrics(&state), 7);
 
     market_state::destroy_for_testing(state);
     end(scenario, clock);
@@ -638,38 +637,6 @@ fun test_get_winning_outcome_before_finalize_fails() {
     );
 
     let _ = market_state::get_winning_outcome(&state); // Should fail
-
-    market_state::destroy_for_testing(state);
-    end(scenario, clock);
-}
-
-// === Early Resolve Metrics Tests ===
-
-#[test]
-fun test_new_early_resolve_metrics() {
-    let metrics = market_state::new_early_resolve_metrics(1, 5000);
-    // Just test that constructor works - metrics struct has no public getters
-    destroy(metrics);
-}
-
-#[test]
-fun test_init_early_resolve_metrics() {
-    let (mut scenario, mut clock) = start();
-    clock.set_for_testing(1000);
-
-    let mut state = market_state::new(
-        object::id_from_address(@0x1),
-        object::id_from_address(@0x2),
-        2,
-        vector[string::utf8(b"A"), string::utf8(b"B")],
-        &clock,
-        ts::ctx(&mut scenario),
-    );
-
-    assert!(!market_state::has_early_resolve_metrics(&state), 0);
-
-    // Note: init_early_resolve_metrics is package-only, so we can't test it directly
-    // But we can verify the getter works after using test helpers
 
     market_state::destroy_for_testing(state);
     end(scenario, clock);

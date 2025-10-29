@@ -350,7 +350,6 @@ public fun create_for_testing(outcomes: u64, ctx: &mut TxContext): MarketState {
         trading_start: 0,
         trading_end: option::none(),
         finalization_time: option::none(),
-        early_resolve_metrics: option::none(),
         price_leaderboard: option::none(),
     }
 }

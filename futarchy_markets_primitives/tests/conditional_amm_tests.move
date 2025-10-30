@@ -468,28 +468,6 @@ fun test_get_oracle() {
     end(scenario, clock);
 }
 
-#[test]
-fun test_get_simple_twap() {
-    let (mut scenario, mut clock) = start();
-    clock.set_for_testing(1000);
-
-    let pool = conditional_amm::create_test_pool(
-        object::id_from_address(@0x1),
-        0,
-        30,
-        1000000,
-        1000000,
-        &clock,
-        ts::ctx(&mut scenario),
-    );
-
-    // Just verify we can get the SimpleTWAP
-    let _simple_twap = conditional_amm::get_simple_twap(&pool);
-
-    conditional_amm::destroy_for_testing(pool);
-    end(scenario, clock);
-}
-
 // === Stage 2: Swap Operations ===
 
 #[test]
@@ -1847,21 +1825,6 @@ fun test_get_oracle_reference() {
 
     // Get oracle reference
     let _oracle = conditional_amm::get_oracle(&pool);
-
-    // Should not fail
-    conditional_amm::destroy_for_testing(pool);
-    end(scenario, clock);
-}
-
-#[test]
-fun test_get_simple_twap_reference() {
-    let (mut scenario, mut clock) = start();
-    clock.set_for_testing(1000);
-
-    let pool = create_test_pool(&mut scenario, &mut clock);
-
-    // Get SimpleTWAP reference
-    let _simple_twap = conditional_amm::get_simple_twap(&pool);
 
     // Should not fail
     conditional_amm::destroy_for_testing(pool);

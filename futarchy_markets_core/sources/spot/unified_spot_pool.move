@@ -1170,47 +1170,6 @@ public fun mark_liquidity_to_proposal<AssetType, StableType>(
     config.conditional_liquidity_ratio_percent = conditional_liquidity_ratio_percent;
 }
 
-/// Backfill spot's SimpleTWAP with winning conditional's data after proposal ends
-/// This fills the gap [proposal_start, proposal_end] with conditional's price history
-/// Updates oracle windows using winning conditional's data
-public fun backfill_from_winning_conditional<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    winning_conditional_oracle: &SimpleTWAP,
-    clock: &Clock,
-) {
-    assert!(pool.aggregator_config.is_some(), EAggregatorNotEnabled);
-
-    let config = pool.aggregator_config.borrow_mut();
-    assert!(config.last_proposal_usage.is_some(), ENoActiveProposal); // Must be locked
-    assert!(config.spot_cumulative_at_lock.is_some(), ENoActiveProposal);
-
-    let proposal_start = option::extract(&mut config.last_proposal_usage);
-    let _ = option::extract(&mut config.spot_cumulative_at_lock);
-    let proposal_end = clock.timestamp_ms();
-
-    // Calculate conditional cumulative over the proposal window
-    let period_cumulative = PCW_TWAP_oracle::projected_cumulative_arithmetic_to(
-        winning_conditional_oracle,
-        proposal_end,
-    );
-    let period_final_price = PCW_TWAP_oracle::last_price(winning_conditional_oracle);
-
-    // Backfill spot oracle with conditional data
-    PCW_TWAP_oracle::backfill_from_conditional(
-        &mut config.simple_twap,
-        proposal_start,
-        proposal_end,
-        period_cumulative,
-        period_final_price,
-    );
-
-    // Reset liquidity tracking
-    config.conditional_liquidity_ratio_percent = 0;
-
-    // Commit a checkpoint after backfill to anchor the long window
-    PCW_TWAP_oracle::force_commit_checkpoint(&mut config.simple_twap, clock);
-}
-
 /// Check if TWAP is ready (has enough history)
 public fun is_twap_ready<AssetType, StableType>(
     pool: &UnifiedSpotPool<AssetType, StableType>,

@@ -32,9 +32,8 @@ use account_protocol::{
 };
 use account_actions::currency;
 use futarchy_core::resource_requests;
-use futarchy_markets_core::unified_spot_pool::UnifiedSpotPool;
+use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::conditional_amm::LiquidityPool;
-use futarchy_markets_operations::price_based_unlocks_oracle as pass_through_oracle;
 
 // === Action Type Markers ===
 
@@ -407,13 +406,12 @@ fun validate_price_conditions_with_enforcement<AssetType, StableType>(
     launchpad_enforcement: LaunchpadEnforcement,
     tier: &PriceTier,
     spot_pool: &UnifiedSpotPool<AssetType, StableType>,
-    conditional_pools: &vector<LiquidityPool>,
+    _conditional_pools: &vector<LiquidityPool>,
     clock: &Clock,
 ) {
-    // Read oracle price
-    let current_price = pass_through_oracle::get_geometric_governance_twap(
+    // Read oracle price directly from spot (auto-arb keeps prices synced)
+    let current_price = unified_spot_pool::get_geometric_twap(
         spot_pool,
-        conditional_pools,
         clock
     );
 

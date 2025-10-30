@@ -165,20 +165,8 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
         // This clears the active escrow flag so has_active_escrow() returns false
         let _escrow_id = unified_spot_pool::extract_active_escrow(spot_pool);
 
-        // Reborrow winning pool to read oracle after recombination
-        let winning_pool_view = proposal::get_pool_by_outcome(
-            proposal,
-            escrow,
-            winning_outcome as u8,
-        );
-        let winning_conditional_oracle = conditional_amm::get_simple_twap(winning_pool_view);
-
-        // Backfill spot's SimpleTWAP with winning conditional's oracle data
-        unified_spot_pool::backfill_from_winning_conditional(
-            spot_pool,
-            winning_conditional_oracle,
-            clock,
-        );
+        // Spot TWAP continues running throughout proposal (no backfill needed)
+        // Auto-arbitrage keeps spot and conditional prices synced
 
         // Crank: Transition TRANSITIONING bucket to WITHDRAW_ONLY
         // This allows LPs who marked for withdrawal to claim their coins

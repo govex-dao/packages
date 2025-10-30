@@ -145,7 +145,7 @@ and patara.app
 - [X] simplify oracle actions??
 - [X] cant subsidise after TWAP delay
 
-
+- [ ] unlocks ratio of launchapd or jsut price or both??? decide??
 
 
 1) dao needs to supside LPs during proposals ( use proposer fee)\
@@ -500,3 +500,43 @@ My thoughts:
 - Seems like it should be a general multiverse finance intent system (not just for DAO asset and stable, but any coin or object) or
 - Or require pre-approved meta-intents,
 - Or maybe intents should not be something thats just executed but should also aware of current proposal stage or coupled to it?
+
+# IP
+
+Ohh I have an idea.
+
+Can say in operating agreement.
+
+That IP transfer or licensing agreements of IP need:
+
+1) Founder and market approval.
+
+Or 
+
+2) market approval but any entity buying / receiving / acting as an agent for the purchaser does not trade the markets, otherwise that invalidates IP transfer
+
+----
+
+A "Founder Veto" (Your 1-Year Lock):
+
+"Any sale, transfer, or exclusive license of Company Intellectual Property ('IP Transaction') must be approved by the Founder."
+
+A "Market Override" (Your Permissionless Option):
+
+"In the event the Founder does not approve an IP Transaction, the transaction may still be approved by the futarchy market. However, any such transaction approved without Founder consent shall not be legally valid or executed until 365 days have passed from the date of the market's approval."
+
+---
+
+ make all legal canges require founder approval or 1 year waiting period
+
+ ---
+
+ could make it optional everyone uses trading bots to monitor for maliciosus proposals
+
+
+
+or fiduciary
+
+
+
+Or company wirth 3x> trasury

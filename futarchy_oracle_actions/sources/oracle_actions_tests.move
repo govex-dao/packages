@@ -151,6 +151,7 @@ fun test_new_create_oracle_grant_action() {
 
     let action = oracle_actions::new_create_oracle_grant<u64, u64>(
         vector[tier_spec],
+        false, // use_relative_pricing (absolute prices)
         1_500_000_000, // launchpad multiplier
         0, // earliest execution
         1, // expiry years

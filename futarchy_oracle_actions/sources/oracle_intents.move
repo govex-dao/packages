@@ -19,6 +19,7 @@ use sui::object;
 public fun create_grant_in_intent<Outcome: store, AssetType, StableType, IW: drop>(
     intent: &mut Intent<Outcome>,
     tier_specs: vector<oracle_actions::TierSpec>,
+    use_relative_pricing: bool,
     launchpad_multiplier: u64,
     earliest_execution_offset_ms: u64,
     expiry_years: u64,
@@ -30,6 +31,7 @@ public fun create_grant_in_intent<Outcome: store, AssetType, StableType, IW: dro
 
     let action = oracle_actions::new_create_oracle_grant<AssetType, StableType>(
         tier_specs,
+        use_relative_pricing,
         launchpad_multiplier,
         earliest_execution_offset_ms,
         expiry_years,

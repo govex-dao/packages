@@ -72,7 +72,7 @@ const EEmptyTiers: u64 = 18;
 
 // === Core Structs ===
 
-/// Launchpad price enforcement (applies globally to all tiers)
+/// Launchpad price enforcement (applies globally to all tiers in RELATIVE mode only)
 public struct LaunchpadEnforcement has store, copy, drop {
     enabled: bool,
     minimum_multiplier: u64,  // Scaled 1e9
@@ -112,6 +112,7 @@ public struct PriceBasedMintGrant<phantom AssetType, phantom StableType> has key
     // === TIER STRUCTURE ===
     tiers: vector<PriceTier>,
     total_amount: u64,
+    use_relative_pricing: bool,  // true = thresholds are multipliers, false = absolute prices
 
     // === PER-RECIPIENT TRACKING ===
     recipient_claims: Table<address, u64>,
@@ -201,13 +202,16 @@ public fun new_recipient_mint(recipient: address, amount: u64): RecipientMint {
 /// Create price-based grant with N tiers and N recipients per tier
 ///
 /// @param tiers: Vector of price tiers, each with price condition + recipients
+/// @param use_relative_pricing: true = thresholds are multipliers of launchpad, false = absolute prices
 /// @param launchpad_multiplier: Minimum price multiplier (0 = disabled, scaled 1e9)
+///                              ONLY enforced when use_relative_pricing = true
 /// @param earliest_execution_offset_ms: Minimum time before claiming (0 = immediate)
 /// @param expiry_years: Maximum time to claim (0 = no expiry)
 public fun create_grant<AssetType, StableType>(
     account: &mut Account,
     registry: &PackageRegistry,
     tiers: vector<PriceTier>,
+    use_relative_pricing: bool,
     launchpad_multiplier: u64,
     earliest_execution_offset_ms: u64,
     expiry_years: u64,
@@ -279,6 +283,7 @@ public fun create_grant<AssetType, StableType>(
         id: grant_id,
         tiers,
         total_amount,
+        use_relative_pricing,
         recipient_claims: table::new(ctx),
         launchpad_enforcement: LaunchpadEnforcement {
             enabled: launchpad_multiplier > 0,
@@ -393,6 +398,7 @@ fun validate_price_conditions<AssetType, StableType>(
 ) {
     validate_price_conditions_with_enforcement(
         grant.launchpad_enforcement,
+        grant.use_relative_pricing,
         tier,
         spot_pool,
         conditional_pools,
@@ -404,6 +410,7 @@ fun validate_price_conditions<AssetType, StableType>(
 /// This avoids borrow conflicts when tier is already mutably borrowed
 fun validate_price_conditions_with_enforcement<AssetType, StableType>(
     launchpad_enforcement: LaunchpadEnforcement,
+    use_relative_pricing: bool,
     tier: &PriceTier,
     spot_pool: &UnifiedSpotPool<AssetType, StableType>,
     _conditional_pools: &vector<LiquidityPool>,
@@ -418,14 +425,29 @@ fun validate_price_conditions_with_enforcement<AssetType, StableType>(
     // Check tier price condition
     if (tier.price_condition.is_some()) {
         let condition = tier.price_condition.borrow();
+
+        // Calculate actual threshold based on pricing mode
+        let actual_threshold = if (use_relative_pricing) {
+            // Relative mode: threshold is a multiplier of launchpad price
+            (launchpad_enforcement.launchpad_price * condition.threshold) / (PRICE_MULTIPLIER_SCALE as u128)
+        } else {
+            // Absolute mode: threshold is already an absolute price
+            condition.threshold
+        };
+
+        let threshold_condition = PriceCondition {
+            threshold: actual_threshold,
+            is_above: condition.is_above,
+        };
+
         assert!(
-            check_price_condition(condition, current_price),
+            check_price_condition(&threshold_condition, current_price),
             EPriceConditionNotMet
         );
     };
 
-    // Check launchpad enforcement (global minimum)
-    if (launchpad_enforcement.enabled) {
+    // Check launchpad enforcement (global minimum) - ONLY for relative pricing mode
+    if (use_relative_pricing && launchpad_enforcement.enabled) {
         let min_price = (launchpad_enforcement.launchpad_price *
                          (launchpad_enforcement.minimum_multiplier as u128)) /
                          (PRICE_MULTIPLIER_SCALE as u128);
@@ -513,8 +535,9 @@ public fun claim_grant<AssetType, StableType>(
     // Phase 1: Validate claim eligibility
     validate_claim_eligibility(account, registry, version, grant, claim_cap, clock);
 
-    // Phase 2: Extract launchpad enforcement before mutable borrow
+    // Phase 2: Extract launchpad enforcement and pricing mode before mutable borrow
     let launchpad_enforcement = grant.launchpad_enforcement;
+    let use_relative_pricing = grant.use_relative_pricing;
 
     // Phase 3-5: Work with tier (in its own scope to control borrowing)
     let (recipient, claimable_amount) = {
@@ -523,7 +546,7 @@ public fun claim_grant<AssetType, StableType>(
         assert!(!tier.executed, ETierAlreadyExecuted);
 
         // Validate price conditions
-        validate_price_conditions_with_enforcement(launchpad_enforcement, tier, spot_pool, conditional_pools, clock);
+        validate_price_conditions_with_enforcement(launchpad_enforcement, use_relative_pricing, tier, spot_pool, conditional_pools, clock);
 
         // Find recipient allocation
         let recipient = tx_context::sender(ctx);
@@ -692,6 +715,7 @@ public fun get_all_grant_ids(account: &Account, registry: &PackageRegistry, vers
 
 public struct CreateOracleGrantAction<phantom AssetType, phantom StableType> has store, drop, copy {
     tier_specs: vector<TierSpec>,
+    use_relative_pricing: bool,
     launchpad_multiplier: u64,
     earliest_execution_offset_ms: u64,
     expiry_years: u64,
@@ -714,6 +738,7 @@ public struct CancelGrantAction has store, drop, copy {
 
 public fun new_create_oracle_grant<AssetType, StableType>(
     tier_specs: vector<TierSpec>,
+    use_relative_pricing: bool,
     launchpad_multiplier: u64,
     earliest_execution_offset_ms: u64,
     expiry_years: u64,
@@ -722,6 +747,7 @@ public fun new_create_oracle_grant<AssetType, StableType>(
 ): CreateOracleGrantAction<AssetType, StableType> {
     CreateOracleGrantAction {
         tier_specs,
+        use_relative_pricing,
         launchpad_multiplier,
         earliest_execution_offset_ms,
         expiry_years,
@@ -865,6 +891,7 @@ public fun do_create_oracle_grant<AssetType, StableType, Outcome: store, IW: dro
     let mut reader = bcs::new(*action_data);
 
     let tier_specs = deserialize_tier_specs(&mut reader);
+    let use_relative_pricing = bcs::peel_bool(&mut reader);
     let launchpad_multiplier = bcs::peel_u64(&mut reader);
     let earliest_execution_offset_ms = bcs::peel_u64(&mut reader);
     let expiry_years = bcs::peel_u64(&mut reader);
@@ -883,6 +910,7 @@ public fun do_create_oracle_grant<AssetType, StableType, Outcome: store, IW: dro
         account,
         registry,
         tiers,
+        use_relative_pricing,
         launchpad_multiplier,
         earliest_execution_offset_ms,
         expiry_years,
@@ -945,6 +973,7 @@ public fun delete_create_oracle_grant<AssetType, StableType>(expired: &mut inten
         i = i + 1;
     };
 
+    reader.peel_bool(); // use_relative_pricing
     reader.peel_u64(); // launchpad_multiplier
     reader.peel_u64(); // earliest_execution_offset_ms
     reader.peel_u64(); // expiry_years

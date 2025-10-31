@@ -35,16 +35,16 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     let mut registry = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
 
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut registry, b"AccountActions".to_string(), @account_actions, 1);
+    package_registry::add_for_testing(&mut registry, b"account_protocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(&mut registry, b"account_actions".to_string(), @account_actions, 1);
     package_registry::add_for_testing(&mut registry, b"futarchy_core".to_string(), @futarchy_core, 1);
     package_registry::add_for_testing(&mut registry, b"futarchy_oracle".to_string(), @futarchy_oracle, 1);
 
     let deps = deps::new_latest_extensions(
         &registry,
         vector[
-            b"AccountProtocol".to_string(),
-            b"AccountActions".to_string(),
+            b"account_protocol".to_string(),
+            b"account_actions".to_string(),
             b"futarchy_core".to_string(),
             b"futarchy_oracle".to_string()
         ],
@@ -124,6 +124,7 @@ fun test_create_grant_single_tier() {
         &mut account,
         &registry,
         tiers,
+        false, // use_relative_pricing (absolute prices)
         0, // no launchpad multiplier
         0, // immediate execution
         0, // no expiry
@@ -173,6 +174,7 @@ fun test_create_multiple_grants() {
         &mut account,
         &registry,
         tiers1,
+        false, // use_relative_pricing (absolute prices)
         0, 0, 0, true,
         string::utf8(b"Grant 1"),
         dao_id,
@@ -197,6 +199,7 @@ fun test_create_multiple_grants() {
         &mut account,
         &registry,
         tiers2,
+        false, // use_relative_pricing (absolute prices)
         0, 0, 0, false,
         string::utf8(b"Grant 2"),
         dao_id,
@@ -256,6 +259,7 @@ fun test_create_grant_multi_tier() {
         &mut account,
         &registry,
         tiers,
+        false, // use_relative_pricing (absolute prices)
         1_500_000_000, // 1.5x launchpad multiplier
         30 * 24 * 60 * 60 * 1000, // 30 days earliest
         2, // 2 year expiry
@@ -295,6 +299,7 @@ fun test_grant_view_functions() {
         &mut account,
         &registry,
         tiers,
+        false, // use_relative_pricing (absolute prices)
         0, 0, 0, true,
         string::utf8(b"View Test Grant"),
         dao_id,
@@ -349,6 +354,7 @@ fun test_cancel_grant_success() {
         &mut account,
         &registry,
         tiers,
+        false, // use_relative_pricing (absolute prices)
         0, 0, 0,
         true, // cancelable = true
         string::utf8(b"Cancelable Grant"),
@@ -400,6 +406,7 @@ fun test_cancel_non_cancelable_grant_fails() {
         &mut account,
         &registry,
         tiers,
+        false, // use_relative_pricing (absolute prices)
         0, 0, 0,
         false, // cancelable = false
         string::utf8(b"Non-Cancelable Grant"),
@@ -445,6 +452,7 @@ fun test_cancel_already_canceled_fails() {
         &mut account,
         &registry,
         tiers,
+        false, // use_relative_pricing (absolute prices)
         0, 0, 0, true,
         string::utf8(b"Grant"),
         dao_id,
@@ -484,6 +492,7 @@ fun test_create_grant_empty_tiers_fails() {
         &mut account,
         &registry,
         empty_tiers,
+        false, // use_relative_pricing (absolute prices)
         0, 0, 0, true,
         string::utf8(b"Empty Grant"),
         dao_id,

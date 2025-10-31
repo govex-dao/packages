@@ -8,3 +8,4 @@ authors = [ "Thouny (thouny@tuta.io)", "Greshamscode" ]
 
 [addresses]
 account_protocol = "0xd0751a5281bd851ac7df5c62cd523239ddfa7dc321a7df3ddfc7400d65938ed6"
+account_actions = "0x9b92bce11813bb850edd103e24ca52f97721c234ce63b4765fa1933d04739081"

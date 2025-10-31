@@ -54,25 +54,70 @@ export function loadDeployments(): any {
 }
 
 /**
- * Load test coins info (non-shared TreasuryCaps with owned CoinMetadata for launchpad testing)
+ * Load test coins info from deployment JSON (non-shared TreasuryCaps for launchpad testing)
+ *
+ * Deployment JSONs are created by running: ./scripts/deploy-test-coins.sh
+ * This parses the deployment response instead of hardcoding object IDs (which get deleted on devnet)
  */
 export function loadTestCoins(): {
     asset: { packageId: string; type: string; treasuryCap: string; metadata: string };
     stable: { packageId: string; type: string; treasuryCap: string; metadata: string };
 } {
+    const deploymentsDir = path.join(__dirname, '../deployments');
+
+    // Helper to parse a coin deployment JSON
+    const parseCoinDeployment = (coinName: string) => {
+        const deploymentPath = path.join(deploymentsDir, `${coinName}.json`);
+
+        if (!fs.existsSync(deploymentPath)) {
+            throw new Error(
+                `❌ ${coinName} deployment not found at: ${deploymentPath}\n` +
+                `   Run: cd ${path.join(__dirname, '..')} && ./scripts/deploy-test-coins.sh`
+            );
+        }
+
+        const deployment = JSON.parse(fs.readFileSync(deploymentPath, 'utf8'));
+
+        // Extract package ID
+        const packageId = deployment.objectChanges?.find(
+            (obj: any) => obj.type === 'published'
+        )?.packageId;
+
+        // Extract TreasuryCap object
+        const treasuryCapObj = deployment.objectChanges?.find(
+            (obj: any) => obj.objectType?.includes('::coin::TreasuryCap')
+        );
+
+        // Extract CoinMetadata object
+        const metadataObj = deployment.objectChanges?.find(
+            (obj: any) => obj.objectType?.includes('::coin::CoinMetadata')
+        );
+
+        if (!packageId || !treasuryCapObj || !metadataObj) {
+            throw new Error(
+                `❌ Invalid ${coinName} deployment JSON. Missing required objects.\n` +
+                `   Redeploy: ./scripts/deploy-test-coins.sh`
+            );
+        }
+
+        // Extract coin type from TreasuryCap type (removes TreasuryCap wrapper)
+        const coinType = treasuryCapObj.objectType.match(/<(.+)>/)?.[1];
+
+        if (!coinType) {
+            throw new Error(`❌ Could not extract coin type from: ${treasuryCapObj.objectType}`);
+        }
+
+        return {
+            packageId,
+            type: coinType,
+            treasuryCap: treasuryCapObj.objectId,
+            metadata: metadataObj.objectId,
+        };
+    };
+
     return {
-        asset: {
-            packageId: '0x12b868400ecd6a97183d11ffefaa2ba0863bb30d0567f5c37be326b1139fc2a3',
-            type: '0x12b868400ecd6a97183d11ffefaa2ba0863bb30d0567f5c37be326b1139fc2a3::coin::COIN',
-            treasuryCap: '0x802e1b01c7fdbf8f9cabf4fd261533273f959038de5b62acd6e154c8800c1029',
-            metadata: '0x0ac45f34e44473e570ad3eeed92680452f4b5110883ed492840730567844f15b',
-        },
-        stable: {
-            packageId: '0x3aaa86858931d542e56f0b58e24f21e8fc30671d026d057d335a2ebc559ff71c',
-            type: '0x3aaa86858931d542e56f0b58e24f21e8fc30671d026d057d335a2ebc559ff71c::coin::COIN',
-            treasuryCap: '0x96c964b1c62c291f35df8d7c2766aedf690002202cfef7ac614c3fa34c35e6e6',
-            metadata: '0x55576fd4cfe8cd4e0d64e3931aef0232863ae9ce43ab1e80d406ecd109afd16b',
-        },
+        asset: parseCoinDeployment('test_asset'),
+        stable: parseCoinDeployment('test_stable'),
     };
 }
 
@@ -140,7 +185,6 @@ export async function executeTransaction(
         } else {
             // Actually execute the transaction
             console.log('\n⚡ Executing transaction on-chain FOR REAL...');
-            console.log('   💦 SQUIRTING AWAY...\n');
 
             // Get keypair from sui config
             const suiConfigPath = path.join(require('os').homedir(), '.sui', 'sui_config', 'client.yaml');
@@ -187,6 +231,23 @@ export async function executeTransaction(
                 },
             });
 
+            // Debug: log the full result structure
+            if (!result.effects) {
+                console.log('\n⏳ No effects returned immediately, waiting for confirmation...');
+                const waitResult = await sdk.client.waitForTransaction({
+                    digest: result.digest,
+                    options: {
+                        showEffects: true,
+                        showObjectChanges: config.showObjectChanges,
+                        showEvents: config.showEvents,
+                    }
+                });
+                // Copy effects back to result
+                result.effects = waitResult.effects;
+                result.objectChanges = waitResult.objectChanges;
+                result.events = waitResult.events;
+            }
+
             if (result.effects?.status?.status === 'success') {
                 console.log('\n✅ Transaction executed successfully!');
                 console.log(`   Digest: ${result.digest}`);
@@ -217,7 +278,9 @@ export async function executeTransaction(
 
                 return result;
             } else {
-                console.error('\n❌ Transaction failed:', result.effects?.status);
+                console.error('\n❌ Transaction failed!');
+                console.error('Status:', JSON.stringify(result.effects?.status, null, 2));
+                console.error('Effects:', JSON.stringify(result.effects, null, 2));
                 throw new Error(`Transaction failed: ${JSON.stringify(result.effects?.status)}`);
             }
         }

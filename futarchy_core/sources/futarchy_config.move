@@ -783,12 +783,12 @@ public fun new_with_package_registry(
     let deps = deps::new_latest_extensions(
         registry,
         vector[
-            b"AccountProtocol".to_string(),
-            b"FutarchyCore".to_string(),              // Config and version witness
-            b"AccountActions".to_string(),            // Framework actions (currency, vault, etc.)
-            b"FutarchyActions".to_string(),           // Config, liquidity, quota actions
-            b"FutarchyGovernanceActions".to_string(), // Admin + account extensibility
-            b"FutarchyOracleActions".to_string(),     // Oracle management actions
+            b"account_protocol".to_string(),
+            b"futarchy_core".to_string(),              // Config and version witness
+            b"account_actions".to_string(),            // Framework actions (currency, vault, etc.)
+            b"futarchy_actions".to_string(),           // Config, liquidity, quota actions
+            b"futarchy_governance_actions".to_string(), // Admin + account extensibility
+            b"futarchy_oracle".to_string(),     // Oracle management actions
         ],
     );
 
@@ -810,7 +810,7 @@ public fun new_account_test(config: FutarchyConfig, registry: &PackageRegistry, 
     // Must include futarchy_core because version::current() creates a VersionWitness
     // with the @futarchy_core package address
     let deps = deps::new_for_testing_with_config_and_registry(
-        b"FutarchyCore".to_string(),
+        b"futarchy_core".to_string(),
         @futarchy_core,
         registry
     );

@@ -103,7 +103,7 @@ public fun new(
 /// Creates a new Deps struct from latest packages for names.
 /// Unverified packages are not allowed after this operation.
 public fun new_latest_extensions(registry: &PackageRegistry, names: vector<String>): Deps {
-    assert!(names[0] == b"AccountProtocol".to_string(), EAccountProtocolMissing);
+    assert!(names[0] == b"account_protocol".to_string(), EAccountProtocolMissing);
 
     let registry_id = sui::object::id(registry);
     let mut inner = vector<Dep>[];

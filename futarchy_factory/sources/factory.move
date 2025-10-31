@@ -805,8 +805,11 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
 /// This enables One-Time Witness (OTW) compliant coin types, which can only have `drop`.
 /// If you need to store coin types in global storage, wrap them in a struct with `store`.
 ///
-/// INTERNAL: Package-only access. For public API with required caps, use create_dao_unshared_with_caps
-public(package) fun create_dao_unshared<AssetType: drop, StableType: drop>(
+/// Create an unshared DAO for init action execution (PUBLIC - callable from PTBs)
+/// Returns unshared Account and SpotPool that can be used in PTBs
+/// Allows optional treasury_cap and coin_metadata (pass option::none() to defer)
+/// Must call finalize_and_share_dao() after executing init actions
+public fun create_dao_unshared<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
     registry: &PackageRegistry,
     fee_manager: &mut FeeManager,
@@ -923,6 +926,129 @@ public(package) fun create_dao_unshared<AssetType: drop, StableType: drop>(
         stable_type: get_type_string<StableType>(),
         creator: ctx.sender(),
         affiliate_id: b"".to_string(), // Unshared DAO creation uses empty string (set via init actions)
+        timestamp: clock.timestamp_ms(),
+    });
+
+    (account, spot_pool)
+}
+
+/// Create DAO for launchpad completion - NO FEE CHARGED
+/// Launchpad already collected its own fee when raise was created
+/// This is public(package) so only launchpad module can call it
+public(package) fun create_dao_unshared_for_launchpad<AssetType: drop, StableType: drop>(
+    factory: &mut Factory,
+    registry: &PackageRegistry,
+    treasury_cap: Option<TreasuryCap<AssetType>>,
+    coin_metadata: Option<CoinMetadata<AssetType>>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Account, UnifiedSpotPool<AssetType, StableType>) {
+    // Check factory is not permanently disabled
+    assert!(!factory.permanently_disabled, EPermanentlyDisabled);
+
+    // Check factory is active
+    assert!(!factory.paused, EPaused);
+
+    // Check if StableType is allowed
+    let stable_type_name = type_name::with_defining_ids<StableType>();
+    assert!(factory.allowed_stable_types.contains(&stable_type_name), EStableTypeNotAllowed);
+
+    // NO FEE PAYMENT - launchpad already collected fee
+
+    // Use all default configs - init actions will set real values
+    let trading_params = dao_config::default_trading_params();
+    let twap_config = dao_config::default_twap_config();
+    let governance_config = dao_config::default_governance_config();
+
+    // Minimal metadata - init actions will update
+    let metadata_config = dao_config::new_metadata_config(
+        b"DAO".to_ascii_string(), // Default name (init actions will override)
+        url::new_unsafe_from_bytes(b""), // Empty icon (init actions will override)
+        b"".to_string(), // Empty description (init actions will override)
+    );
+
+    let dao_config = dao_config::new_dao_config(
+        trading_params,
+        twap_config,
+        governance_config,
+        metadata_config,
+        dao_config::default_conditional_coin_config(),
+        dao_config::default_quota_config(),
+        dao_config::default_sponsorship_config(),
+    );
+
+    // Create the futarchy config with safe default
+    let config = futarchy_config::new<AssetType, StableType>(
+        dao_config,
+    );
+
+    // Create account with config
+    let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);
+
+    // Create unified spot pool with aggregator support enabled
+    let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
+        30, // 0.3% default fee (init actions can configure via governance)
+        option::none(), // No launch fee schedule by default (can be added via init specs)
+        8000, // oracle_conditional_threshold_bps (80% threshold)
+        clock,
+        ctx,
+    );
+
+    // Lock treasury cap and store coin metadata (if provided)
+    // TreasuryCap is stored via currency::lock_cap for proper atomic borrowing
+    // CoinMetadata is stored separately for metadata updates via intents
+    // For launchpad pre-create flow, these will be none and added later via init_actions
+
+    // Validate caps if both are provided
+    if (treasury_cap.is_some() && coin_metadata.is_some()) {
+        coin_registry::validate_coin_set(
+            option::borrow(&treasury_cap),
+            option::borrow(&coin_metadata),
+        );
+    };
+
+    if (treasury_cap.is_some()) {
+        let auth = account::new_auth<FutarchyConfig, futarchy_config::ConfigWitness>(
+            &account,
+            registry,
+            version::current(),
+            futarchy_config::authenticate(&account, ctx),
+        );
+        currency::lock_cap(
+            auth,
+            &mut account,
+            registry,
+            treasury_cap.destroy_some(),
+            option::none(), // max_supply
+        );
+    } else {
+        treasury_cap.destroy_none();
+    };
+
+    // Store CoinMetadata for DAO governance control over coin metadata
+    if (coin_metadata.is_some()) {
+        account.add_managed_asset(
+            registry,
+            CoinMetadataKey<AssetType> {},
+            coin_metadata.destroy_some(),
+            version::current(),
+        );
+    } else {
+        coin_metadata.destroy_none();
+    };
+
+    // Update factory state
+    factory.dao_count = factory.dao_count + 1;
+
+    // Emit event with default metadata (init actions will update)
+    let account_id = object::id_address(&account);
+    event::emit(DAOCreated {
+        account_id,
+        dao_name: b"DAO".to_ascii_string(),
+        asset_type: get_type_string<AssetType>(),
+        stable_type: get_type_string<StableType>(),
+        creator: ctx.sender(),
+        affiliate_id: b"launchpad".to_string(), // Mark as launchpad-created DAO
         timestamp: clock.timestamp_ms(),
     });
 

@@ -1,10 +1,9 @@
 [package]
 name = "futarchy_types"
 edition = "2024.beta"
-published-at = "0x0"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
 
 [addresses]
-futarchy_types = "0x7dc0d3a6d8eba969d853834c3b4d5c6be36b7a78fbc263ac22f3ba580cb22e0e"
+futarchy_types = "0x7d4f75ee145a79136572a583e8866796e46ba329c619bfaf0a58691134a509d8"

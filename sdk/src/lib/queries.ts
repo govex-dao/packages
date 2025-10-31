@@ -341,4 +341,138 @@ export class QueryHelper {
             .map((event) => event.parsedJson)
             .filter((event: any) => event.raise_id === raiseId);
     }
+
+    // ========================================
+    // Factory View Functions
+    // ========================================
+
+    /**
+     * Get total number of DAOs created by the factory
+     */
+    async getFactoryDaoCount(factoryId: string): Promise<number> {
+        const obj = await this.getObject(factoryId);
+        return Number(this.extractField(obj, 'dao_count') || 0);
+    }
+
+    /**
+     * Check if factory is paused
+     */
+    async isFactoryPaused(factoryId: string): Promise<boolean> {
+        const obj = await this.getObject(factoryId);
+        return Boolean(this.extractField(obj, 'paused'));
+    }
+
+    /**
+     * Check if factory is permanently disabled
+     */
+    async isFactoryPermanentlyDisabled(factoryId: string): Promise<boolean> {
+        const obj = await this.getObject(factoryId);
+        return Boolean(this.extractField(obj, 'permanently_disabled'));
+    }
+
+    /**
+     * Get launchpad bid fee (contribution fee) in MIST
+     */
+    async getLaunchpadBidFee(factoryId: string): Promise<bigint> {
+        const obj = await this.getObject(factoryId);
+        const fee = this.extractField(obj, 'launchpad_bid_fee');
+        return BigInt(fee || 0);
+    }
+
+    /**
+     * Get launchpad cranker reward in MIST
+     */
+    async getLaunchpadCrankerReward(factoryId: string): Promise<bigint> {
+        const obj = await this.getObject(factoryId);
+        const reward = this.extractField(obj, 'launchpad_cranker_reward');
+        return BigInt(reward || 0);
+    }
+
+    /**
+     * Get launchpad settlement reward in MIST
+     */
+    async getLaunchpadSettlementReward(factoryId: string): Promise<bigint> {
+        const obj = await this.getObject(factoryId);
+        const reward = this.extractField(obj, 'launchpad_settlement_reward');
+        return BigInt(reward || 0);
+    }
+
+    // ========================================
+    // Launchpad Detailed View Functions
+    // ========================================
+
+    /**
+     * Get raise start time (timestamp in milliseconds)
+     */
+    async getRaiseStartTime(raiseId: string): Promise<number> {
+        const obj = await this.getObject(raiseId);
+        return Number(this.extractField(obj, 'start_time_ms') || 0);
+    }
+
+    /**
+     * Get raise deadline (timestamp in milliseconds)
+     */
+    async getRaiseDeadline(raiseId: string): Promise<number> {
+        const obj = await this.getObject(raiseId);
+        return Number(this.extractField(obj, 'deadline_ms') || 0);
+    }
+
+    /**
+     * Get raise description
+     */
+    async getRaiseDescription(raiseId: string): Promise<string> {
+        const obj = await this.getObject(raiseId);
+        return String(this.extractField(obj, 'description') || '');
+    }
+
+    /**
+     * Get final raise amount after settlement
+     */
+    async getRaiseFinalAmount(raiseId: string): Promise<bigint> {
+        const obj = await this.getObject(raiseId);
+        const amount = this.extractField(obj, 'final_raise_amount');
+        return BigInt(amount || 0);
+    }
+
+    /**
+     * Get allowed contribution caps (sorted array)
+     */
+    async getRaiseAllowedCaps(raiseId: string): Promise<bigint[]> {
+        const obj = await this.getObject(raiseId);
+        const caps = this.extractField(obj, 'allowed_caps') || [];
+        return Array.isArray(caps) ? caps.map(c => BigInt(c)) : [];
+    }
+
+    /**
+     * Get cap sums (cumulative contributions per tier)
+     */
+    async getRaiseCapSums(raiseId: string): Promise<bigint[]> {
+        const obj = await this.getObject(raiseId);
+        const sums = this.extractField(obj, 'cap_sums') || [];
+        return Array.isArray(sums) ? sums.map(s => BigInt(s)) : [];
+    }
+
+    /**
+     * Get verification level (0-255)
+     */
+    async getRaiseVerificationLevel(raiseId: string): Promise<number> {
+        const obj = await this.getObject(raiseId);
+        return Number(this.extractField(obj, 'verification_level') || 0);
+    }
+
+    /**
+     * Get verification attestation URL
+     */
+    async getRaiseAttestationUrl(raiseId: string): Promise<string> {
+        const obj = await this.getObject(raiseId);
+        return String(this.extractField(obj, 'attestation_url') || '');
+    }
+
+    /**
+     * Get admin review text
+     */
+    async getRaiseAdminReviewText(raiseId: string): Promise<string> {
+        const obj = await this.getObject(raiseId);
+        return String(this.extractField(obj, 'admin_review_text') || '');
+    }
 }

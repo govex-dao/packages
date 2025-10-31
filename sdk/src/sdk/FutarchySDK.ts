@@ -3,7 +3,10 @@ import { NetworkType, createNetworkConfig, NetworkConfig } from "../config/netwo
 import { DeploymentManager } from "../config/deployment";
 import { DeploymentConfig } from "../types/deployment";
 import { FactoryOperations } from "../lib/factory";
+import { FactoryAdminOperations } from "../lib/factory-admin";
+import { FactoryValidatorOperations } from "../lib/factory-validator";
 import { LaunchpadOperations } from "../lib/launchpad";
+import { FeeManagerOperations } from "../lib/fee-manager";
 import { QueryHelper } from "../lib/queries";
 
 /**
@@ -34,8 +37,15 @@ export interface FutarchySDKConfig {
  */
 export class FutarchySDK {
     public factory: FactoryOperations;
+    public factoryAdmin: FactoryAdminOperations;
+    public factoryValidator: FactoryValidatorOperations;
     public launchpad: LaunchpadOperations;
+    public feeManager: FeeManagerOperations;
     public query: QueryHelper;
+
+    // Convenience properties for commonly used package IDs
+    public packageRegistryId: string;
+    public vaultActionsPackageId: string;
 
     protected constructor(
         public client: SuiClient,
@@ -62,12 +72,36 @@ export class FutarchySDK {
             );
         }
 
+        const futarchyTypesPackageId = deployments.getPackageId("futarchy_types")!;
+
+        // Set convenience properties
+        this.packageRegistryId = packageRegistry.objectId;
+        this.vaultActionsPackageId = deployments.getPackageId("futarchy_actions")!;
+
         this.factory = new FactoryOperations(
             client,
             factoryPackageId,
+            futarchyTypesPackageId,
             factoryObject.objectId,
+            factoryObject.initialSharedVersion,
             packageRegistry.objectId,
-            feeManager.objectId
+            feeManager.objectId,
+            feeManager.initialSharedVersion
+        );
+
+        // Initialize factory admin operations
+        this.factoryAdmin = new FactoryAdminOperations(
+            client,
+            factoryPackageId,
+            factoryObject.objectId,
+            factoryObject.initialSharedVersion
+        );
+
+        // Initialize factory validator operations
+        this.factoryValidator = new FactoryValidatorOperations(
+            client,
+            factoryPackageId,
+            packageRegistry.objectId
         );
 
         // Initialize launchpad operations
@@ -80,6 +114,14 @@ export class FutarchySDK {
             packageRegistry.objectId,
             feeManager.objectId,
             feeManager.initialSharedVersion
+        );
+
+        // Initialize fee manager operations
+        const marketsCorePackageId = deployments.getPackageId("futarchy_markets_core")!;
+        this.feeManager = new FeeManagerOperations(
+            client,
+            feeManager.objectId,
+            marketsCorePackageId
         );
     }
 

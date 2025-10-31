@@ -1,7 +1,6 @@
 [package]
 name = "futarchy_factory"
 edition = "2024.beta"
-published-at  = "0x0"
 
 [dependencies]
 AccountProtocol = { local = "../move-framework/packages/protocol" }
@@ -17,14 +16,14 @@ futarchy_actions = { local = "../futarchy_actions" }
 # REMOVED: futarchy_stream_actions - moved to v3_streams (not needed in factory)
 # REMOVED: futarchy_lifecycle (dissolution) - no longer needed in core protocol
 [addresses]
-futarchy_factory = "0xd3beb1748a4005ac8cc22f1b3a29894a03e18221fd467550707af3d474f4d5b7"
-futarchy_types = "0x7dc0d3a6d8eba969d853834c3b4d5c6be36b7a78fbc263ac22f3ba580cb22e0e"
-futarchy_one_shot_utils = "0x0c9c44770746a6bdc70bbc20545a679c048e2d7f8bf4e3c63fce760d7eda9a4d"
-futarchy_core = "0xd3c702a45d35c25a4491ee66ed7177b7c4dfe9ddfa62ccaa003c4715c398b546"
-futarchy_markets_primitives = "0xf8d24d22f6c31a0bfd5b5a7ca6f0a6172682448bf6b459ec7daed057fddccd0c"
-futarchy_markets_core = "0x88d414f05a9cbfe24c2f8eab213ce3d552761424f5d73ae6df84d1d83cf56fcf"
-futarchy_markets_operations = "0xd45f9f77e71954038636f46a184310c66e9d983f7aad47e22243480c22c10390"
-futarchy_oracle = "0x2d1034df0e44fe7c759c15931abb0eb49baa1104cc7421e520578f1eff1fe8f7"
-futarchy_actions = "0x9a4ed709bfa0c0229021ac4ef946c6b0cfa109e26e825e66783b50daa38286e4"
-account_protocol = "0x41ba0ee7ae07bb80e22128f6daeed1d765289d88d6919fa412b544f05a967b9d"
-account_actions = "0x75c59ba5279bd1c4e9a3be412ace1839ed17125301c320cabb04616c910f87f8"
+futarchy_factory = "0xaf60dc22ca842d8498bf2a36fd9cc8396b677fa608c5521ae5c8df2f430d0d5c"
+futarchy_types = "0x7d4f75ee145a79136572a583e8866796e46ba329c619bfaf0a58691134a509d8"
+futarchy_one_shot_utils = "0x3358ecc468ffb7629bc5e60fa74014a93a765a24cc6465c198589bc4300eface"
+futarchy_core = "0xd3f08396a680fbd1a184f98e2295a6bbf24f9cf7a975d6ab4b252e0c25c97bd1"
+futarchy_markets_primitives = "0x1177e3825eb4f43a64691b8c291378f39e3b6e478ef5a37dcd453062ad756550"
+futarchy_markets_core = "0xa1336b5fe71157da28cc11a770d8bcfb7e783136956490e3947244043b120825"
+futarchy_markets_operations = "0x48b1e147ac78aa942d1aec3e0c18afc63bcee556ee4ffe2c00e74585ebfad572"
+futarchy_oracle = "0x6839fefae4e2b72d88c15712d56759e8172f279e6ce4ef24b109afdc9ad6b581"
+futarchy_actions = "0xb3ec66ce326b234ee573ebe1b4a9176650e466c5b63717e07d8595bc69481fc4"
+account_protocol = "0xd0751a5281bd851ac7df5c62cd523239ddfa7dc321a7df3ddfc7400d65938ed6"
+account_actions = "0x9b92bce11813bb850edd103e24ca52f97721c234ce63b4765fa1933d04739081"

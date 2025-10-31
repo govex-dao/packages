@@ -442,7 +442,7 @@ public fun do_update_name<Outcome: store, IW: drop>(
     assert!(new_name.length() > 0, EEmptyName);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
 
     // Update the name - futarchy_config expects a regular String
     futarchy_config::set_dao_name(config, new_name);
@@ -474,7 +474,7 @@ public fun do_update_name_internal(
     assert!(new_name.length() > 0, EEmptyName);
     
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
     
     // Update the name directly (set_dao_name handles conversion internally)
     futarchy_config::set_dao_name(config, new_name);
@@ -537,7 +537,7 @@ public fun do_update_trading_params<Outcome: store, IW: drop>(
     validate_trading_params_update(&action);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
 
     // Apply updates if provided
     if (action.min_asset_amount.is_some()) {
@@ -624,7 +624,7 @@ public fun do_update_metadata<Outcome: store, IW: drop>(
     validate_metadata_update(&action);
     
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
     
     // Apply updates if provided - convert types as needed
     if (action.dao_name.is_some()) {
@@ -701,7 +701,7 @@ public fun do_update_twap_config<Outcome: store, IW: drop>(
     validate_twap_config_update(&action);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
 
     // Apply updates if provided
     if (action.start_delay.is_some()) {
@@ -788,7 +788,7 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     validate_governance_update(&action);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
 
     // Apply updates if provided
     if (action.max_outcomes.is_some()) {
@@ -913,7 +913,7 @@ public fun do_update_metadata_table<Outcome: store, IW: drop>(
     assert!(action.keys.length() == action.values.length(), EMismatchedKeyValueLength);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
 
     // Metadata table operations would be implemented here when available in futarchy_config
     // Currently, futarchy_config doesn't have a metadata table, so we validate the action
@@ -976,7 +976,7 @@ public fun do_update_conditional_metadata<Outcome: store, IW: drop>(
     let account_id = object::id(account);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
 
     // Apply updates using futarchy_config setters (standard pattern)
     if (use_outcome_index_opt.is_some()) {
@@ -1047,7 +1047,7 @@ public fun do_update_sponsorship_config<Outcome: store, IW: drop>(
     let account_id = object::id(account);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, ConfigActionsWitness>(account, registry, version, ConfigActionsWitness {});
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
     let dao_cfg = futarchy_config::dao_config_mut(config);
     let sponsorship_cfg = dao_config::sponsorship_config_mut(dao_cfg);
 

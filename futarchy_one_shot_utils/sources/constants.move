@@ -238,7 +238,7 @@ public fun max_beneficiaries(): u64 { 100 }
 // === Launchpad Constants ===
 
 /// The duration for every launchpad raise (4 days in milliseconds)
-public fun launchpad_duration_ms(): u64 { 10_000 } // 10 seconds for testing
+public fun launchpad_duration_ms(): u64 { 120_000 } // 2 minutes for E2E testing
 
 /// Claim period after successful raise before creator can sweep dust (14 days)
 public fun launchpad_claim_period_ms(): u64 { 1_209_600_000 }

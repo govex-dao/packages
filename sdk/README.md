@@ -36,6 +36,15 @@ src/
 - ✅ Balance checking
 - ✅ Object queries with type filtering
 
+**Phase 3: Cross-Package Action Orchestration** 🆕
+- ✅ InitActionSpec pattern for DAO initialization
+- ✅ ConfigActions - DAO configuration (metadata, trading params, proposals)
+- ✅ LiquidityActions - Pool operations (create, add/remove liquidity)
+- ✅ GovernanceActions - Governance settings (voting power, quorum, delegation)
+- ✅ VaultActions - Stream management (team vesting, advisor compensation)
+- ✅ BCS serialization matching Move struct layouts
+- ✅ Type-safe action builders with full parameter validation
+
 ### Roadmap
 
 - [ ] Auto-generated Move bindings (.gen layer)
@@ -45,6 +54,7 @@ src/
 - [ ] Event subscriptions and listeners
 - [ ] Caching layer for on-chain data
 - [ ] Batch transaction builders
+- [ ] Init action execution helpers (PTB construction from staged specs)
 
 ## Installation
 
@@ -60,6 +70,7 @@ pnpm add @govex/futarchy-sdk
 
 ```typescript
 import { FutarchySDK, TransactionUtils } from '@govex/futarchy-sdk';
+import { ConfigActions, VaultActions } from '@govex/futarchy-sdk/actions';
 import deployments from './deployments.json';
 
 // Initialize SDK
@@ -81,7 +92,7 @@ const dao = await sdk.query.getDAO(allDAOs[0].account_id);
 // Check balances
 const balance = await sdk.query.getBalance(address, '0x2::sui::SUI');
 
-// === Create a DAO ===
+// === Create a DAO (Simple) ===
 
 const tx = sdk.factory.createDAOWithDefaults({
   assetType: '0xPKG::coin::MYCOIN',
@@ -93,9 +104,45 @@ const tx = sdk.factory.createDAOWithDefaults({
   description: 'A futarchy DAO',
 });
 
+// === Create a DAO with Init Actions (Advanced) ===
+
+const now = Date.now();
+const oneYear = 365 * 24 * 60 * 60 * 1000;
+
+const txWithActions = sdk.factory.createDAOWithInitSpecs(
+  {
+    assetType: '0xPKG::coin::MYCOIN',
+    stableType: '0x2::sui::SUI',
+    treasuryCap: '0xCAP_ID',
+    coinMetadata: '0xMETADATA_ID',
+    daoName: 'My DAO',
+    // ... other config
+  },
+  [
+    // Configure DAO metadata
+    ConfigActions.updateMetadata({
+      daoName: "My DAO",
+      description: "DAO with team vesting",
+    }),
+
+    // Create team vesting stream
+    VaultActions.createStream({
+      vaultName: "team_vesting",
+      beneficiary: "0xBENEFICIARY",
+      totalAmount: 1_000_000n,
+      startTime: now,
+      endTime: now + oneYear,
+      cliffTime: now + (90 * 24 * 60 * 60 * 1000), // 3-month cliff
+      maxPerWithdrawal: 50_000n,
+      minIntervalMs: 86400000, // 1 day
+      maxBeneficiaries: 1,
+    }),
+  ]
+);
+
 // Sign and execute
 // const result = await sdk.client.signAndExecuteTransaction({
-//   transaction: tx,
+//   transaction: txWithActions,
 //   signer: keypair,
 // });
 ```
@@ -252,13 +299,97 @@ Utility functions for transaction building.
 - `buildTarget(packageId, module, function)` - Build function target
 - `buildType(packageId, module, type)` - Build type parameter
 
+### Action Builders 🆕
+
+Type-safe builders for creating initialization actions. All action builders return `InitActionSpec` objects that can be passed to `factory.createDAOWithInitSpecs()`.
+
+#### ConfigActions
+
+Configure DAO settings during initialization.
+
+**Methods:**
+
+- `updateMetadata({ daoName?, iconUrl?, description? })` - Update DAO metadata
+- `updateMetadataTable([{ key, value }, ...])` - Add custom metadata key-value pairs
+- `setProposalsEnabled(enabled: boolean)` - Enable/disable proposals
+- `updateTradingParams({ minAssetAmount?, minStableAmount?, ammTotalFeeBps? })` - Update trading parameters
+- `updateProposalParams({ reviewPeriodMs?, tradingPeriodMs?, maxOutcomes? })` - Update proposal parameters
+- `updateTwapParams({ twapStartDelay?, twapStepMax?, twapInitialObservation?, twapThreshold? })` - Update TWAP settings
+- `setAssetAvailability(vaultName: string, available: boolean)` - Control asset withdrawals
+- `setStableAvailability(vaultName: string, available: boolean)` - Control stable withdrawals
+- `setAssetLimitPerWithdrawal(vaultName: string, limit: bigint)` - Set withdrawal limits
+
+#### VaultActions
+
+Manage payment streams and vesting schedules.
+
+**Methods:**
+
+- `createStream({ vaultName, beneficiary, totalAmount, startTime, endTime, cliffTime?, maxPerWithdrawal?, minIntervalMs?, maxBeneficiaries? })` - Create a payment stream with linear vesting
+- `createMultipleStreams([streamConfig, ...])` - Create multiple streams at once
+
+**Stream Features:**
+- Linear vesting between start and end time
+- Optional cliff period (funds locked until cliff time)
+- Rate limiting (max per withdrawal, min interval)
+- Multiple beneficiaries support (1-100)
+
+**Example:**
+```typescript
+VaultActions.createStream({
+  vaultName: "team_vesting",
+  beneficiary: "0x...",
+  totalAmount: 1_000_000n,
+  startTime: Date.now(),
+  endTime: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 year
+  cliffTime: Date.now() + (90 * 24 * 60 * 60 * 1000), // 3-month cliff
+  maxPerWithdrawal: 50_000n, // Max 50k per withdrawal
+  minIntervalMs: 86400000, // Min 1 day between withdrawals
+  maxBeneficiaries: 1,
+})
+```
+
+#### LiquidityActions
+
+Create and manage liquidity pools.
+
+**Methods:**
+
+- `createPool({ poolName, assetAmount, stableAmount, ammTotalFeeBps? })` - Create a new liquidity pool
+- `addLiquidity({ poolName, assetAmount, stableAmount })` - Add liquidity to existing pool
+- `removeLiquidity({ poolName, lpTokenAmount })` - Remove liquidity
+- `withdrawLpToken({ poolName, amount, recipient })` - Withdraw LP tokens
+- `updatePoolParams({ poolName, ammTotalFeeBps })` - Update pool fee parameters
+
+#### GovernanceActions
+
+Configure governance and voting parameters.
+
+**Methods:**
+
+- `setMinVotingPower(amount: bigint)` - Set minimum voting power required
+- `setQuorum(amount: bigint)` - Set quorum threshold
+- `updateVotingPeriod(periodMs: number)` - Set voting period duration
+- `setDelegationEnabled(enabled: boolean)` - Enable/disable vote delegation
+- `updateProposalDeposit(amount: bigint)` - Set proposal deposit requirement
+
 ## Examples
 
-See the `examples/` directory for complete usage examples:
+See the `scripts/` directory for complete usage examples:
 
-- `basic-usage.ts` - SDK initialization and basic queries
-- `create-dao.ts` - Creating a new Futarchy DAO
+**Basic Usage:**
+- `execute-tx.ts` - Helper utilities for transaction execution
 - `query-data.ts` - Querying DAOs, events, and balances
+
+**DAO Creation:**
+- `create-dao-with-init-actions.ts` - Create DAO with config actions
+- `create-dao-with-stream.ts` - Create DAO with team vesting stream
+- `create-dao-with-stream-sui.ts` - Demonstration of stream init actions
+
+**Documentation:**
+- `STREAM_IMPLEMENTATION.md` - Full implementation guide for stream init actions
+- `STREAM_INIT_ACTIONS_VERIFIED.md` - Verification report with examples
+- `CROSS_PACKAGE_ACTIONS_IMPLEMENTATION.md` - Cross-package orchestration guide
 
 ## Development
 
@@ -289,6 +420,65 @@ dist/
 └── cjs/           # CommonJS (.js)
 ```
 
+## Recent Updates 🆕
+
+### Cross-Package Action Orchestration (Phase 3)
+
+The SDK now supports **InitActionSpec pattern** for composing actions from multiple packages during DAO initialization:
+
+**What Changed:**
+- ✅ Added `InitActionSpec` interface (TypeName + BCS data)
+- ✅ Added 4 action builder classes: ConfigActions, LiquidityActions, GovernanceActions, VaultActions
+- ✅ Added BCS serialization helpers matching Move struct layouts
+- ✅ Updated Factory with `createDAOWithInitSpecs()` method
+- ✅ Created Move contracts: `vault_actions.move` and `vault_intents.move` in futarchy_actions package
+
+**Move Framework Changes:**
+- ❌ NO changes needed to move-framework (account_actions package)
+- ✅ `vault::create_stream()` already exists and works perfectly
+- ✅ Only added **integration layer** in futarchy_actions to connect streams with InitActionSpecs
+
+**Architecture:**
+```
+SDK Action Builders → InitActionSpec (TypeName + BCS)
+         ↓
+Factory stages as Intents on Account
+         ↓
+Frontend reads staged specs → Constructs PTB
+         ↓
+PTB calls vault_actions::execute_create_stream_init()
+         ↓
+Internally calls account_actions::vault::create_stream()
+         ↓
+Stream created atomically with DAO setup
+```
+
+### Stream Init Actions
+
+Create payment streams during DAO initialization:
+
+```typescript
+VaultActions.createStream({
+  vaultName: "team_vesting",
+  beneficiary: "0x...",
+  totalAmount: 1_000_000n,
+  startTime: Date.now(),
+  endTime: Date.now() + (365 * 24 * 60 * 60 * 1000),
+  cliffTime: Date.now() + (90 * 24 * 60 * 60 * 1000),
+  maxPerWithdrawal: 50_000n,
+  minIntervalMs: 86400000,
+  maxBeneficiaries: 1,
+})
+```
+
+**Use Cases:**
+- Team vesting schedules
+- Advisor compensation
+- Grant distributions
+- Time-based token unlocking
+
+**Status:** ✅ Verified working - see `STREAM_INIT_ACTIONS_VERIFIED.md`
+
 ## License
 
 MIT
@@ -302,3 +492,4 @@ Contributions are welcome! Please open an issue or PR.
 For issues and questions:
 - GitHub Issues: [govex repository]
 - Documentation: [link to docs]
+- Discord: [discord invite]

@@ -702,6 +702,29 @@ public fun add_coin_fee_config(
     dynamic_field::add(&mut fee_manager.id, coin_type, config);
 }
 
+/// Entry wrapper for add_coin_fee_config that takes coin type as generic parameter
+public entry fun add_coin_fee_config_entry<CoinType>(
+    fee_manager: &mut FeeManager,
+    admin_cap: &FeeAdminCap,
+    decimals: u8,
+    dao_creation_fee: u64,
+    proposal_fee_per_outcome: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let coin_type = type_name::get<CoinType>();
+    add_coin_fee_config(
+        fee_manager,
+        admin_cap,
+        coin_type,
+        decimals,
+        dao_creation_fee,
+        proposal_fee_per_outcome,
+        clock,
+        ctx,
+    );
+}
+
 /// Update creation fee for a specific coin type (with 6-month delay and 10x cap)
 public fun update_coin_creation_fee(
     fee_manager: &mut FeeManager,

@@ -254,55 +254,37 @@ fun init(otw: LAUNCHPAD, ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Pre-create a DAO for a raise but keep it unshared
+/// REMOVED: pre_create_dao_for_raise
 ///
-/// BREAKING CHANGE: Removed `store` ability requirement from RaiseToken and StableCoin.
-/// This enables One-Time Witness (OTW) compliant coin types to be used in launchpad raises.
-public fun pre_create_dao_for_raise<RaiseToken: drop, StableCoin: drop>(
-    raise: &mut Raise<RaiseToken, StableCoin>,
-    creator_cap: &CreatorCap,
-    factory: &mut factory::Factory,
-    registry: &PackageRegistry,
-    fee_manager: &mut fee::FeeManager,
-    payment: Coin<sui::sui::SUI>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    assert!(creator_cap.raise_id == object::id(raise), EInvalidCreatorCap);
-    assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
-    assert!(raise.dao_id.is_none(), EInvalidStateForAction);
-
-    let (account, spot_pool) = factory::create_dao_unshared<RaiseToken, StableCoin>(
-        factory,
-        registry,
-        fee_manager,
-        payment,
-        option::none(), // treasury_cap - added later via init_actions on raise completion
-        option::none(), // coin_metadata - added later via init_actions on raise completion
-        clock,
-        ctx,
-    );
-
-    raise.dao_id = option::some(object::id(&account));
-
-    df::add(&mut raise.id, DaoAccountKey {}, account);
-    df::add(&mut raise.id, DaoPoolKey {}, spot_pool);
-}
+/// This function was removed to fix ESharedNonNewObject error.
+/// Sui requires objects to be shared in the same transaction they're created.
+///
+/// OLD FLOW (broken):
+///   1. pre_create_dao_for_raise → creates Account in TX1
+///   2. complete_raise → tries to share Account in TX2 → FAILS with ESharedNonNewObject
+///
+/// NEW FLOW (fixed):
+///   1. complete_raise → creates Account + shares it in same TX → SUCCESS
+///   2. Frontend PTB → executes staged init specs against shared Account
+///
+/// The staged_init_specs are stored in Raise.staged_init_specs and executed
+/// after DAO creation via PTB (see INIT_ACTIONS_GUIDE.md).
+///
+/// NOTE: DAO creation fee payment moved to complete_raise_internal.
 
 /// Stage initialization actions
+/// Specs are stored and will be executed via PTB after DAO is created and shared
 public fun stage_launchpad_init_intent<RaiseToken, StableCoin>(
     raise: &mut Raise<RaiseToken, StableCoin>,
-    registry: &PackageRegistry,
+    _registry: &PackageRegistry,
     creator_cap: &CreatorCap,
     spec: InitActionSpecs,
-    clock: &Clock,
-    ctx: &mut TxContext,
+    _clock: &Clock,
+    _ctx: &mut TxContext,
 ) {
     assert!(creator_cap.raise_id == object::id(raise), EInvalidCreatorCap);
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(!raise.intents_locked, EIntentsAlreadyLocked);
-    assert!(raise.dao_id.is_some(), EDaoNotPreCreated);
-    assert!(df::exists_(&raise.id, DaoAccountKey {}), EResourcesNotFound);
 
     let action_count = action_specs::action_count(&spec);
     assert!(action_count > 0, EInvalidActionData);
@@ -320,11 +302,7 @@ public fun stage_launchpad_init_intent<RaiseToken, StableCoin>(
     let staged_index = staged_len;
     let raise_id = object::id(raise);
 
-    {
-        let account_ref: &mut Account = df::borrow_mut(&mut raise.id, DaoAccountKey {});
-        launchpad_init_actions::stage_init_intent(account_ref, registry, &raise_id, staged_index, &spec, clock, ctx);
-    };
-
+    // Just store the spec - no Account needed until complete_raise
     vector::push_back(&mut raise.staged_init_specs, spec);
 
     event::emit(InitIntentStaged { raise_id, staged_index, action_count });
@@ -334,23 +312,18 @@ public fun stage_launchpad_init_intent<RaiseToken, StableCoin>(
 public entry fun unstage_last_launchpad_init_intent<RaiseToken, StableCoin>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     creator_cap: &CreatorCap,
-    ctx: &mut TxContext,
+    _ctx: &mut TxContext,
 ) {
     assert!(creator_cap.raise_id == object::id(raise), EInvalidCreatorCap);
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(!raise.intents_locked, EIntentsAlreadyLocked);
-    assert!(df::exists_(&raise.id, DaoAccountKey {}), EResourcesNotFound);
 
     let staged_len = vector::length(&raise.staged_init_specs);
     assert!(staged_len > 0, EInvalidStateForAction);
     let staged_index = staged_len - 1;
     let raise_id = object::id(raise);
 
-    {
-        let account_ref: &mut Account = df::borrow_mut(&mut raise.id, DaoAccountKey {});
-        launchpad_init_actions::cancel_init_intent(account_ref, &raise_id, staged_index, ctx);
-    };
-
+    // Just remove from vector - no Account to clean up
     let _removed = vector::pop_back(&mut raise.staged_init_specs);
 
     event::emit(InitIntentRemoved { raise_id, staged_index });
@@ -595,9 +568,8 @@ public entry fun complete_raise<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     creator_cap: &CreatorCap,
     final_raise_amount: u64,
+    factory: &mut factory::Factory,
     registry: &PackageRegistry,
-    fee_manager: &mut fee::FeeManager,
-    payment: Coin<sui::sui::SUI>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -618,15 +590,14 @@ public entry fun complete_raise<RaiseToken: drop, StableCoin: drop>(
     // Override the settlement's final_raise_amount with creator's choice
     raise.final_raise_amount = final_raise_amount;
 
-    complete_raise_internal(raise, registry, fee_manager, payment, clock, ctx);
+    complete_raise_internal(raise, factory, registry, clock, ctx);
 }
 
 /// Permissionless completion after 24h delay (uses max automatically)
 public entry fun complete_raise_permissionless<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
+    factory: &mut factory::Factory,
     registry: &PackageRegistry,
-    fee_manager: &mut fee::FeeManager,
-    payment: Coin<sui::sui::SUI>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -651,29 +622,38 @@ public entry fun complete_raise_permissionless<RaiseToken: drop, StableCoin: dro
 
     raise.final_raise_amount = final_amount;
 
-    complete_raise_internal(raise, registry, fee_manager, payment, clock, ctx);
+    complete_raise_internal(raise, factory, registry, clock, ctx);
 }
 
 fun complete_raise_internal<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
+    factory: &mut factory::Factory,
     registry: &PackageRegistry,
-    fee_manager: &mut fee::FeeManager,
-    payment: Coin<sui::sui::SUI>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(raise.settlement_done, EInvalidStateForAction);
-    assert!(raise.dao_id.is_some(), EDaoNotPreCreated);
-
-    fee::deposit_dao_creation_payment(fee_manager, payment, clock, ctx);
 
     let final_total = raise.final_raise_amount;
     assert!(final_total >= raise.min_raise_amount, EMinRaiseNotMet);
     assert!(final_total > 0, EMinRaiseNotMet);
 
-    let mut account: Account = df::remove(&mut raise.id, DaoAccountKey {});
-    let mut spot_pool: UnifiedSpotPool<RaiseToken, StableCoin> = df::remove(&mut raise.id, DaoPoolKey {});
+    // No DAO creation fee - launchpad already collected fee when raise was created
+
+    // Create NEW DAO (unshared) - will be shared at end of this tx
+    // Uses special launchpad function that doesn't charge DAO creation fee
+    let (mut account, mut spot_pool) = factory::create_dao_unshared_for_launchpad<RaiseToken, StableCoin>(
+        factory,
+        registry,
+        option::none(), // treasury_cap - added below
+        option::none(), // coin_metadata - added below
+        clock,
+        ctx,
+    );
+
+    // Store DAO ID for reference
+    raise.dao_id = option::some(object::id(&account));
 
     // Deposit treasury cap
     let treasury_cap = raise.treasury_cap.extract();
@@ -1072,42 +1052,29 @@ public entry fun cleanup_failed_raise<RaiseToken: drop, StableCoin: drop>(
         });
     };
 
-    // Clean up pre-created DAO
-    if (raise.dao_id.is_some()) {
-        if (!vector::is_empty(&raise.staged_init_specs) && df::exists_(&raise.id, DaoAccountKey {})) {
-            let raise_id = object::id(raise);
-            {
-                let account_ref: &mut Account = df::borrow_mut(&mut raise.id, DaoAccountKey {});
-                launchpad_init_actions::cleanup_init_intents(account_ref, &raise_id, &raise.staged_init_specs, ctx);
-            };
-            raise.staged_init_specs = vector::empty();
-        };
-
-        if (df::exists_(&raise.id, DaoAccountKey {})) {
-            let account: Account = df::remove(&mut raise.id, DaoAccountKey {});
-            sui_transfer::public_share_object(account);
-        };
-
-
-        if (df::exists_(&raise.id, DaoPoolKey {})) {
-            let pool: UnifiedSpotPool<RaiseToken, StableCoin> = df::remove(&mut raise.id, DaoPoolKey {});
-            unified_spot_pool::share(pool);
-        };
-
-        let dao_id = if (raise.dao_id.is_some()) {
-            *raise.dao_id.borrow()
-        } else {
-            object::id_from_address(@0x0)
-        };
-
-        raise.dao_id = option::none();
-
-        event::emit(FailedRaiseCleanup {
-            raise_id: object::id(raise),
-            dao_id,
-            timestamp: clock.timestamp_ms(),
-        });
+    // Clean up staged init specs
+    // NOTE: No pre-created DAO to clean up anymore - DAO is only created in complete_raise
+    if (!vector::is_empty(&raise.staged_init_specs)) {
+        raise.staged_init_specs = vector::empty();
     };
+
+    // Get DAO ID for event before clearing
+    let dao_id = if (raise.dao_id.is_some()) {
+        *raise.dao_id.borrow()
+    } else {
+        object::id_from_address(@0x0)
+    };
+
+    // Clear DAO ID if set
+    if (raise.dao_id.is_some()) {
+        raise.dao_id = option::none();
+    };
+
+    event::emit(FailedRaiseCleanup {
+        raise_id: object::id(raise),
+        dao_id,
+        timestamp: clock.timestamp_ms(),
+    });
 
     if (df::exists_(&raise.id, CoinMetadataKey {})) {
         let metadata: CoinMetadata<RaiseToken> = df::remove(&mut raise.id, CoinMetadataKey {});
@@ -1409,8 +1376,6 @@ public fun complete_raise_test<RaiseToken: drop, StableCoin: drop>(
     creator_cap: &CreatorCap,
     final_raise_amount: u64,
     registry: &PackageRegistry,
-    fee_manager: &mut fee::FeeManager,
-    payment: Coin<sui::sui::SUI>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -1432,7 +1397,7 @@ public fun complete_raise_test<RaiseToken: drop, StableCoin: drop>(
     // Override the settlement's final_raise_amount with creator's choice
     raise.final_raise_amount = final_raise_amount;
 
-    fee::deposit_dao_creation_payment(fee_manager, payment, clock, ctx);
+    // No DAO creation fee - launchpad already collected it
 
     let final_total = raise.final_raise_amount;
     assert!(final_total >= raise.min_raise_amount, EMinRaiseNotMet);

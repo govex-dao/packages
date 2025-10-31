@@ -146,7 +146,7 @@ and patara.app
 - [X] cant subsidise after TWAP delay
 
 - [ ] unlocks ratio of launchapd or jsut price or both??? decide??
-
+- [ ] cap / intent to pause new account creation??
 
 1) dao needs to supside LPs during proposals ( use proposer fee)\
 2) I need to slwly replace aftermath!!! \

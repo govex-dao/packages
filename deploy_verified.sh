@@ -65,8 +65,9 @@ deploy_and_verify() {
     echo -e "${YELLOW}Deploying $pkg_name...${NC}"
     cd "$pkg_path"
 
-    # Delete Move.lock to clear cached published addresses
+    # Delete Move.lock and build directory to clear all cached artifacts
     rm -f Move.lock
+    rm -rf build
 
     # Set package address to 0x0 for deployment in the current package
     # Use a more robust sed pattern to avoid escaping issues
@@ -378,6 +379,45 @@ main() {
     else
         echo -e "${YELLOW}Warning: node not found, skipping JSON processing${NC}"
         echo "Run 'node process-deployments.js' manually to process deployment JSONs"
+    fi
+
+    # Auto-add SUI to factory allowed stable types
+    echo ""
+    echo -e "${BLUE}=== Adding SUI to Factory Allowed Stable Types ===${NC}"
+
+    # Extract factory package ID and FactoryOwnerCap from deployments
+    FACTORY_PKG=$(grep -A 1 "futarchy_factory:" "$DEPLOYMENT_LOG" | tail -1 | awk '{print $2}')
+
+    if [ -n "$FACTORY_PKG" ] && [ "$FACTORY_PKG" != "null" ]; then
+        # Find Factory object and FactoryOwnerCap from deployment JSON
+        FACTORY_JSON="$DEPLOYMENTS_DIR/futarchy_factory.json"
+        if [ -f "$FACTORY_JSON" ]; then
+            FACTORY_OBJ=$(jq -r '.objectChanges[] | select(.objectType? and (.objectType | contains("::factory::Factory"))) | .objectId' "$FACTORY_JSON" 2>/dev/null | head -1)
+            OWNER_CAP=$(jq -r '.objectChanges[] | select(.objectType? and (.objectType | contains("::factory::FactoryOwnerCap"))) | .objectId' "$FACTORY_JSON" 2>/dev/null | head -1)
+
+            if [ -n "$FACTORY_OBJ" ] && [ -n "$OWNER_CAP" ]; then
+                echo "Factory: $FACTORY_OBJ"
+                echo "OwnerCap: $OWNER_CAP"
+                echo "Adding SUI to allowed stable types..."
+
+                sui client call \
+                    --package "$FACTORY_PKG" \
+                    --module factory \
+                    --function add_allowed_stable_type \
+                    --type-args '0x2::sui::SUI' \
+                    --args "$FACTORY_OBJ" "$OWNER_CAP" 0x6 \
+                    --gas-budget 10000000 \
+                    2>&1 | tee -a "$DEPLOYMENT_LOG"
+
+                echo -e "${GREEN}✓ SUI added to allowed stable types${NC}"
+            else
+                echo -e "${YELLOW}Warning: Could not find Factory object or OwnerCap${NC}"
+            fi
+        else
+            echo -e "${YELLOW}Warning: futarchy_factory.json not found${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Warning: futarchy_factory package ID not found${NC}"
     fi
 }
 

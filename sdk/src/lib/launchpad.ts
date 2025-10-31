@@ -1,6 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { TransactionBuilder, TransactionUtils } from "./transaction";
+import { InitActionSpec } from "../types/init-actions";
 
 /**
  * Configuration for creating a launchpad raise
@@ -16,6 +17,9 @@ export interface CreateRaiseConfig {
     tokensForSale: bigint | number; // Amount of tokens to sell
     minRaiseAmount: bigint | number; // Minimum stable coins to raise
     maxRaiseAmount?: bigint | number; // Optional maximum (undefined = no max)
+
+    // Timing
+    startDelayMs?: bigint | number; // Optional delay before raise starts (in milliseconds)
 
     // Contribution caps
     allowedCaps: (bigint | number)[]; // Sorted array of allowed caps, must end with UNLIMITED_CAP
@@ -36,6 +40,8 @@ export interface CreateRaiseConfig {
  */
 export interface ContributeConfig {
     raiseId: string; // Raise object ID
+    raiseTokenType: string; // Full type path for raise token
+    stableCoinType: string; // Full type path for stable coin
     paymentAmount: bigint | number; // Amount to contribute in stable coins
     maxTotalCap: bigint | number; // Max total raise you're willing to accept (use UNLIMITED_CAP for any)
     crankFee: bigint | number; // Fee for batch claim operations (from factory config)
@@ -113,6 +119,9 @@ export class LaunchpadOperations {
         const maxRaise = config.maxRaiseAmount !== undefined ?
             config.maxRaiseAmount :
             undefined;
+        const startDelay = config.startDelayMs !== undefined ?
+            config.startDelayMs :
+            undefined;
 
         // Prepare launchpad fee payment
         const launchpadFee = builder.splitSui(config.launchpadFee);
@@ -146,6 +155,7 @@ export class LaunchpadOperations {
                 tx.pure.u64(config.minRaiseAmount), // min_raise_amount
                 tx.pure.option("u64", maxRaise), // max_raise_amount (Option<u64>)
                 tx.pure.vector("u64", config.allowedCaps), // allowed_caps
+                tx.pure.option("u64", startDelay), // start_delay_ms (Option<u64>)
                 tx.pure.bool(config.allowEarlyCompletion), // allow_early_completion
                 tx.pure.string(config.description), // description
                 tx.makeMoveVec({
@@ -179,6 +189,8 @@ export class LaunchpadOperations {
      * ```typescript
      * const tx = launchpad.contribute({
      *   raiseId: "0xRAISE_ID",
+     *   raiseTokenType: "0x123::mycoin::MYCOIN",
+     *   stableCoinType: "0x2::sui::SUI",
      *   paymentAmount: TransactionUtils.suiToMist(10), // 10 SUI
      *   maxTotalCap: TransactionUtils.suiToMist(100), // Accept raise up to 100 SUI
      *   crankFee: TransactionUtils.suiToMist(0.1), // 0.1 SUI
@@ -201,7 +213,7 @@ export class LaunchpadOperations {
 
         tx.moveCall({
             target,
-            typeArguments: [], // Will be inferred from Raise object
+            typeArguments: [config.raiseTokenType, config.stableCoinType],
             arguments: [
                 tx.object(config.raiseId), // raise
                 tx.object(this.factoryObjectId), // factory
@@ -220,10 +232,17 @@ export class LaunchpadOperations {
      * Anyone can call this after the deadline
      *
      * @param raiseId - Raise object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
      * @param clock - Clock object ID
      * @returns Transaction for settling
      */
-    settleRaise(raiseId: string, clock: string = "0x6"): Transaction {
+    settleRaise(
+        raiseId: string,
+        raiseTokenType: string,
+        stableCoinType: string,
+        clock: string = "0x6"
+    ): Transaction {
         const builder = new TransactionBuilder(this.client);
         const tx = builder.getTransaction();
 
@@ -235,6 +254,7 @@ export class LaunchpadOperations {
 
         tx.moveCall({
             target,
+            typeArguments: [raiseTokenType, stableCoinType],
             arguments: [
                 tx.object(raiseId), // raise
                 tx.object(clock), // clock
@@ -245,25 +265,64 @@ export class LaunchpadOperations {
     }
 
     /**
-     * Complete a successful raise (creates the DAO)
-     * Can be called by creator with CreatorCap
+     * Lock intents and start the raise (must be called after preCreateDaoForRaise)
      *
      * @param raiseId - Raise object ID
      * @param creatorCapId - CreatorCap object ID
-     * @param daoCreationFee - Payment for DAO creation (in MIST)
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
+     * @returns Transaction for locking intents
+     */
+    lockIntentsAndStartRaise(
+        raiseId: string,
+        creatorCapId: string,
+        raiseTokenType: string,
+        stableCoinType: string
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "lock_intents_and_start_raise"
+        );
+
+        tx.moveCall({
+            target,
+            typeArguments: [raiseTokenType, stableCoinType],
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(creatorCapId), // creator_cap
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Complete a successful raise (creates the DAO)
+     * Can be called by creator with CreatorCap
+     * No DAO creation fee required - launchpad already collected it
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
+     * @param finalRaiseAmount - Final raise amount to use (must be <= total raised)
      * @param clock - Clock object ID
      * @returns Transaction for completing the raise
      */
     completeRaise(
         raiseId: string,
         creatorCapId: string,
-        daoCreationFee: bigint | number,
+        raiseTokenType: string,
+        stableCoinType: string,
+        finalRaiseAmount: bigint | number,
         clock: string = "0x6"
     ): Transaction {
         const builder = new TransactionBuilder(this.client);
         const tx = builder.getTransaction();
-
-        const payment = builder.splitSui(daoCreationFee);
 
         const target = TransactionUtils.buildTarget(
             this.launchpadPackageId,
@@ -273,12 +332,17 @@ export class LaunchpadOperations {
 
         tx.moveCall({
             target,
+            typeArguments: [raiseTokenType, stableCoinType],
             arguments: [
                 tx.object(raiseId), // raise
                 tx.object(creatorCapId), // creator_cap
+                tx.pure.u64(finalRaiseAmount), // final_raise_amount
+                tx.sharedObjectRef({
+                    objectId: this.factoryObjectId,
+                    initialSharedVersion: this.factoryInitialSharedVersion,
+                    mutable: true,
+                }), // factory
                 tx.object(this.packageRegistryId), // registry
-                tx.object(this.feeManagerId), // fee_manager
-                payment, // payment
                 tx.object(clock), // clock
             ],
         });
@@ -289,21 +353,22 @@ export class LaunchpadOperations {
     /**
      * Complete a raise permissionlessly (after 24h delay)
      * Anyone can call this after deadline + 24 hours
+     * No DAO creation fee required - launchpad already collected it
      *
      * @param raiseId - Raise object ID
-     * @param daoCreationFee - Payment for DAO creation (in MIST)
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
      * @param clock - Clock object ID
      * @returns Transaction for completing the raise
      */
     completeRaisePermissionless(
         raiseId: string,
-        daoCreationFee: bigint | number,
+        raiseTokenType: string,
+        stableCoinType: string,
         clock: string = "0x6"
     ): Transaction {
         const builder = new TransactionBuilder(this.client);
         const tx = builder.getTransaction();
-
-        const payment = builder.splitSui(daoCreationFee);
 
         const target = TransactionUtils.buildTarget(
             this.launchpadPackageId,
@@ -313,11 +378,15 @@ export class LaunchpadOperations {
 
         tx.moveCall({
             target,
+            typeArguments: [raiseTokenType, stableCoinType],
             arguments: [
                 tx.object(raiseId), // raise
+                tx.sharedObjectRef({
+                    objectId: this.factoryObjectId,
+                    initialSharedVersion: this.factoryInitialSharedVersion,
+                    mutable: true,
+                }), // factory
                 tx.object(this.packageRegistryId), // registry
-                tx.object(this.feeManagerId), // fee_manager
-                payment, // payment
                 tx.object(clock), // clock
             ],
         });
@@ -330,10 +399,17 @@ export class LaunchpadOperations {
      * Contributor calls this to claim their tokens
      *
      * @param raiseId - Raise object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
      * @param clock - Clock object ID
      * @returns Transaction for claiming tokens
      */
-    claimTokens(raiseId: string, clock: string = "0x6"): Transaction {
+    claimTokens(
+        raiseId: string,
+        raiseTokenType: string,
+        stableCoinType: string,
+        clock: string = "0x6"
+    ): Transaction {
         const builder = new TransactionBuilder(this.client);
         const tx = builder.getTransaction();
 
@@ -345,6 +421,7 @@ export class LaunchpadOperations {
 
         tx.moveCall({
             target,
+            typeArguments: [raiseTokenType, stableCoinType],
             arguments: [
                 tx.object(raiseId), // raise
                 tx.object(clock), // clock
@@ -461,12 +538,16 @@ export class LaunchpadOperations {
      *
      * @param raiseId - Raise object ID
      * @param creatorCapId - CreatorCap object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
      * @param clock - Clock object ID
      * @returns Transaction for ending raise early
      */
     endRaiseEarly(
         raiseId: string,
         creatorCapId: string,
+        raiseTokenType: string,
+        stableCoinType: string,
         clock: string = "0x6"
     ): Transaction {
         const builder = new TransactionBuilder(this.client);
@@ -480,6 +561,7 @@ export class LaunchpadOperations {
 
         tx.moveCall({
             target,
+            typeArguments: [raiseTokenType, stableCoinType],
             arguments: [
                 tx.object(raiseId), // raise
                 tx.object(creatorCapId), // creator_cap
@@ -492,13 +574,13 @@ export class LaunchpadOperations {
 
     /**
      * Cleanup a failed raise (returns TreasuryCap and metadata to creator)
-     * Only creator can call after raise fails
+     * Anyone can call after raise fails (permissionless)
      *
      * @param raiseId - Raise object ID
-     * @param creatorCapId - CreatorCap object ID
+     * @param clock - Clock object ID
      * @returns Transaction for cleanup
      */
-    cleanupFailedRaise(raiseId: string, creatorCapId: string): Transaction {
+    cleanupFailedRaise(raiseId: string, clock: string = "0x6"): Transaction {
         const builder = new TransactionBuilder(this.client);
         const tx = builder.getTransaction();
 
@@ -512,8 +594,318 @@ export class LaunchpadOperations {
             target,
             arguments: [
                 tx.object(raiseId), // raise
-                tx.object(creatorCapId), // creator_cap
+                tx.object(clock), // clock
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Pre-create DAO for a raise (creates unshared DAO before raise completes)
+     * Allows setting up DAO configuration during raise period
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
+     * @param daoCreationFee - Payment for DAO creation (in MIST)
+     * @param clock - Clock object ID
+     * @returns Transaction for pre-creating DAO
+     */
+    /**
+     * REMOVED: preCreateDaoForRaise
+     *
+     * This function was removed to fix ESharedNonNewObject error.
+     * Sui requires objects to be shared in the same transaction they're created.
+     *
+     * OLD FLOW (broken):
+     *   1. preCreateDaoForRaise → creates Account in TX1
+     *   2. completeRaise → tries to share Account in TX2 → FAILS
+     *
+     * NEW FLOW (fixed):
+     *   1. completeRaise → creates Account + shares it in same TX → SUCCESS
+     *   2. Frontend PTB → executes staged init specs against shared Account
+     *
+     * Migration: Remove calls to preCreateDaoForRaise from your code.
+     * The DAO is now automatically created during completeRaise.
+     */
+
+    /**
+     * Stage an initialization intent for the launchpad raise
+     * These intents will be executed when the DAO is created
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @param initSpec - Init action specification
+     * @param clock - Clock object ID
+     * @returns Transaction for staging intent
+     *
+     * @example
+     * ```typescript
+     * const tx = sdk.launchpad.stageLaunchpadInitIntent(
+     *   raiseId,
+     *   creatorCapId,
+     *   {
+     *     key: "init_transfer",
+     *     actionType: InitActionType.TRANSFER_FUNDS,
+     *     params: { amount: 1000n, recipient: "0x..." }
+     *   }
+     * );
+     * ```
+     */
+    stageLaunchpadInitIntent(
+        raiseId: string,
+        creatorCapId: string,
+        initSpec: InitActionSpec,
+        clock: string = "0x6"
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "stage_launchpad_init_intent"
+        );
+
+        tx.moveCall({
+            target,
+            arguments: [
+                tx.object(raiseId), // raise
                 tx.object(this.packageRegistryId), // registry
+                tx.object(creatorCapId), // creator_cap
+                tx.pure(initSpec as any), // spec
+                tx.object(clock), // clock
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Remove the most recently staged init intent
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @returns Transaction for unstaging intent
+     */
+    unstageLastLaunchpadInitIntent(
+        raiseId: string,
+        creatorCapId: string
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "unstage_last_launchpad_init_intent"
+        );
+
+        tx.moveCall({
+            target,
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(creatorCapId), // creator_cap
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Lock intents and start the raise (no more intents can be added)
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
+     * @returns Transaction for locking intents
+     */
+    lockIntentsAndStartRaise(
+        raiseId: string,
+        creatorCapId: string,
+        raiseTokenType: string,
+        stableCoinType: string
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "lock_intents_and_start_raise"
+        );
+
+        tx.moveCall({
+            target,
+            typeArguments: [raiseTokenType, stableCoinType],
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(creatorCapId), // creator_cap
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Sweep remaining dust tokens/coins after claim period ends
+     * Returns remaining balances to the DAO
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @param daoAccountId - DAO Account object ID
+     * @param clock - Clock object ID
+     * @returns Transaction for sweeping dust
+     */
+    sweepDust(
+        raiseId: string,
+        creatorCapId: string,
+        daoAccountId: string,
+        clock: string = "0x6"
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "sweep_dust"
+        );
+
+        tx.moveCall({
+            target,
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(creatorCapId), // creator_cap
+                tx.object(daoAccountId), // dao_account
+                tx.object(this.packageRegistryId), // registry
+                tx.object(clock), // clock
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Sweep protocol fees collected during raise
+     * Only callable by FactoryOwnerCap holder
+     *
+     * @param raiseId - Raise object ID
+     * @param factoryOwnerCapId - FactoryOwnerCap object ID
+     * @param clock - Clock object ID
+     * @returns Transaction for sweeping protocol fees
+     */
+    sweepProtocolFees(
+        raiseId: string,
+        factoryOwnerCapId: string,
+        clock: string = "0x6"
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "sweep_protocol_fees"
+        );
+
+        tx.moveCall({
+            target,
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(factoryOwnerCapId), // _owner_cap
+                tx.object(clock), // clock
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Set verification level for a launchpad raise
+     * Only callable by ValidatorAdminCap holder
+     *
+     * @param raiseId - Raise object ID
+     * @param validatorCapId - ValidatorAdminCap object ID
+     * @param level - Verification level (0-255)
+     * @param attestationUrl - URL to verification attestation
+     * @param reviewText - Admin review text
+     * @param clock - Clock object ID
+     * @returns Transaction for setting verification
+     */
+    setLaunchpadVerification(
+        raiseId: string,
+        validatorCapId: string,
+        level: number,
+        attestationUrl: string,
+        reviewText: string,
+        clock: string = "0x6"
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "set_launchpad_verification"
+        );
+
+        tx.moveCall({
+            target,
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(validatorCapId), // _validator_cap
+                tx.pure.u8(level), // level
+                tx.pure.string(attestationUrl), // attestation_url
+                tx.pure.string(reviewText), // review_text
+                tx.object(clock), // clock
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Cleanup initialization intents (remove all staged intents)
+     * Used to abort the initialization workflow
+     *
+     * @param accountId - Account/DAO object ID
+     * @param ownerId - Owner ID (typically CreatorCap ID)
+     * @param initSpecs - Array of init specs to cleanup
+     * @returns Transaction for cleanup
+     *
+     * @example
+     * ```typescript
+     * const tx = sdk.launchpad.cleanupInitIntents(
+     *   accountId,
+     *   ownerCapId,
+     *   [spec1, spec2, spec3]
+     * );
+     * ```
+     */
+    cleanupInitIntents(
+        accountId: string,
+        ownerId: string,
+        initSpecs: InitActionSpec[]
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "init_actions",
+            "cleanup_init_intents"
+        );
+
+        tx.moveCall({
+            target,
+            arguments: [
+                tx.object(accountId), // account
+                tx.pure.id(ownerId), // owner_id
+                tx.pure(initSpecs as any), // specs
             ],
         });
 

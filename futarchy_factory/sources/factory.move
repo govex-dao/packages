@@ -20,7 +20,6 @@ use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
 use futarchy_markets_core::fee::{Self, FeeManager};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
-use futarchy_factory::init_actions;
 use futarchy_one_shot_utils::constants;
 use futarchy_one_shot_utils::coin_registry;
 use futarchy_types::init_action_specs::InitActionSpecs;
@@ -513,24 +512,9 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
         version::current(),
     );
 
-    let account_object_id = object::id(&account);
-    let specs_len = vector::length(&init_specs);
-    let mut idx = 0;
-    while (idx < specs_len) {
-        init_actions::stage_init_intent(
-            &mut account,
-            registry,
-            &account_object_id,
-            idx,
-            vector::borrow(&init_specs, idx),
-            clock,
-            ctx,
-        );
-        idx = idx + 1;
-    };
-
-    // Note: Init intents are now executed via PTB after DAO creation
-    // The frontend reads the staged specs and constructs a deterministic PTB
+    // Note: init_specs are NOT stored in Account
+    // Frontend receives them from createDAOWithInitSpecs transaction
+    // Frontend then constructs PTB to execute init_* functions before sharing
 
     // Get account ID before sharing
     let account_id = object::id_address(&account);
@@ -749,24 +733,9 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
         version::current(),
     );
 
-    let account_object_id = object::id(&account);
-    let specs_len = vector::length(&init_specs);
-    let mut idx = 0;
-    while (idx < specs_len) {
-        init_actions::stage_init_intent(
-            &mut account,
-            registry,
-            &account_object_id,
-            idx,
-            vector::borrow(&init_specs, idx),
-            clock,
-            ctx,
-        );
-        idx = idx + 1;
-    };
-
-    // Note: Init intents are now executed via PTB after DAO creation
-    // The frontend reads the staged specs and constructs a deterministic PTB
+    // Note: init_specs are NOT stored in Account
+    // Frontend receives them from createDAOWithInitSpecs transaction
+    // Frontend then constructs PTB to execute init_* functions before sharing
 
     // Get account ID before sharing
     let account_id = object::id_address(&account);

@@ -1,9 +1,9 @@
 {
   "packageName": "AccountProtocol",
-  "transactionDigest": "EHzYpfWRmSHUagKvFadxGDypgtm86GnXeMb6MWGCUtFx",
-  "packageId": "0xd0751a5281bd851ac7df5c62cd523239ddfa7dc321a7df3ddfc7400d65938ed6",
+  "transactionDigest": "6omKYbWVHactAH3Sufav768PE1RfmunrMLS8NXYPjpuU",
+  "packageId": "0x2fbef131639a2febdd72814533faff704b8d42b1c1f37cd4a27ad725a4e6eff3",
   "upgradeCap": {
-    "objectId": "0x637ba9a7b8fd47a3a4cac1a70ac1a2d5ed2481018c33389b45294464d4d429ff",
+    "objectId": "0x68e694822e74ceec7005a6b8fda77526604de6168705548fb644271990bd0717",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -12,8 +12,8 @@
   "adminCaps": [
     {
       "name": "PackageAdminCap",
-      "objectId": "0x8649022d5f4e3199e85a237246790e89de81da210d947a88f104e852ab101c92",
-      "objectType": "0xd0751a5281bd851ac7df5c62cd523239ddfa7dc321a7df3ddfc7400d65938ed6::package_registry::PackageAdminCap",
+      "objectId": "0x2f75d747021a0608d86020e9630fc87f75f475f536622816b0411c9ab7d0ca9c",
+      "objectType": "0x2fbef131639a2febdd72814533faff704b8d42b1c1f37cd4a27ad725a4e6eff3::package_registry::PackageAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -22,14 +22,14 @@
   "sharedObjects": [
     {
       "name": "PackageRegistry",
-      "objectId": "0x582599b1d40503bd43618d678e32f0c4d55ee30e89af985f33a5451787c1f2f5",
-      "objectType": "0xd0751a5281bd851ac7df5c62cd523239ddfa7dc321a7df3ddfc7400d65938ed6::package_registry::PackageRegistry",
+      "objectId": "0x829e1b3cd9726760baf7eeccfd56b35918c5187b6d8321967f11ecf8136d01f3",
+      "objectType": "0x2fbef131639a2febdd72814533faff704b8d42b1c1f37cd4a27ad725a4e6eff3::package_registry::PackageRegistry",
       "owner": {
         "Shared": {
-          "initial_shared_version": 4
+          "initial_shared_version": 7086198
         }
       },
-      "initialSharedVersion": 4
+      "initialSharedVersion": 7086198
     }
   ],
   "ownedObjects": []

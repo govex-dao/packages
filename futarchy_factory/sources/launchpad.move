@@ -5,11 +5,10 @@ module futarchy_factory::launchpad;
 
 use account_actions::init_actions;
 use account_protocol::package_registry::PackageRegistry;
-use account_protocol::account::{Self, Account};
+use account_protocol::account::Account;
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
 use futarchy_factory::factory;
-use futarchy_factory::init_actions as launchpad_init_actions;
 use futarchy_markets_core::fee;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_one_shot_utils::constants;
@@ -77,6 +76,14 @@ public fun unlimited_cap(): u64 { UNLIMITED_CAP }
 
 // === Structs ===
 public struct LAUNCHPAD has drop {}
+
+/// Hot potato for unshared DAO - MUST be consumed by finalize_and_share_dao
+/// Enforces atomic init action execution before sharing
+#[allow(lint(missing_key))]
+public struct UnsharedDao<phantom RaiseToken, phantom StableCoin> {
+    account: Account,
+    spot_pool: UnifiedSpotPool<RaiseToken, StableCoin>,
+}
 
 public struct ContributorKey has copy, drop, store {
     contributor: address,
@@ -265,15 +272,35 @@ fun init(otw: LAUNCHPAD, ctx: &mut TxContext) {
 ///
 /// NEW FLOW (fixed):
 ///   1. complete_raise → creates Account + shares it in same TX → SUCCESS
-///   2. Frontend PTB → executes staged init specs against shared Account
+///   2. Frontend PTB → manually executes init actions against shared Account
 ///
-/// The staged_init_specs are stored in Raise.staged_init_specs and executed
-/// after DAO creation via PTB (see INIT_ACTIONS_GUIDE.md).
+/// INIT ACTIONS PATTERN (Disclosure-Only):
+///
+/// InitActionSpecs serve as INVESTOR TRANSPARENCY - they show what will happen
+/// during DAO initialization, but they are NOT auto-executed.
+///
+/// FLOW:
+///   1. Creator stages InitActionSpecs (stored in Raise.staged_init_specs)
+///   2. Investors see what actions will execute and decide to invest
+///   3. complete_raise creates DAO and shares Account
+///   4. Frontend PTB MANUALLY calls init functions (e.g., init_create_stream)
+///      - Manual execution via PTB, NOT automatic dispatch
+///      - The staged specs are for disclosure only
+///
+/// WHY: InitActionSpecs don't have a dispatcher. The action_type is a label
+/// for transparency. Execution requires explicit PTB calls to init functions.
+///
+/// See: futarchy_actions/INIT_ACTION_STAGING_GUIDE.md
 ///
 /// NOTE: DAO creation fee payment moved to complete_raise_internal.
 
-/// Stage initialization actions
-/// Specs are stored and will be executed via PTB after DAO is created and shared
+/// Stage initialization actions for investor transparency (DISCLOSURE ONLY)
+///
+/// IMPORTANT: This does NOT execute the actions. It only stores them so investors
+/// can see what will happen during DAO creation. Actual execution happens via
+/// manual PTB calls after complete_raise (e.g., calling init_create_stream directly).
+///
+/// Use builders from futarchy_actions::*_init_staging to create specs.
 public fun stage_launchpad_init_intent<RaiseToken, StableCoin>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     _registry: &PackageRegistry,
@@ -625,13 +652,15 @@ public entry fun complete_raise_permissionless<RaiseToken: drop, StableCoin: dro
     complete_raise_internal(raise, factory, registry, clock, ctx);
 }
 
-fun complete_raise_internal<RaiseToken: drop, StableCoin: drop>(
+/// Create unshared DAO with built-in init actions - returns hot potato for custom init actions
+/// PTB must call init_* functions on unshared DAO, then finalize_and_share_dao()
+fun complete_raise_unshared<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     factory: &mut factory::Factory,
     registry: &PackageRegistry,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): UnsharedDao<RaiseToken, StableCoin> {
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(raise.settlement_done, EInvalidStateForAction);
 
@@ -641,9 +670,9 @@ fun complete_raise_internal<RaiseToken: drop, StableCoin: drop>(
 
     // No DAO creation fee - launchpad already collected fee when raise was created
 
-    // Create NEW DAO (unshared) - will be shared at end of this tx
+    // Create NEW DAO (unshared)
     // Uses special launchpad function that doesn't charge DAO creation fee
-    let (mut account, mut spot_pool) = factory::create_dao_unshared_for_launchpad<RaiseToken, StableCoin>(
+    let (mut account, spot_pool) = factory::create_dao_unshared_for_launchpad<RaiseToken, StableCoin>(
         factory,
         registry,
         option::none(), // treasury_cap - added below
@@ -700,6 +729,21 @@ fun complete_raise_internal<RaiseToken: drop, StableCoin: drop>(
         ctx,
     );
 
+    // Return unshared DAO as hot potato - PTB must execute init actions and finalize
+    UnsharedDao<RaiseToken, StableCoin> {
+        account,
+        spot_pool,
+    }
+}
+
+/// Finalize and share the DAO after init actions complete
+/// Consumes UnsharedDao hot potato, shares objects, marks raise successful
+public fun finalize_and_share_dao<RaiseToken: drop, StableCoin: drop>(
+    raise: &mut Raise<RaiseToken, StableCoin>,
+    unshared: UnsharedDao<RaiseToken, StableCoin>,
+) {
+    let UnsharedDao { account, spot_pool } = unshared;
+
     raise.state = STATE_SUCCESSFUL;
 
     // Share DAO objects
@@ -710,6 +754,68 @@ fun complete_raise_internal<RaiseToken: drop, StableCoin: drop>(
         raise_id: object::id(raise),
         total_raised: raise.final_raise_amount,
     });
+}
+
+/// Public wrapper for complete_raise_unshared - for PTB init action execution
+public fun begin_dao_creation<RaiseToken: drop, StableCoin: drop>(
+    raise: &mut Raise<RaiseToken, StableCoin>,
+    factory: &mut factory::Factory,
+    registry: &PackageRegistry,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): UnsharedDao<RaiseToken, StableCoin> {
+    complete_raise_unshared(raise, factory, registry, clock, ctx)
+}
+
+// === Init Action Wrappers ===
+// These wrappers allow PTB execution of init actions on UnsharedDao
+// by extracting the Account reference internally
+
+/// Execute stream init action on UnsharedDao
+/// This is a thin wrapper that extracts &mut Account from UnsharedDao
+/// and delegates to the actual init_create_stream implementation
+public fun execute_init_stream_on_unshared<RaiseToken, StableCoin, Config: store, CoinType: drop>(
+    unshared: &mut UnsharedDao<RaiseToken, StableCoin>,
+    registry: &PackageRegistry,
+    vault_name: String,
+    beneficiary: address,
+    total_amount: u64,
+    start_time: u64,
+    end_time: u64,
+    cliff_time: Option<u64>,
+    max_per_withdrawal: u64,
+    min_interval_ms: u64,
+    max_beneficiaries: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): ID {
+    account_actions::init_actions::init_create_stream<Config, CoinType>(
+        &mut unshared.account,
+        registry,
+        vault_name,
+        beneficiary,
+        total_amount,
+        start_time,
+        end_time,
+        cliff_time,
+        max_per_withdrawal,
+        min_interval_ms,
+        max_beneficiaries,
+        clock,
+        ctx,
+    )
+}
+
+/// Legacy function - backward compatibility for raises without init actions
+fun complete_raise_internal<RaiseToken: drop, StableCoin: drop>(
+    raise: &mut Raise<RaiseToken, StableCoin>,
+    factory: &mut factory::Factory,
+    registry: &PackageRegistry,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let unshared = complete_raise_unshared(raise, factory, registry, clock, ctx);
+    finalize_and_share_dao(raise, unshared);
 }
 
 /// Claim tokens after successful raise

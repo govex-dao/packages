@@ -77,3 +77,37 @@ public fun init_store_object<Config: store, Key: copy + drop + store, T: key + s
     account.add_managed_asset(registry, key, object, version::current());
 }
 
+// === Stream Actions ===
+
+public fun init_create_stream<Config: store, CoinType: drop>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    vault_name: string::String,
+    beneficiary: address,
+    total_amount: u64,
+    start_time: u64,
+    end_time: u64,
+    cliff_time: std::option::Option<u64>,
+    max_per_withdrawal: u64,
+    min_interval_ms: u64,
+    max_beneficiaries: u64,
+    clock: &sui::clock::Clock,
+    ctx: &mut TxContext,
+): sui::object::ID {
+    vault::create_stream_unshared<Config, CoinType>(
+        account,
+        registry,
+        vault_name,
+        beneficiary,
+        total_amount,
+        start_time,
+        end_time,
+        cliff_time,
+        max_per_withdrawal,
+        min_interval_ms,
+        max_beneficiaries,
+        clock,
+        ctx,
+    )
+}
+

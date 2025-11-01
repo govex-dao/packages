@@ -11,7 +11,8 @@
  * 7. Claims tokens
  */
 
-import { Transaction } from '@mysten/sui/transactions';
+import { Transaction, Inputs } from '@mysten/sui/transactions';
+import { bcs } from '@mysten/sui/bcs';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import { LaunchpadOperations } from '../src/lib/launchpad';
@@ -189,6 +190,16 @@ async function main() {
         throw new Error('FactoryOwnerCap not found in futarchy_factory deployment');
     }
 
+    // Load PackageRegistry from deployment JSON
+    const registryDeployment = require('../../deployments/AccountProtocol.json');
+    const registryId = registryDeployment.objectChanges?.find(
+        (obj: any) => obj.objectType?.includes('::package_registry::PackageRegistry')
+    )?.objectId;
+
+    if (!registryId) {
+        throw new Error('PackageRegistry not found in AccountProtocol deployment');
+    }
+
     console.log(`Using FactoryOwnerCap: ${factoryOwnerCapId}`);
 
     try {
@@ -267,6 +278,79 @@ async function main() {
     console.log(`   CreatorCap ID: ${creatorCapId}`);
     console.log(`   Min Raise: 1 TSTABLE`);
     console.log(`   Early Completion: ENABLED ✅`);
+
+    // Step 3.5: Stage init action specs (DISCLOSURE ONLY - for investor transparency)
+    //
+    // IMPORTANT: This does NOT execute the stream creation. It only stores the
+    // InitActionSpecs so investors can see what will happen during DAO creation.
+    // Actual execution happens in Step 8 via manual PTB call to init_create_stream.
+    //
+    // This is the "disclosure-only" pattern - staging for transparency, manual execution.
+    console.log('\n' + '='.repeat(80));
+    console.log('STEP 3.5: STAGE INIT ACTION SPECS (DISCLOSURE ONLY)');
+    console.log('='.repeat(80));
+
+    // Define stream parameters (will be used in both staging AND execution)
+    const streamRecipient = sender;
+    const streamAmount = TransactionUtils.suiToMist(0.5); // 0.5 TSTABLE
+    const currentTime = Date.now();
+    const streamStart = currentTime + 60_000; // Start in 1 minute
+    const streamEnd = streamStart + 3_600_000; // End in 1 hour
+    const actionsPkg = sdk.getPackageId('AccountActions'); // Note: Capital A!
+    const launchpadPkg = sdk.getPackageId('futarchy_factory');
+    const futarchyActionsPkg = sdk.getPackageId('futarchy_actions');
+
+    console.log(`\n📦 Package IDs:`);
+    console.log(`   AccountActions: ${actionsPkg}`);
+    console.log(`   futarchy_factory: ${launchpadPkg}`);
+    console.log(`   futarchy_actions: ${futarchyActionsPkg}`);
+
+    console.log('\n📋 Staging stream init action for investor transparency...');
+    console.log('   (This is disclosure-only - actual execution in Step 8)');
+    console.log(`   Vault: treasury`);
+    console.log(`   Beneficiary: ${streamRecipient}`);
+    console.log(`   Amount: ${Number(streamAmount) / 1e9} TSTABLE`);
+    console.log(`   Duration: ${(streamEnd - streamStart) / 3600000} hours`);
+
+    const stageTx = new Transaction();
+
+    // Step 1: Build InitActionSpecs using vault_init_staging helper
+    const initSpecs = stageTx.moveCall({
+        target: `${futarchyActionsPkg}::vault_init_staging::build_stream_init_spec`,
+        arguments: [
+            stageTx.pure.string('treasury'),
+            stageTx.pure(bcs.Address.serialize(streamRecipient).toBytes()), // Use BCS serialization for address
+            stageTx.pure.u64(streamAmount),
+            stageTx.pure.u64(streamStart),
+            stageTx.pure.u64(streamEnd),
+            stageTx.pure.option('u64', null), // cliff_time
+            stageTx.pure.u64(streamAmount), // max_per_withdrawal
+            stageTx.pure.u64(86400000), // min_interval_ms (1 day)
+            stageTx.pure.u64(1), // max_beneficiaries
+        ],
+    });
+
+    // Step 2: Stage the specs using generic staging function
+    stageTx.moveCall({
+        target: `${launchpadPkg}::launchpad::stage_launchpad_init_intent`,
+        typeArguments: [testCoins.asset.type, testCoins.stable.type],
+        arguments: [
+            stageTx.object(raiseId),
+            stageTx.object(registryId),
+            stageTx.object(creatorCapId!),
+            initSpecs, // InitActionSpecs from step 1
+            stageTx.object('0x6'), // Clock
+        ],
+    });
+
+    const stageResult = await executeTransaction(sdk, stageTx, {
+        network: 'devnet',
+        dryRun: false,
+        showEffects: false,
+    });
+
+    console.log('✅ Stream init action staged!');
+    console.log(`   Transaction: ${stageResult.digest}`);
 
     // Step 4: Lock intents and start raise
     console.log('\n' + '='.repeat(80));
@@ -381,49 +465,105 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 125000)); // Wait 125s (already waited 16s earlier)
     console.log('✅ Deadline passed, raise ended!');
 
-    // Step 7: Settle raise
+    // Step 8: Complete raise and EXECUTE init actions (MANUAL PTB EXECUTION)
+    //
+    // CRITICAL: This is where the stream is ACTUALLY CREATED via manual PTB call.
+    // The InitActionSpecs from Step 3.5 were disclosure-only (investor transparency).
+    // Here we manually execute the actual init_create_stream function.
+    //
+    // Pattern: Disclosure (Step 3.5) → Atomic Execution (Step 8)
     console.log('\n' + '='.repeat(80));
-    console.log('STEP 7: SETTLE RAISE');
+    console.log('STEP 8: COMPLETE RAISE + EXECUTE INIT ACTIONS (ATOMIC)');
     console.log('='.repeat(80));
 
-    console.log('\n📊 Settling raise to determine final amount...');
-
-    const settleTx = sdk.launchpad.settleRaise(
-        raiseId,
-        testCoins.asset.type,
-        testCoins.stable.type,
-        '0x6'
-    );
-
-    const settleResult = await executeTransaction(sdk, settleTx, {
-        network: 'devnet',
-        dryRun: false,
-        showEffects: true,
-        showObjectChanges: false,
-        showEvents: true
-    });
-
-    console.log('✅ Raise settled!');
-    console.log(`   Transaction: ${settleResult.digest}`);
-
-    // Step 8: Complete raise (create + share DAO)
-    console.log('\n' + '='.repeat(80));
-    console.log('STEP 8: COMPLETE RAISE (CREATE & SHARE DAO)');
-    console.log('='.repeat(80));
-
-    console.log('\n🏛️  Completing raise and sharing DAO...');
+    console.log('\n🏛️  Creating DAO and executing stream init action atomically...');
+    console.log('   Using UnsharedDao hot potato for atomic DAO creation + init actions');
 
     const finalRaiseAmount = amountToContribute; // Use the amount we contributed
+    // launchpadPkg and actionsPkg were already loaded in Step 3.5
+    const corePkg = sdk.getPackageId('futarchy_core');
+    // registryId was already loaded in Step 2
 
-    // Note: No DAO creation fee - launchpad already collected it when raise was created
-    const completeTx = sdk.launchpad.completeRaise(
-        raiseId,
-        creatorCapId!,
-        testCoins.asset.type,
-        testCoins.stable.type,
-        finalRaiseAmount,
-        '0x6'
-    );
+    // Recalculate stream times to ensure they're valid (original times were calculated ~2+ minutes ago)
+    const currentTimeNow = Date.now();
+    const streamStartNow = currentTimeNow + 60_000; // Start in 1 minute
+    const streamEndNow = streamStartNow + 3_600_000; // End in 1 hour
+
+    console.log(`   Stream Recipient: ${streamRecipient}`);
+    console.log(`   Stream Amount: ${TransactionUtils.mistToSui(streamAmount)} TSTABLE`);
+    console.log(`   Stream Duration: 1 hour`);
+
+    // Get Factory object ID from deployment (factoryDeployment already loaded in Step 2)
+    const factoryId = factoryDeployment.objectChanges?.find(
+        (obj: any) => obj.objectType?.includes('::factory::Factory') && obj.owner?.Shared
+    )?.objectId;
+
+    if (!factoryId) {
+        throw new Error('Factory object not found in deployment');
+    }
+
+    console.log(`   Factory ID: ${factoryId}`);
+
+    // Build PTB: settle → begin_dao_creation → execute init actions → finalize_and_share_dao
+    // ALL in ONE atomic transaction using UnsharedDao hot potato
+    const completeTx = new Transaction();
+
+    // Step 1: Settle raise
+    completeTx.moveCall({
+        target: `${launchpadPkg}::launchpad::settle_raise`,
+        typeArguments: [testCoins.asset.type, testCoins.stable.type],
+        arguments: [
+            completeTx.object(raiseId),
+            completeTx.object('0x6'), // Clock
+        ],
+    });
+
+    // Step 2: Begin DAO creation (returns UnsharedDao hot potato)
+    const unsharedDao = completeTx.moveCall({
+        target: `${launchpadPkg}::launchpad::begin_dao_creation`,
+        typeArguments: [testCoins.asset.type, testCoins.stable.type],
+        arguments: [
+            completeTx.object(raiseId),
+            completeTx.object(factoryId),
+            completeTx.object(registryId),
+            completeTx.object('0x6'), // Clock
+        ],
+    });
+
+    // Step 3: Execute init stream action on UnsharedDao
+    completeTx.moveCall({
+        target: `${launchpadPkg}::launchpad::execute_init_stream_on_unshared`,
+        typeArguments: [
+            testCoins.asset.type,
+            testCoins.stable.type,
+            `${corePkg}::futarchy_config::FutarchyConfig`,
+            testCoins.stable.type,
+        ],
+        arguments: [
+            unsharedDao,  // Pass UnsharedDao by &mut
+            completeTx.object(registryId),
+            completeTx.pure.string('treasury'),
+            completeTx.pure(bcs.Address.serialize(streamRecipient).toBytes()),
+            completeTx.pure.u64(streamAmount),
+            completeTx.pure.u64(streamStartNow),
+            completeTx.pure.u64(streamEndNow),
+            completeTx.pure.option('u64', null), // cliff_time
+            completeTx.pure.u64(streamAmount), // max_per_withdrawal
+            completeTx.pure.u64(86400000), // min_interval_ms (1 day)
+            completeTx.pure.u64(1), // max_beneficiaries
+            completeTx.object('0x6'), // Clock
+        ],
+    });
+
+    // Step 4: Finalize and share DAO (consumes UnsharedDao hot potato)
+    completeTx.moveCall({
+        target: `${launchpadPkg}::launchpad::finalize_and_share_dao`,
+        typeArguments: [testCoins.asset.type, testCoins.stable.type],
+        arguments: [
+            completeTx.object(raiseId),
+            unsharedDao,  // Consume hot potato
+        ],
+    });
 
     const completeResult = await executeTransaction(sdk, completeTx, {
         network: 'devnet',
@@ -433,17 +573,36 @@ async function main() {
         showEvents: true
     });
 
-    console.log('✅ DAO Created from raise!');
+    console.log('✅ DAO Created!');
     console.log(`   Transaction: ${completeResult.digest}`);
 
     const daoCreatedEvent = completeResult.events?.find((e: any) =>
-        e.type.includes('DaoCreated') || e.type.includes('RaiseCompleted')
+        e.type.includes('RaiseSuccessful')
     );
 
+    let accountId: string | undefined;
     if (daoCreatedEvent) {
         console.log('\n🎉 DAO Details:');
         console.log(JSON.stringify(daoCreatedEvent.parsedJson, null, 2));
+        accountId = daoCreatedEvent.parsedJson?.account_id;
     }
+
+    // Find Account object from objectChanges
+    if (!accountId) {
+        const accountObject = completeResult.objectChanges?.find((c: any) =>
+            c.objectType?.includes('::account::Account')
+        );
+        if (accountObject) {
+            accountId = accountObject.objectId;
+        }
+    }
+
+    if (!accountId) {
+        throw new Error('Could not find Account ID from DAO creation');
+    }
+
+    console.log(`   Account ID: ${accountId}`);
+    console.log('   ✅ Init actions executed atomically during DAO creation!');
 
     // Step 9: Claim tokens
     console.log('\n' + '='.repeat(80));
@@ -478,13 +637,13 @@ async function main() {
     console.log(`   ✅ Created fresh test coins`);
     console.log(`   ✅ Registered test stable coin for fee payments`);
     console.log(`   ✅ Registered test stable coin in factory allowlist`);
-    console.log(`   ✅ Created raise with early completion`);
-    console.log(`   ✅ Pre-created DAO (before contributions)`);
+    console.log(`   ✅ Created raise with stream init action`);
+    console.log(`   ✅ Staged init actions`);
     console.log(`   ✅ Locked intents and started raise`);
     console.log(`   ✅ Minted & contributed to meet minimum`);
     console.log(`   ✅ Raise ended (deadline passed)`);
     console.log(`   ✅ Settled raise`);
-    console.log(`   ✅ Completed raise (shared DAO)`);
+    console.log(`   ✅ Completed raise (DAO created + stream created)`);
     console.log(`   ✅ Claimed contributor tokens`);
 
     console.log(`\n🔗 View raise on explorer:`);

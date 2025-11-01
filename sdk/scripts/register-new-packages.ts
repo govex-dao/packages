@@ -8,11 +8,12 @@ async function main() {
 
     console.log('Registering new packages in PackageRegistry...\n');
 
-    const REGISTRY = '0x582599b1d40503bd43618d678e32f0c4d55ee30e89af985f33a5451787c1f2f5';
-    const ACCOUNT_PROTOCOL_PKG = '0xd0751a5281bd851ac7df5c62cd523239ddfa7dc321a7df3ddfc7400d65938ed6';
+    const REGISTRY = '0x829e1b3cd9726760baf7eeccfd56b35918c5187b6d8321967f11ecf8136d01f3';
+    const ACCOUNT_PROTOCOL_PKG = '0x2fbef131639a2febdd72814533faff704b8d42b1c1f37cd4a27ad725a4e6eff3';
 
-    // Load all packages from deployments
-    const allPackages = require('../../deployments-processed/_all-packages.json');
+    // Load all packages from deployment JSON
+    const deploymentData = require('../../deployment-logs/deployment_verified_20251031_231756.json');
+    const allPackages = deploymentData.packages;
 
     // Map package names to lowercase for registry (factory expects lowercase names)
     const nameMapping: Record<string, string> = {
@@ -24,7 +25,7 @@ async function main() {
         const registryName = nameMapping[key] || key; // Use lowercase for AccountProtocol/AccountActions
         return {
             name: registryName,
-            addr: allPackages[key].packageId,
+            addr: allPackages[key], // Direct access since it's just packageId string
             version: 1,
             actionTypes: [],
             category: registryName.includes('actions') ? 'Actions' : registryName.includes('governance') ? 'Governance' : 'Core',
@@ -32,37 +33,8 @@ async function main() {
         };
     });
 
-    // First, remove incorrectly-named packages (AccountProtocol, AccountActions)
-    const packagesToRemove = ['AccountProtocol', 'AccountActions'];
-    for (const name of packagesToRemove) {
-        console.log(`Removing old entry: ${name}...`);
-        try {
-            const tx = new Transaction();
-            tx.moveCall({
-                target: `${ACCOUNT_PROTOCOL_PKG}::package_registry::remove_package`,
-                arguments: [
-                    tx.object(REGISTRY),
-                    tx.pure.string(name),
-                ],
-            });
-
-            await executeTransaction(sdk, tx, {
-                network: 'devnet',
-                dryRun: false,
-                showEffects: false,
-                showObjectChanges: false,
-                showEvents: false,
-            });
-
-            console.log(`✓ ${name} removed\n`);
-        } catch (error: any) {
-            if (error.message?.includes('EPackageNotFound')) {
-                console.log(`ℹ️  ${name} not found (already removed or never existed)\n`);
-            } else {
-                console.error(`✗ Failed to remove ${name}: ${error.message}\n`);
-            }
-        }
-    }
+    // Skip removal step for fresh registry (nothing to remove)
+    console.log('✓ Skipping removal step (fresh registry)\n');
 
     // Now register all packages with correct names
     for (const pkg of packages) {

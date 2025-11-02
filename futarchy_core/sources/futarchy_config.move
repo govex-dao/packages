@@ -576,7 +576,7 @@ public fun state_mut_from_account(account: &mut Account, registry: &PackageRegis
 }
 
 /// Witness for internal config operations
-public struct ConfigWitness has drop {}
+public struct ConfigWitness has copy, drop {}
 
 /// Create a DaoStateKey (for use in modules that can't directly instantiate it)
 public fun new_dao_state_key(): DaoStateKey {

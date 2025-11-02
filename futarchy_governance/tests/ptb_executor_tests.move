@@ -6,7 +6,7 @@ use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_primitives::market_state::{Self, MarketState};
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
-use futarchy_types::init_action_specs::{Self, InitActionSpecs};
+use account_actions::init_action_specs::{Self, InitActionSpecs};
 use account_protocol::account::{Self, Account};
 use account_protocol::package_registry::{Self, PackageRegistry};
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};

@@ -632,27 +632,116 @@ export class LaunchpadOperations {
      */
 
     /**
-     * Stage an initialization intent for the launchpad raise
-     * These intents will be executed when the DAO is created
+     * TWO-OUTCOME PATTERN (New - for staging success/failure intents)
+     *
+     * The launchpad now supports a two-outcome system where you can stage different
+     * actions for success vs failure scenarios (just like proposals).
+     *
+     * Because this requires building InitActionSpecs in the same PTB as staging,
+     * you should construct these transactions manually rather than using SDK wrappers.
+     *
+     * @example Staging success intents (execute when raise succeeds)
+     * ```typescript
+     * import { Transaction } from '@mysten/sui/transactions';
+     * import { bcs } from '@mysten/sui/bcs';
+     *
+     * const tx = new Transaction();
+     *
+     * // Step 1: Create empty InitActionSpecs
+     * const specs = tx.moveCall({
+     *   target: `${actionsPkg}::init_action_specs::new_init_specs`,
+     *   arguments: [],
+     * });
+     *
+     * // Step 2: Add actions to specs (example: create a stream)
+     * tx.moveCall({
+     *   target: `${actionsPkg}::stream_init_actions::add_create_stream_spec`,
+     *   arguments: [
+     *     specs,
+     *     tx.pure.string('treasury'),
+     *     tx.pure(bcs.Address.serialize(beneficiary).toBytes()),
+     *     tx.pure.u64(amount),
+     *     tx.pure.u64(startTime),
+     *     tx.pure.u64(endTime),
+     *     tx.pure.option('u64', null),
+     *     tx.pure.u64(maxPerWithdrawal),
+     *     tx.pure.u64(minInterval),
+     *     tx.pure.u64(1),
+     *   ],
+     * });
+     *
+     * // Step 3: Stage as SUCCESS intent
+     * tx.moveCall({
+     *   target: `${launchpadPkg}::launchpad::stage_success_intent`,
+     *   typeArguments: [raiseTokenType, stableCoinType],
+     *   arguments: [
+     *     tx.object(raiseId),
+     *     tx.object(registryId),
+     *     tx.object(creatorCapId),
+     *     specs,
+     *     tx.object('0x6'), // clock
+     *   ],
+     * });
+     *
+     * await client.signAndExecuteTransaction({ transaction: tx, signer });
+     * ```
+     *
+     * @example Staging failure intents (execute if raise fails)
+     * ```typescript
+     * const tx = new Transaction();
+     *
+     * const specs = tx.moveCall({
+     *   target: `${actionsPkg}::init_action_specs::new_init_specs`,
+     *   arguments: [],
+     * });
+     *
+     * // Example: Return TreasuryCap to creator if raise fails
+     * tx.moveCall({
+     *   target: `${actionsPkg}::currency_init_actions::add_return_treasury_cap_spec`,
+     *   arguments: [specs, tx.pure(bcs.Address.serialize(creator).toBytes())],
+     * });
+     *
+     * // Stage as FAILURE intent
+     * tx.moveCall({
+     *   target: `${launchpadPkg}::launchpad::stage_failure_intent`,
+     *   typeArguments: [raiseTokenType, stableCoinType],
+     *   arguments: [
+     *     tx.object(raiseId),
+     *     tx.object(registryId),
+     *     tx.object(creatorCapId),
+     *     specs,
+     *     tx.object('0x6'), // clock
+     *   ],
+     * });
+     * ```
+     *
+     * After staging intents, call lockIntentsAndStartRaise() to lock them
+     * and start accepting contributions.
+     *
+     * See: scripts/launchpad-e2e-with-init-actions-TWO-OUTCOME.ts for full example
+     */
+
+    /**
+     * @deprecated Use the two-outcome pattern instead (see documentation above)
+     *
+     * This method is deprecated in favor of the new two-outcome pattern where
+     * you stage specs manually using stage_success_intent() or stage_failure_intent().
+     *
+     * Old pattern (deprecated):
+     * - stageLaunchpadInitIntent() - single set of intents
+     *
+     * New pattern (recommended):
+     * - Manually build PTB with init_action_specs::new_init_specs()
+     * - Add actions with action-specific builders
+     * - Stage with launchpad::stage_success_intent() or stage_failure_intent()
+     *
+     * See TWO-OUTCOME PATTERN documentation above for examples.
      *
      * @param raiseId - Raise object ID
      * @param creatorCapId - CreatorCap object ID
      * @param initSpec - Init action specification
      * @param clock - Clock object ID
      * @returns Transaction for staging intent
-     *
-     * @example
-     * ```typescript
-     * const tx = sdk.launchpad.stageLaunchpadInitIntent(
-     *   raiseId,
-     *   creatorCapId,
-     *   {
-     *     key: "init_transfer",
-     *     actionType: InitActionType.TRANSFER_FUNDS,
-     *     params: { amount: 1000n, recipient: "0x..." }
-     *   }
-     * );
-     * ```
      */
     stageLaunchpadInitIntent(
         raiseId: string,
@@ -705,42 +794,6 @@ export class LaunchpadOperations {
 
         tx.moveCall({
             target,
-            arguments: [
-                tx.object(raiseId), // raise
-                tx.object(creatorCapId), // creator_cap
-            ],
-        });
-
-        return tx;
-    }
-
-    /**
-     * Lock intents and start the raise (no more intents can be added)
-     *
-     * @param raiseId - Raise object ID
-     * @param creatorCapId - CreatorCap object ID
-     * @param raiseTokenType - Full type path for raise token
-     * @param stableCoinType - Full type path for stable coin
-     * @returns Transaction for locking intents
-     */
-    lockIntentsAndStartRaise(
-        raiseId: string,
-        creatorCapId: string,
-        raiseTokenType: string,
-        stableCoinType: string
-    ): Transaction {
-        const builder = new TransactionBuilder(this.client);
-        const tx = builder.getTransaction();
-
-        const target = TransactionUtils.buildTarget(
-            this.launchpadPackageId,
-            "launchpad",
-            "lock_intents_and_start_raise"
-        );
-
-        tx.moveCall({
-            target,
-            typeArguments: [raiseTokenType, stableCoinType],
             arguments: [
                 tx.object(raiseId), // raise
                 tx.object(creatorCapId), // creator_cap

@@ -489,6 +489,45 @@ public(package) fun do_deposit_unshared< CoinType: drop>(
     };
 }
 
+/// Spend from vault during initialization - works on unshared Accounts
+/// Returns Coin for use in the same transaction
+/// SAFETY: This function MUST only be called on unshared Accounts.
+/// Calling this on a shared Account bypasses Auth checks.
+public(package) fun do_spend_unshared<CoinType: drop>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    vault_name: String,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<CoinType> {
+    // SAFETY REQUIREMENT: Account must be unshared
+    // Move doesn't allow runtime is_shared checks, so this is enforced by:
+    // 1. package(package) visibility - only callable from this package
+    // 2. Only exposed through init_actions module
+    // 3. Documentation and naming convention (_unshared suffix)
+
+    // Get vault
+    let vault: &mut Vault =
+        account.borrow_managed_data_mut(registry, VaultKey(vault_name), version::current());
+
+    // Ensure coin type exists in vault
+    let coin_type_name = type_name::with_defining_ids<CoinType>();
+    assert!(vault.bag.contains(coin_type_name), ECoinTypeDoesNotExist);
+
+    // Withdraw from balance
+    let balance_mut = vault.bag.borrow_mut<TypeName, Balance<CoinType>>(coin_type_name);
+    assert!(balance_mut.value() >= amount, EInsufficientBalance);
+
+    let coin = coin::take(balance_mut, amount, ctx);
+
+    // Clean up empty balance if needed
+    if (balance_mut.value() == 0) {
+        vault.bag.remove<TypeName, Balance<CoinType>>(coin_type_name).destroy_zero();
+    };
+
+    coin
+}
+
 /// Closes the vault if empty.
 public fun close<Config: store>(
     auth: Auth,

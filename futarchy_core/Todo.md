@@ -149,6 +149,7 @@ and patara.app
 - [ ] cap / intent to pause new account creation??
 - [ ] maybe nft for AMM position doesn't make sense
 (check how pools track invidiual nfts's buckets and amounts)
+- [ ] tightly couple intent / action registry with init actions???
 
 1) dao needs to supside LPs during proposals ( use proposer fee)\
 2) I need to slwly replace aftermath!!! \

@@ -19,7 +19,7 @@ use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_core::quantum_lp_manager;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_one_shot_utils::strategy;
-use futarchy_types::init_action_specs::InitActionSpecs;
+use account_actions::init_action_specs::InitActionSpecs;
 use futarchy_types::signed::{Self as signed};
 use std::option;
 use std::string::String;

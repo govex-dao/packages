@@ -22,7 +22,7 @@ use futarchy_markets_core::fee::{Self, FeeManager};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_one_shot_utils::constants;
 use futarchy_one_shot_utils::coin_registry;
-use futarchy_types::init_action_specs::InitActionSpecs;
+use account_actions::init_action_specs::InitActionSpecs;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use std::ascii::String as AsciiString;
 use std::option::Option;
@@ -911,7 +911,7 @@ public(package) fun create_dao_unshared_for_launchpad<AssetType: drop, StableTyp
     coin_metadata: Option<CoinMetadata<AssetType>>,
     clock: &Clock,
     ctx: &mut TxContext,
-): (Account, UnifiedSpotPool<AssetType, StableType>) {
+): Account {
     // Check factory is not permanently disabled
     assert!(!factory.permanently_disabled, EPermanentlyDisabled);
 
@@ -954,14 +954,8 @@ public(package) fun create_dao_unshared_for_launchpad<AssetType: drop, StableTyp
     // Create account with config
     let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);
 
-    // Create unified spot pool with aggregator support enabled
-    let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
-        30, // 0.3% default fee (init actions can configure via governance)
-        option::none(), // No launch fee schedule by default (can be added via init specs)
-        8000, // oracle_conditional_threshold_bps (80% threshold)
-        clock,
-        ctx,
-    );
+    // NOTE: Spot pool is NOT auto-created for launchpad DAOs
+    // It will be created via init actions, allowing the DAO to own the LP tokens
 
     // Lock treasury cap and store coin metadata (if provided)
     // TreasuryCap is stored via currency::lock_cap for proper atomic borrowing
@@ -1021,7 +1015,7 @@ public(package) fun create_dao_unshared_for_launchpad<AssetType: drop, StableTyp
         timestamp: clock.timestamp_ms(),
     });
 
-    (account, spot_pool)
+    account
 }
 
 public fun finalize_and_share_dao<AssetType, StableType>(

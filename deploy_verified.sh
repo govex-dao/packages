@@ -220,6 +220,12 @@ main() {
     find /Users/admin/govex/packages -name "Move.toml" -type f -exec \
         sed -i '' -e '/^futarchy_utils = /d' -e '/^kiosk = /d' {} \; 2>/dev/null || true
 
+    # Clear all build artifacts and lock files BEFORE starting deployment
+    echo -e "${BLUE}Clearing all build artifacts and lock files...${NC}"
+    find /Users/admin/govex/packages -name "Move.lock" -type f -delete 2>/dev/null || true
+    find /Users/admin/govex/packages -name "build" -type d -exec rm -rf {} + 2>/dev/null || true
+    echo -e "${GREEN}✓ Build artifacts cleared${NC}"
+
     # Reset all package addresses to 0x0 for fresh deployment if starting from beginning
     if [ -z "$start_from" ] || [ "$start_from" = "AccountExtensions" ]; then
         echo -e "${BLUE}Resetting all package addresses to 0x0 for fresh deployment...${NC}"
@@ -235,7 +241,7 @@ main() {
     local env=$(sui client active-env)
     if [[ "$env" == "devnet" || "$env" == "testnet" ]]; then
         echo -e "${YELLOW}Requesting gas from faucet...${NC}"
-        sui client faucet
+        sui client faucet || echo -e "${YELLOW}Faucet request failed (continuing anyway)${NC}"
         echo ""
         echo "Updated gas balance:"
         sui client gas | head -10

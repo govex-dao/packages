@@ -21,7 +21,7 @@ use account_protocol::{
     intent_interface,
     package_registry::PackageRegistry,
 };
-use futarchy_types::init_action_specs::{Self, InitActionSpecs};
+use account_actions::init_action_specs::{Self, InitActionSpecs};
 use futarchy_core::version;
 use futarchy_core::{
     futarchy_config::{Self, FutarchyConfig},

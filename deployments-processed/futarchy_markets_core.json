@@ -1,9 +1,9 @@
 {
   "packageName": "futarchy_markets_core",
-  "transactionDigest": "EmFmNzMBwszeRQzg6rQyNrBGxwjtWNHa4GeFEJ6DsBBc",
-  "packageId": "0xd3a6de86f787713325b3c0998f10e61165a4e6a021abac0aeefd983e6f9d8398",
+  "transactionDigest": "4vhSTPFV73up3bdpQNkeeeNX7FtNeXV4psXvXEQcKZTc",
+  "packageId": "0x1cdc69b904d3c62a34b4b95b8209e46103da04bf82caf9830f97e10b6ee72057",
   "upgradeCap": {
-    "objectId": "0x8b56972c8b48a61ddfb4ecf309814308a776a4e9392f95a2269dc60f932db272",
+    "objectId": "0x6672daa5907202f711d1bbc04ee6b15dc7881685322b5a8dea3748bb59f4fc4b",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -12,8 +12,8 @@
   "adminCaps": [
     {
       "name": "FeeAdminCap",
-      "objectId": "0x9dca088145a1cfc81b7fd42f57157904628b74d9a6aac562e4298ad9cdd75432",
-      "objectType": "0xd3a6de86f787713325b3c0998f10e61165a4e6a021abac0aeefd983e6f9d8398::fee::FeeAdminCap",
+      "objectId": "0x82ad861df27c2e13c086034867effb4cd135194fb834aeb8424ef0033f9ac8f2",
+      "objectType": "0x1cdc69b904d3c62a34b4b95b8209e46103da04bf82caf9830f97e10b6ee72057::fee::FeeAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -22,14 +22,14 @@
   "sharedObjects": [
     {
       "name": "FeeManager",
-      "objectId": "0x231efca98c03146b61d978ffa82c9910ed7d1461035e2a9c0154bc97f088de8b",
-      "objectType": "0xd3a6de86f787713325b3c0998f10e61165a4e6a021abac0aeefd983e6f9d8398::fee::FeeManager",
+      "objectId": "0x6bce2fcfedf07f0d994036bacc3d5dcb63de72656b999925a1d2f9c00167ae12",
+      "objectType": "0x1cdc69b904d3c62a34b4b95b8209e46103da04bf82caf9830f97e10b6ee72057::fee::FeeManager",
       "owner": {
         "Shared": {
-          "initial_shared_version": 7086204
+          "initial_shared_version": 8755475
         }
       },
-      "initialSharedVersion": 7086204
+      "initialSharedVersion": 8755475
     }
   ],
   "ownedObjects": []

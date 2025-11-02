@@ -1,9 +1,9 @@
 {
   "packageName": "futarchy_actions",
-  "transactionDigest": "CrLwmdL6h25LGPhPoyQWadqoN9P4Dk4JYJYoyWnKQdXn",
-  "packageId": "0xc6b19d6c56d2befcdec31df053d54a6e6d8690b9d12e7591db3db546e3044ca5",
+  "transactionDigest": "Hawdr73Jd4vcAxaKKWNSpW98tLmcVBcXS6tk73sbe8d5",
+  "packageId": "0xc522db6cd6492e80fc9838b53d9659f72909918bb63d5e52aad9f48e07a3320e",
   "upgradeCap": {
-    "objectId": "0x01dd12f9e260b4aa1e810897b6f3f6e8ecbf9e2df436efbe949b0b74497cf9cb",
+    "objectId": "0xa9e9b1d1095f7c0d6eb0ede161178d2f03c0aeefa9f15a4964a53d8a6dfc1f64",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

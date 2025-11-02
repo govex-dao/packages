@@ -19,7 +19,7 @@ use sui::clock::Clock;
 use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 use sui::event;
 use sui::bag::{Self, Bag};
-use futarchy_types::init_action_specs::{Self as action_specs, InitActionSpecs};
+use account_actions::init_action_specs::{Self as action_specs, InitActionSpecs};
 use futarchy_types::signed::{Self as signed, SignedU128};
 use futarchy_core::dao_config::{Self, ConditionalCoinConfig};
 

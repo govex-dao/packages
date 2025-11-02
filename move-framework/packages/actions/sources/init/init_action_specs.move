@@ -4,7 +4,7 @@
 /// Action specification types for staging init actions
 /// These are lightweight "blueprints" stored on Raise before DAO creation
 /// GENERIC - doesn't know about specific action types
-module futarchy_types::init_action_specs;
+module account_actions::init_action_specs;
 
 use std::type_name::TypeName;
 

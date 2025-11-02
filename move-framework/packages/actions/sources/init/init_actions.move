@@ -27,6 +27,16 @@ public fun init_vault_deposit<Config: store, CoinType: drop>(
     vault::do_deposit_unshared(account, registry, vault_name, coin, ctx);
 }
 
+public fun init_vault_spend<Config: store, CoinType: drop>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    vault_name: string::String,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<CoinType> {
+    vault::do_spend_unshared(account, registry, vault_name, amount, ctx)
+}
+
 // === Currency Actions ===
 
 public fun init_lock_treasury_cap<Config: store, CoinType>(
@@ -54,6 +64,14 @@ public fun init_mint_to_coin<Config: store, CoinType>(
     ctx: &mut TxContext,
 ): Coin<CoinType> {
     currency::do_mint_to_coin_unshared<CoinType>(account, registry, amount, ctx)
+}
+
+public fun init_remove_treasury_cap<Config: store, CoinType>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    recipient: address,
+) {
+    currency::do_remove_treasury_cap_unshared<CoinType>(account, registry, recipient)
 }
 
 // === Access Control Actions ===

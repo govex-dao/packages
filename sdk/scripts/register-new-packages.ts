@@ -1,6 +1,8 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
 import { initSDK, executeTransaction, getActiveAddress } from './execute-tx';
+import * as path from 'path';
+import * as fs from 'fs';
 
 async function main() {
     const sdk = await initSDK();
@@ -8,11 +10,34 @@ async function main() {
 
     console.log('Registering new packages in PackageRegistry...\n');
 
-    const REGISTRY = '0x829e1b3cd9726760baf7eeccfd56b35918c5187b6d8321967f11ecf8136d01f3';
-    const ACCOUNT_PROTOCOL_PKG = '0x2fbef131639a2febdd72814533faff704b8d42b1c1f37cd4a27ad725a4e6eff3';
+    // Load PackageRegistry and AccountProtocol addresses from deployment files
+    const accountProtocolPath = path.join(__dirname, '../../deployments-processed/AccountProtocol.json');
+    const accountProtocolDeployment = JSON.parse(fs.readFileSync(accountProtocolPath, 'utf8'));
 
-    // Load all packages from deployment JSON
-    const deploymentData = require('../../deployment-logs/deployment_verified_20251031_231756.json');
+    const REGISTRY = accountProtocolDeployment.sharedObjects.find((obj: any) => obj.name === 'PackageRegistry')?.objectId;
+    const ACCOUNT_PROTOCOL_PKG = accountProtocolDeployment.packageId;
+
+    if (!REGISTRY || !ACCOUNT_PROTOCOL_PKG) {
+        throw new Error('Failed to load PackageRegistry or AccountProtocol package ID from deployment files');
+    }
+
+    console.log(`Using PackageRegistry: ${REGISTRY}`);
+    console.log(`Using AccountProtocol: ${ACCOUNT_PROTOCOL_PKG}\n`);
+
+    // Load all packages from latest deployment JSON
+    const deploymentLogsDir = path.join(__dirname, '../../deployment-logs');
+    const logFiles = fs.readdirSync(deploymentLogsDir)
+        .filter(f => f.startsWith('deployment_verified_') && f.endsWith('.json'))
+        .sort()
+        .reverse();
+
+    if (logFiles.length === 0) {
+        throw new Error('No deployment log files found');
+    }
+
+    const latestDeploymentPath = path.join(deploymentLogsDir, logFiles[0]);
+    console.log(`Loading packages from: ${logFiles[0]}\n`);
+    const deploymentData = JSON.parse(fs.readFileSync(latestDeploymentPath, 'utf8'));
     const allPackages = deploymentData.packages;
 
     // Map package names to lowercase for registry (factory expects lowercase names)
@@ -21,13 +46,22 @@ async function main() {
         'AccountActions': 'account_actions',
     };
 
+    // Define action types for packages that provide them
+    const actionTypesMap: Record<string, string[]> = {
+        'account_actions': [
+            'account_actions::stream_init_actions::CreateStreamAction',
+            'account_actions::currency_init_actions::ReturnTreasuryCapAction',
+        ],
+        // Add more as needed
+    };
+
     const packages = Object.keys(allPackages).map(key => {
         const registryName = nameMapping[key] || key; // Use lowercase for AccountProtocol/AccountActions
         return {
             name: registryName,
             addr: allPackages[key], // Direct access since it's just packageId string
             version: 1,
-            actionTypes: [],
+            actionTypes: actionTypesMap[registryName] || [],
             category: registryName.includes('actions') ? 'Actions' : registryName.includes('governance') ? 'Governance' : 'Core',
             description: `${registryName} package`
         };

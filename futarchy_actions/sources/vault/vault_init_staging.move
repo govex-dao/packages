@@ -26,7 +26,7 @@
 /// ```
 module futarchy_actions::vault_init_staging;
 
-use futarchy_types::init_action_specs::{Self, InitActionSpecs};
+use account_actions::init_action_specs::{Self, InitActionSpecs};
 use std::option::Option;
 use std::string::String;
 use std::type_name;

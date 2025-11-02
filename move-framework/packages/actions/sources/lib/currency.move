@@ -699,3 +699,46 @@ public fun delete_burn<CoinType>(expired: &mut Expired) {
     let _spec = intents::remove_action_spec(expired);
     // ActionSpec has drop, so it's automatically cleaned up
 }
+
+// === Removal Functions (for launchpad failure cases) ===
+
+/// Remove TreasuryCap from Account during init and transfer to recipient
+/// This is package-visible so only trusted modules can call it
+/// Used when a launchpad raise fails and we need to return the cap to creator
+public(package) fun do_remove_treasury_cap_unshared<CoinType>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    recipient: address,
+) {
+    // Extract TreasuryCap from Account
+    let treasury_cap = account::remove_managed_asset<TreasuryCapKey<CoinType>, TreasuryCap<CoinType>>(
+        account,
+        registry,
+        TreasuryCapKey<CoinType>(),
+        version::current()
+    );
+
+    // Also remove the CurrencyRules since the cap is leaving
+    let rules = account::remove_managed_data<CurrencyRulesKey<CoinType>, CurrencyRules<CoinType>>(
+        account,
+        registry,
+        CurrencyRulesKey<CoinType>(),
+        version::current()
+    );
+
+    // Properly destroy the CurrencyRules struct
+    let CurrencyRules {
+        max_supply: _,
+        total_minted: _,
+        total_burned: _,
+        can_mint: _,
+        can_burn: _,
+        can_update_symbol: _,
+        can_update_name: _,
+        can_update_description: _,
+        can_update_icon: _,
+    } = rules;
+
+    // Transfer TreasuryCap to recipient
+    transfer::public_transfer(treasury_cap, recipient);
+}

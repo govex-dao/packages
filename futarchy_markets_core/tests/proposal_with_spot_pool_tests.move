@@ -9,7 +9,7 @@ use futarchy_markets_primitives::conditional_amm::LiquidityPool;
 use futarchy_markets_primitives::market_state;
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
-use futarchy_types::init_action_specs::InitActionSpecs;
+use account_actions::init_action_specs::InitActionSpecs;
 use futarchy_types::signed::{Self as signed};
 use std::option;
 use std::string::{Self, String};

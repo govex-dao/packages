@@ -67,10 +67,10 @@ public fun add_create_stream_spec(
     // Serialize
     let action_data = bcs::to_bytes(&action);
 
-    // Add to specs with type marker
+    // Add to specs with marker type from vault module (NOT the action struct!)
     account_actions::init_action_specs::add_action(
         specs,
-        type_name::get<CreateStreamAction>(),
+        type_name::with_defining_ids<account_actions::vault::CreateStream>(),
         action_data
     );
 }

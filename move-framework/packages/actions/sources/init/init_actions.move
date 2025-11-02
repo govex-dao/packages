@@ -95,6 +95,15 @@ public fun init_store_object<Config: store, Key: copy + drop + store, T: key + s
     account.add_managed_asset(registry, key, object, version::current());
 }
 
+public fun init_store_data<Config: store, Key: copy + drop + store, T: store>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    key: Key,
+    data: T,
+) {
+    account.add_managed_data(registry, key, data, version::current());
+}
+
 // === Stream Actions ===
 
 public fun init_create_stream<Config: store, CoinType: drop>(

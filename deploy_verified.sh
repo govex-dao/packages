@@ -370,26 +370,32 @@ main() {
         echo -e "${RED}✗ Only $verified of $total packages could be verified${NC}"
     fi
 
-    # Auto-process deployment JSONs
+    # Auto-process deployment JSONs (CRITICAL - SDK depends on this!)
     echo ""
     echo -e "${BLUE}=== Processing Deployment JSONs ===${NC}"
-    if command -v node &> /dev/null; then
-        SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-        if [ -f "$SCRIPT_DIR/process-deployments.js" ]; then
-            cd "$SCRIPT_DIR"
-            node process-deployments.js
+    SDK_DIR="/Users/admin/govex/packages/sdk"
+    if [ -f "$SDK_DIR/scripts/process-deployments.ts" ]; then
+        echo "Running: npx tsx scripts/process-deployments.ts"
+        cd "$SDK_DIR"
+        if npx tsx scripts/process-deployments.ts 2>&1 | tee -a "$DEPLOYMENT_LOG"; then
             echo -e "${GREEN}✓ Deployment JSONs processed successfully${NC}"
+            echo -e "${GREEN}✓ _all-packages.json updated - SDK will use new package IDs${NC}"
         else
-            echo -e "${YELLOW}Warning: process-deployments.js not found${NC}"
+            echo -e "${RED}✗ Failed to process deployment JSONs${NC}"
+            echo -e "${RED}  SDK will use OLD package IDs until this is fixed!${NC}"
+            echo -e "${YELLOW}  Run manually: cd $SDK_DIR && npx tsx scripts/process-deployments.ts${NC}"
         fi
     else
-        echo -e "${YELLOW}Warning: node not found, skipping JSON processing${NC}"
-        echo "Run 'node process-deployments.js' manually to process deployment JSONs"
+        echo -e "${RED}✗ process-deployments.ts not found at: $SDK_DIR/scripts/${NC}"
+        echo -e "${RED}  SDK will not work correctly without processed deployments!${NC}"
     fi
 
-    # Auto-add SUI to factory allowed stable types
+    # Auto-add SUI to factory allowed stable types (optional, non-fatal)
     echo ""
     echo -e "${BLUE}=== Adding SUI to Factory Allowed Stable Types ===${NC}"
+
+    # Temporarily disable exit-on-error for this optional step
+    set +e
 
     # Extract factory package ID and FactoryOwnerCap from deployments
     FACTORY_PKG=$(grep -A 1 "futarchy_factory:" "$DEPLOYMENT_LOG" | tail -1 | awk '{print $2}')
@@ -401,30 +407,36 @@ main() {
             FACTORY_OBJ=$(jq -r '.objectChanges[] | select(.objectType? and (.objectType | contains("::factory::Factory"))) | .objectId' "$FACTORY_JSON" 2>/dev/null | head -1)
             OWNER_CAP=$(jq -r '.objectChanges[] | select(.objectType? and (.objectType | contains("::factory::FactoryOwnerCap"))) | .objectId' "$FACTORY_JSON" 2>/dev/null | head -1)
 
-            if [ -n "$FACTORY_OBJ" ] && [ -n "$OWNER_CAP" ]; then
+            if [ -n "$FACTORY_OBJ" ] && [ -n "$OWNER_CAP" ] && [ "$FACTORY_OBJ" != "null" ] && [ "$OWNER_CAP" != "null" ]; then
                 echo "Factory: $FACTORY_OBJ"
                 echo "OwnerCap: $OWNER_CAP"
+                echo "Package: $FACTORY_PKG"
                 echo "Adding SUI to allowed stable types..."
 
-                sui client call \
+                if sui client call \
                     --package "$FACTORY_PKG" \
                     --module factory \
                     --function add_allowed_stable_type \
                     --type-args '0x2::sui::SUI' \
                     --args "$FACTORY_OBJ" "$OWNER_CAP" 0x6 \
                     --gas-budget 10000000 \
-                    2>&1 | tee -a "$DEPLOYMENT_LOG"
-
-                echo -e "${GREEN}✓ SUI added to allowed stable types${NC}"
+                    2>&1 | tee -a "$DEPLOYMENT_LOG"; then
+                    echo -e "${GREEN}✓ SUI added to allowed stable types${NC}"
+                else
+                    echo -e "${YELLOW}⚠ Failed to add SUI (may already be added)${NC}"
+                fi
             else
-                echo -e "${YELLOW}Warning: Could not find Factory object or OwnerCap${NC}"
+                echo -e "${YELLOW}⚠ Could not find Factory object or OwnerCap${NC}"
             fi
         else
-            echo -e "${YELLOW}Warning: futarchy_factory.json not found${NC}"
+            echo -e "${YELLOW}⚠ futarchy_factory.json not found${NC}"
         fi
     else
-        echo -e "${YELLOW}Warning: futarchy_factory package ID not found${NC}"
+        echo -e "${YELLOW}⚠ futarchy_factory package ID not found${NC}"
     fi
+
+    # Re-enable exit-on-error
+    set -e
 }
 
 main "$@"

@@ -4,15 +4,20 @@
 /// Init action staging for currency operations during launchpad raises
 ///
 /// This module provides action structs and spec builders for staging currency return actions.
-/// Execution dispatch is handled CLIENT-SIDE like proposals - the frontend/keeper
-/// composes a PTB that calls account_actions::init_actions::init_remove_treasury_cap.
+/// Follows the 3-layer action execution pattern (see IMPORTANT_ACTION_EXECUTION_PATTERN.md)
 module account_actions::currency_init_actions;
 
-// === Action Schema (for BCS serialization) ===
+// === Action Structs (for BCS serialization) ===
 
-/// Schema for returning TreasuryCap to creator when raise fails
-/// Clients deserialize this to get parameters for init_actions::init_remove_treasury_cap
+/// Action to return TreasuryCap to creator when raise fails
+/// PTB will call: currency::do_init_remove_treasury_cap<Config, Outcome, CoinType, IW>(executable, ...)
 public struct ReturnTreasuryCapAction has store, copy, drop {
+    recipient: address,
+}
+
+/// Action to return CoinMetadata to creator when raise fails
+/// PTB will call: currency::do_init_remove_metadata<Config, Outcome, Key, CoinType, IW>(executable, ...)
+public struct ReturnMetadataAction has store, copy, drop {
     recipient: address,
 }
 
@@ -20,6 +25,7 @@ public struct ReturnTreasuryCapAction has store, copy, drop {
 
 /// Add ReturnTreasuryCapAction to InitActionSpecs
 /// Used for staging failure actions in launchpad raises
+/// Uses marker type from currency module (not action struct type)
 public fun add_return_treasury_cap_spec(
     specs: &mut account_actions::init_action_specs::InitActionSpecs,
     recipient: address,
@@ -30,13 +36,31 @@ public fun add_return_treasury_cap_spec(
     let action = ReturnTreasuryCapAction { recipient };
     let action_data = bcs::to_bytes(&action);
 
+    // CRITICAL: Use marker type from currency module, not action struct type
     account_actions::init_action_specs::add_action(
         specs,
-        type_name::get<ReturnTreasuryCapAction>(),
+        type_name::with_defining_ids<account_actions::currency::RemoveTreasuryCap>(),
         action_data
     );
 }
 
-// Dispatch is handled CLIENT-SIDE:
-// The client deserializes ReturnTreasuryCapAction from the Intent's action specs,
-// then calls: init_actions::init_remove_treasury_cap<Config, CoinType>(account, registry, action.recipient)
+/// Add ReturnMetadataAction to InitActionSpecs
+/// Used for staging failure actions in launchpad raises
+/// Uses marker type from currency module (not action struct type)
+public fun add_return_metadata_spec(
+    specs: &mut account_actions::init_action_specs::InitActionSpecs,
+    recipient: address,
+) {
+    use std::type_name;
+    use sui::bcs;
+
+    let action = ReturnMetadataAction { recipient };
+    let action_data = bcs::to_bytes(&action);
+
+    // CRITICAL: Use marker type from currency module, not action struct type
+    account_actions::init_action_specs::add_action(
+        specs,
+        type_name::with_defining_ids<account_actions::currency::RemoveMetadata>(),
+        action_data
+    );
+}

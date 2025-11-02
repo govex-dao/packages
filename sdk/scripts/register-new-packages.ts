@@ -100,7 +100,10 @@ async function main() {
 
             console.log(`✓ ${pkg.name} registered\n`);
         } catch (error: any) {
-            if (error.message?.includes('EPackageAlreadyExists')) {
+            // Error code 1 = EPackageAlreadyExists
+            const isAlreadyExists = error.message?.includes('EPackageAlreadyExists') ||
+                                   error.message?.includes('}, 1)'); // Abort code 1
+            if (isAlreadyExists) {
                 console.log(`ℹ️  ${pkg.name} already registered\n`);
             } else {
                 console.error(`✗ Failed to register ${pkg.name}: ${error.message}\n`);

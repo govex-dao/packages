@@ -63,6 +63,10 @@ public struct CurrencyMint has drop {}
 public struct CurrencyBurn has drop {}
 /// Update currency metadata
 public struct CurrencyUpdate has drop {}
+/// Remove treasury cap (return to recipient)
+public struct RemoveTreasuryCap has drop {}
+/// Remove coin metadata (return to recipient)
+public struct RemoveMetadata has drop {}
 
 public fun currency_lock_cap(): CurrencyLockCap { CurrencyLockCap {} }
 public fun currency_disable(): CurrencyDisable { CurrencyDisable {} }
@@ -70,10 +74,22 @@ public fun currency_mint(): CurrencyMint { CurrencyMint {} }
 public fun currency_burn(): CurrencyBurn { CurrencyBurn {} }
 public fun currency_update(): CurrencyUpdate { CurrencyUpdate {} }
 
+/// Create a TreasuryCapKey witness (for PTB execution)
+public fun treasury_cap_key<CoinType>(): TreasuryCapKey<CoinType> {
+    TreasuryCapKey()
+}
+
+/// Create a CoinMetadataKey witness (for PTB execution)
+public fun coin_metadata_key<CoinType>(): CoinMetadataKey<CoinType> {
+    CoinMetadataKey()
+}
+
 // === Structs ===
 
 /// Dynamic Object Field key for the TreasuryCap.
 public struct TreasuryCapKey<phantom CoinType>() has copy, drop, store;
+/// Dynamic Object Field key for the CoinMetadata.
+public struct CoinMetadataKey<phantom CoinType>() has copy, drop, store;
 /// Dynamic Field key for the CurrencyRules.
 public struct CurrencyRulesKey<phantom CoinType>() has copy, drop, store;
 /// Dynamic Field wrapper restricting access to a TreasuryCap, permissions are disabled forever if set.
@@ -91,6 +107,34 @@ public struct CurrencyRules<phantom CoinType> has store {
     can_update_name: bool,
     can_update_description: bool,
     can_update_icon: bool,
+}
+
+/// Create a new CurrencyRules instance
+public fun new_currency_rules<CoinType>(
+    max_supply: Option<u64>,
+    can_mint: bool,
+    can_burn: bool,
+    can_update_symbol: bool,
+    can_update_name: bool,
+    can_update_description: bool,
+    can_update_icon: bool,
+): CurrencyRules<CoinType> {
+    CurrencyRules {
+        max_supply,
+        total_minted: 0,
+        total_burned: 0,
+        can_mint,
+        can_burn,
+        can_update_symbol,
+        can_update_name,
+        can_update_description,
+        can_update_icon,
+    }
+}
+
+/// Create a CurrencyRulesKey witness (for PTB execution)
+public fun currency_rules_key<CoinType>(): CurrencyRulesKey<CoinType> {
+    CurrencyRulesKey()
 }
 
 /// Action disabling permissions marked as true, cannot be reenabled.
@@ -741,4 +785,95 @@ public(package) fun do_remove_treasury_cap_unshared<CoinType>(
 
     // Transfer TreasuryCap to recipient
     transfer::public_transfer(treasury_cap, recipient);
+}
+
+/// Init action: Remove TreasuryCap from Account and return to recipient
+/// Follows the 3-layer action execution pattern (see IMPORTANT_ACTION_EXECUTION_PATTERN.md)
+/// Used for failure_specs in launchpad raises - returns treasury cap to creator when raise fails
+public fun do_init_remove_treasury_cap<Config: store, Outcome: store, CoinType, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    _version_witness: VersionWitness,
+    _intent_witness: IW,
+) {
+    // 1. Assert account ownership
+    executable.intent().assert_is_account(account.addr());
+
+    // 2. Get current ActionSpec from Executable
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // 3. CRITICAL: Validate action type (using marker type)
+    action_validation::assert_action_type<RemoveTreasuryCap>(spec);
+
+    // 4. Check version
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // 5. Deserialize ReturnTreasuryCapAction from BCS bytes
+    let action_data = intents::action_spec_data(spec);
+    let mut reader = bcs::new(*action_data);
+    let recipient = bcs::peel_address(&mut reader);
+
+    // 6. Validate all bytes consumed (security)
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // 7. Execute with deserialized params
+    do_remove_treasury_cap_unshared<CoinType>(
+        account,
+        registry,
+        recipient,  // ← From ActionSpec, not PTB!
+    );
+
+    // 8. Increment action index
+    executable::increment_action_idx(executable);
+}
+
+/// Init action: Remove CoinMetadata from Account and return to recipient
+/// Follows the 3-layer action execution pattern (see IMPORTANT_ACTION_EXECUTION_PATTERN.md)
+/// Used for failure_specs in launchpad raises - returns metadata to creator when raise fails
+public fun do_init_remove_metadata<Config: store, Outcome: store, Key: copy + drop + store, CoinType, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    key: Key,
+    _version_witness: VersionWitness,
+    _intent_witness: IW,
+) {
+    // 1. Assert account ownership
+    executable.intent().assert_is_account(account.addr());
+
+    // 2. Get current ActionSpec from Executable
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // 3. CRITICAL: Validate action type (using marker type)
+    action_validation::assert_action_type<RemoveMetadata>(spec);
+
+    // 4. Check version
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // 5. Deserialize ReturnMetadataAction from BCS bytes
+    let action_data = intents::action_spec_data(spec);
+    let mut reader = bcs::new(*action_data);
+    let recipient = bcs::peel_address(&mut reader);
+
+    // 6. Validate all bytes consumed (security)
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // 7. Remove metadata from account
+    let metadata = account::remove_managed_asset<Key, CoinMetadata<CoinType>>(
+        account,
+        registry,
+        key,
+        version::current()
+    );
+
+    // 8. Transfer metadata to recipient
+    transfer::public_transfer(metadata, recipient);
+
+    // 9. Increment action index
+    executable::increment_action_idx(executable);
 }

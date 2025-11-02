@@ -98,45 +98,87 @@ function processDeployment(packageName, deploymentData) {
 }
 
 function main() {
-  console.log('Processing deployment JSONs...\n');
+  try {
+    console.log('Processing deployment JSONs...\n');
 
-  const files = fs.readdirSync(DEPLOYMENTS_DIR)
-    .filter(f => f.endsWith('.json'))
-    .sort();
+    // Check if deployments directory exists
+    if (!fs.existsSync(DEPLOYMENTS_DIR)) {
+      console.error(`✗ Error: Deployments directory not found: ${DEPLOYMENTS_DIR}`);
+      process.exit(1);
+    }
 
-  const allProcessed = {};
+    const files = fs.readdirSync(DEPLOYMENTS_DIR)
+      .filter(f => f.endsWith('.json'))
+      .sort();
 
-  files.forEach(filename => {
-    const packageName = filename.replace('.json', '');
-    const filePath = path.join(DEPLOYMENTS_DIR, filename);
+    if (files.length === 0) {
+      console.error(`✗ Error: No deployment JSON files found in ${DEPLOYMENTS_DIR}`);
+      process.exit(1);
+    }
 
-    console.log(`Processing: ${packageName}`);
+    const allProcessed = {};
+    let errorCount = 0;
 
-    const deploymentData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    const processed = processDeployment(packageName, deploymentData);
+    files.forEach(filename => {
+      const packageName = filename.replace('.json', '');
+      const filePath = path.join(DEPLOYMENTS_DIR, filename);
 
-    // Save individual processed file
-    const outputPath = path.join(PROCESSED_DIR, filename);
-    fs.writeFileSync(outputPath, JSON.stringify(processed, null, 2));
+      console.log(`Processing: ${packageName}`);
 
-    // Add to combined output
-    allProcessed[packageName] = processed;
+      try {
+        const deploymentData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const processed = processDeployment(packageName, deploymentData);
 
-    console.log(`  Package ID: ${processed.packageId}`);
-    console.log(`  UpgradeCap: ${processed.upgradeCap?.objectId || 'N/A'}`);
-    console.log(`  Admin Caps: ${processed.adminCaps.length}`);
-    console.log(`  Shared Objects: ${processed.sharedObjects.length}`);
-    console.log(`  Owned Objects: ${processed.ownedObjects.length}`);
-    console.log('');
-  });
+        if (!processed.packageId) {
+          console.warn(`  ⚠ Warning: No package ID found in ${filename}`);
+          errorCount++;
+        }
 
-  // Save combined file with all packages
-  const combinedPath = path.join(PROCESSED_DIR, '_all-packages.json');
-  fs.writeFileSync(combinedPath, JSON.stringify(allProcessed, null, 2));
+        // Save individual processed file
+        const outputPath = path.join(PROCESSED_DIR, filename);
+        fs.writeFileSync(outputPath, JSON.stringify(processed, null, 2));
 
-  console.log(`✓ Processed ${files.length} deployment files`);
-  console.log(`✓ Individual files saved to: ${PROCESSED_DIR}`);
-  console.log(`✓ Combined file saved to: ${combinedPath}`);
+        // Add to combined output
+        allProcessed[packageName] = processed;
+
+        console.log(`  Package ID: ${processed.packageId || 'N/A'}`);
+        console.log(`  UpgradeCap: ${processed.upgradeCap?.objectId || 'N/A'}`);
+        console.log(`  Admin Caps: ${processed.adminCaps.length}`);
+        console.log(`  Shared Objects: ${processed.sharedObjects.length}`);
+        console.log(`  Owned Objects: ${processed.ownedObjects.length}`);
+        console.log('');
+      } catch (error) {
+        console.error(`  ✗ Error processing ${filename}: ${error.message}`);
+        errorCount++;
+      }
+    });
+
+    // Save combined file with all packages
+    const combinedPath = path.join(PROCESSED_DIR, '_all-packages.json');
+    fs.writeFileSync(combinedPath, JSON.stringify(allProcessed, null, 2));
+
+    console.log(`✓ Processed ${files.length} deployment files`);
+    if (errorCount > 0) {
+      console.log(`⚠ ${errorCount} file(s) had warnings or errors`);
+    }
+    console.log(`✓ Individual files saved to: ${PROCESSED_DIR}`);
+    console.log(`✓ Combined file saved to: ${combinedPath}`);
+
+    // Exit with error code if there were errors
+    if (errorCount > 0) {
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(`✗ Fatal error: ${error.message}`);
+    console.error(error.stack);
+    process.exit(1);
+  }
 }
 
-main();
+// Run main and handle any uncaught errors
+try {
+  main();
+} catch (error) {
+  console.error(`✗ Uncaught error: ${error.message}`);
+  process.exit(1);
+}

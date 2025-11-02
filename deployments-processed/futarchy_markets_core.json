@@ -1,19 +1,12 @@
 {
   "packageName": "futarchy_markets_core",
-  "transactionDigest": "4vhSTPFV73up3bdpQNkeeeNX7FtNeXV4psXvXEQcKZTc",
-  "packageId": "0x1cdc69b904d3c62a34b4b95b8209e46103da04bf82caf9830f97e10b6ee72057",
-  "upgradeCap": {
-    "objectId": "0x6672daa5907202f711d1bbc04ee6b15dc7881685322b5a8dea3748bb59f4fc4b",
-    "objectType": "0x2::package::UpgradeCap",
-    "owner": {
-      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
-    }
-  },
+  "transactionDigest": "3HmPo4SyhVMa6FTEbJjSwoxtcfz4j6evitX8Jmz3f9Zh",
+  "packageId": "0xcc80f13e07bc60612bd0ec7d64e11ab70f98ceb44767e90a03f9b8383ede8a5f",
   "adminCaps": [
     {
       "name": "FeeAdminCap",
-      "objectId": "0x82ad861df27c2e13c086034867effb4cd135194fb834aeb8424ef0033f9ac8f2",
-      "objectType": "0x1cdc69b904d3c62a34b4b95b8209e46103da04bf82caf9830f97e10b6ee72057::fee::FeeAdminCap",
+      "objectId": "0x2d5ca53f383e7827341d52c31f1ccbc2b03681b8a54ca6dd728b94b7065e74fd",
+      "objectType": "0xcc80f13e07bc60612bd0ec7d64e11ab70f98ceb44767e90a03f9b8383ede8a5f::fee::FeeAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -22,15 +15,22 @@
   "sharedObjects": [
     {
       "name": "FeeManager",
-      "objectId": "0x6bce2fcfedf07f0d994036bacc3d5dcb63de72656b999925a1d2f9c00167ae12",
-      "objectType": "0x1cdc69b904d3c62a34b4b95b8209e46103da04bf82caf9830f97e10b6ee72057::fee::FeeManager",
+      "objectId": "0xa9d7e8b4cdf2fb2888720c0ece924b074c35585ca8603496e2661dba6565f2d2",
+      "objectType": "0xcc80f13e07bc60612bd0ec7d64e11ab70f98ceb44767e90a03f9b8383ede8a5f::fee::FeeManager",
       "owner": {
         "Shared": {
-          "initial_shared_version": 8755475
+          "initial_shared_version": 11
         }
       },
-      "initialSharedVersion": 8755475
+      "initialSharedVersion": 11
     }
   ],
-  "ownedObjects": []
+  "ownedObjects": [],
+  "upgradeCap": {
+    "objectId": "0x354342e99a77aa291372e704d394cd0deada063b52d0b67cac0e75bb4a19cc8a",
+    "objectType": "0x2::package::UpgradeCap",
+    "owner": {
+      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+    }
+  }
 }

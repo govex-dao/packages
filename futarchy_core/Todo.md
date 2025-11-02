@@ -145,11 +145,33 @@ and patara.app
 - [X] simplify oracle actions??
 - [X] cant subsidise after TWAP delay
 
+
+XXXXXX
+
+
 - [ ] unlocks ratio of launchapd or jsut price or both??? decide??
 - [ ] cap / intent to pause new account creation??
 - [ ] maybe nft for AMM position doesn't make sense
 (check how pools track invidiual nfts's buckets and amounts)
 - [ ] tightly couple intent / action registry with init actions???
+
+
+> so this makes me think\
+\
+i need to use actual intents right??\
+\
+stored in account?? for both launchpad and proposals\
+\
+and executed or r ejected?? and deleted??\
+\
+just step back and investigate\
+\
+( as I need to rely on ptb contruction\
+\
+so need somethign with construction 100% coupled to execution) 
+
+
+XXXXX
 
 1) dao needs to supside LPs during proposals ( use proposer fee)\
 2) I need to slwly replace aftermath!!! \

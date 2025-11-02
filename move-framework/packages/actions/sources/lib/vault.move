@@ -86,6 +86,9 @@ public struct VaultRemoveApprovedCoinType has drop {}
 /// Cancel stream
 public struct CancelStream has drop {}
 
+/// Create stream (marker type for action validation)
+public struct CreateStream has drop {}
+
 // === Structs ===
 
 /// Dynamic Field key for the Vault.
@@ -1429,6 +1432,77 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
     });
 
     stream_id_copy
+}
+
+/// Execute create_stream from Intent during launchpad initialization
+/// Reads CreateStreamAction from Executable and creates stream
+public fun do_init_create_stream<Config: store, Outcome: store, CoinType: drop, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    clock: &Clock,
+    _version_witness: VersionWitness,
+    _intent_witness: IW,
+    ctx: &mut TxContext,
+): ID {
+    executable.intent().assert_is_account(account.addr());
+
+    // Get BCS bytes from ActionSpec
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // CRITICAL: Assert that the action type is what we expect (using marker type)
+    action_validation::assert_action_type<CreateStream>(spec);
+
+    let action_data = intents::action_spec_data(spec);
+
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Deserialize CreateStreamAction
+    let mut reader = bcs::new(*action_data);
+    let vault_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+    let beneficiary = bcs::peel_address(&mut reader);
+    let total_amount = bcs::peel_u64(&mut reader);
+    let start_time = bcs::peel_u64(&mut reader);
+    let end_time = bcs::peel_u64(&mut reader);
+
+    // Deserialize Option<u64> for cliff_time
+    let cliff_time = if (bcs::peel_bool(&mut reader)) {
+        option::some(bcs::peel_u64(&mut reader))
+    } else {
+        option::none()
+    };
+
+    let max_per_withdrawal = bcs::peel_u64(&mut reader);
+    let min_interval_ms = bcs::peel_u64(&mut reader);
+    let max_beneficiaries = bcs::peel_u64(&mut reader);
+
+    // Validate all bytes consumed
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Call existing create_stream_unshared
+    let stream_id = create_stream_unshared<Config, CoinType>(
+        account,
+        registry,
+        vault_name,
+        beneficiary,
+        total_amount,
+        start_time,
+        end_time,
+        cliff_time,
+        max_per_withdrawal,
+        min_interval_ms,
+        max_beneficiaries,
+        clock,
+        ctx,
+    );
+
+    // Increment action index
+    executable::increment_action_idx(executable);
+
+    stream_id
 }
 
 // === Preview Functions ===

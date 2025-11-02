@@ -3,6 +3,7 @@
 
 module futarchy_factory::launchpad;
 
+use account_actions::currency::{Self, CoinMetadataKey, CurrencyRules, CurrencyRulesKey};
 use account_actions::init_actions;
 use account_protocol::account::Account;
 use account_protocol::intent_interface;
@@ -100,8 +101,9 @@ public struct Contribution has copy, drop, store {
 public struct DaoAccountKey has copy, drop, store {}
 public struct DaoQueueKey has copy, drop, store {}
 public struct DaoPoolKey has copy, drop, store {}
-public struct DaoMetadataKey has copy, drop, store {}
-public struct CoinMetadataKey has copy, drop, store {}
+/// Local key for storing CoinMetadata temporarily on Raise object
+/// (different from currency::CoinMetadataKey which is used on Account)
+public struct RaiseCoinMetadataKey has copy, drop, store {}
 public struct Raise<phantom RaiseToken, phantom StableCoin> has key, store {
     id: UID,
     account_id: Option<ID>,  // Reference to the Account (set when dao created, used for JIT Intent creation)
@@ -602,7 +604,10 @@ public entry fun settle_raise<RaiseToken, StableCoin>(
     };
 
     let mut final_amount = best_total;
-    assert!(final_amount >= raise.min_raise_amount, EMinRaiseNotMet);
+
+    // Don't abort if minimum not met - allow settlement to complete
+    // State will be set to FAILED in finalize_and_share_dao if min not met
+    // This allows failure_specs to be executed via Intent
 
     if (option::is_some(&raise.max_raise_amount)) {
         let max_raise = *option::borrow(&raise.max_raise_amount);
@@ -719,8 +724,9 @@ fun complete_raise_unshared<RaiseToken: drop, StableCoin: drop>(
     assert!(raise.settlement_done, EInvalidStateForAction);
 
     let final_total = raise.final_raise_amount;
-    assert!(final_total >= raise.min_raise_amount, EMinRaiseNotMet);
-    assert!(final_total > 0, EMinRaiseNotMet);
+    // Don't assert minimum met - allow DAO creation for failed raises too
+    // This enables failure_specs execution via Intent system
+    let raise_succeeded = final_total >= raise.min_raise_amount;
 
     // No DAO creation fee - launchpad already collected fee when raise was created
 
@@ -743,48 +749,93 @@ fun complete_raise_unshared<RaiseToken: drop, StableCoin: drop>(
 
     // Deposit treasury cap
     let treasury_cap = raise.treasury_cap.extract();
-    init_actions::init_lock_treasury_cap<FutarchyConfig, RaiseToken>(&mut account, registry, treasury_cap);
 
-    // Deposit metadata if exists
-    if (df::exists_(&raise.id, CoinMetadataKey {})) {
-        let metadata: CoinMetadata<RaiseToken> = df::remove(&mut raise.id, CoinMetadataKey {});
-        init_actions::init_store_object<FutarchyConfig, DaoMetadataKey, CoinMetadata<RaiseToken>>(
+    if (raise_succeeded) {
+        // SUCCESS: Lock the treasury cap (makes it inaccessible except through proposals)
+        init_actions::init_lock_treasury_cap<FutarchyConfig, RaiseToken>(&mut account, registry, treasury_cap);
+    } else {
+        // FAILURE: Store as removable managed asset so failure_specs can remove and transfer it
+        // Also create and store CurrencyRules (needed for removal)
+        let rules = currency::new_currency_rules<RaiseToken>(
+            option::none(), // no max_supply
+            true,  // can_mint
+            true,  // can_burn
+            true,  // can_update_symbol
+            true,  // can_update_name
+            true,  // can_update_description
+            true,  // can_update_icon
+        );
+
+        init_actions::init_store_data<FutarchyConfig, CurrencyRulesKey<RaiseToken>, CurrencyRules<RaiseToken>>(
             &mut account,
             registry,
-            DaoMetadataKey {},
+            currency::currency_rules_key<RaiseToken>(),
+            rules,
+        );
+
+        init_actions::init_store_object<FutarchyConfig, currency::TreasuryCapKey<RaiseToken>, TreasuryCap<RaiseToken>>(
+            &mut account,
+            registry,
+            currency::treasury_cap_key<RaiseToken>(),
+            treasury_cap,
+        );
+    };
+
+    // Deposit metadata if exists (always - needed for both success and failure paths)
+    if (raise.coin_metadata.is_some()) {
+        let metadata: CoinMetadata<RaiseToken> = raise.coin_metadata.extract();
+        // Store in Account using currency module's standard key
+        init_actions::init_store_object<FutarchyConfig, CoinMetadataKey<RaiseToken>, CoinMetadata<RaiseToken>>(
+            &mut account,
+            registry,
+            currency::coin_metadata_key<RaiseToken>(),
             metadata,
         );
     };
 
-    // Set launchpad initial price
-    assert!(raise.tokens_for_sale_amount > 0, EInvalidStateForAction);
-    assert!(raise.final_raise_amount > 0, EInvalidStateForAction);
+    // Conditional setup based on raise outcome
+    if (raise_succeeded) {
+        // === SUCCESS PATH ===
+        // Set launchpad initial price
+        assert!(raise.tokens_for_sale_amount > 0, EInvalidStateForAction);
+        assert!(raise.final_raise_amount > 0, EInvalidStateForAction);
 
-    let raise_price = math::mul_div_mixed(
-        (raise.final_raise_amount as u128),
-        constants::price_multiplier_scale(),
-        (raise.tokens_for_sale_amount as u128),
-    );
+        let raise_price = math::mul_div_mixed(
+            (raise.final_raise_amount as u128),
+            constants::price_multiplier_scale(),
+            (raise.tokens_for_sale_amount as u128),
+        );
 
-    let config = futarchy_config::internal_config_mut(&mut account, registry, version::current());
-    futarchy_config::set_launchpad_initial_price(config, raise_price);
+        let config = futarchy_config::internal_config_mut(&mut account, registry, version::current());
+        futarchy_config::set_launchpad_initial_price(config, raise_price);
 
-    // Inherit verification state from launchpad to DAO
-    futarchy_config::set_verification_level(config, raise.verification_level);
-    futarchy_config::set_admin_review_text(config, raise.admin_review_text);
+        // Inherit verification state from launchpad to DAO
+        futarchy_config::set_verification_level(config, raise.verification_level);
+        futarchy_config::set_admin_review_text(config, raise.admin_review_text);
 
-    // Note: attestation_url is stored in the launchpad Raise object and can be queried from there
-    // DaoState.attestation_url is used for verification request workflow, not for inherited state
+        // Note: attestation_url is stored in the launchpad Raise object and can be queried from there
+        // DaoState.attestation_url is used for verification request workflow, not for inherited state
 
-    // Deposit raised funds to DAO treasury
-    let raised_funds = coin::from_balance(raise.stable_coin_vault.split(raise.final_raise_amount), ctx);
-    init_actions::init_vault_deposit<FutarchyConfig, StableCoin>(
-        &mut account,
-        registry,
-        string::utf8(b"treasury"),
-        raised_funds,
-        ctx,
-    );
+        // Deposit raised funds to DAO treasury
+        let raised_funds = coin::from_balance(raise.stable_coin_vault.split(raise.final_raise_amount), ctx);
+        init_actions::init_vault_deposit<FutarchyConfig, StableCoin>(
+            &mut account,
+            registry,
+            string::utf8(b"treasury"),
+            raised_funds,
+            ctx,
+        );
+    } else {
+        // === FAILURE PATH ===
+        // Don't set price - not applicable for failed raises
+        // Don't deposit funds - they stay in raise.stable_coin_vault for contributor refunds via claim_refund()
+        // Treasury cap and metadata are already deposited above so failure_specs can return them via Intent
+
+        // Still inherit verification state
+        let config = futarchy_config::internal_config_mut(&mut account, registry, version::current());
+        futarchy_config::set_verification_level(config, raise.verification_level);
+        futarchy_config::set_admin_review_text(config, raise.admin_review_text);
+    };
 
     // Return unshared DAO as hot potato - PTB must execute init actions and finalize
     UnsharedDao<RaiseToken, StableCoin> {
@@ -862,14 +913,23 @@ fun create_intents_from_specs<RaiseToken, StableCoin>(
 /// Intent witness for launchpad initialization intents
 public struct LaunchpadIntent has copy, drop {}
 
-/// Check if LaunchpadOutcome is approved (raise succeeded)
+/// Create a LaunchpadIntent witness (for PTB execution)
+public fun launchpad_intent_witness(): LaunchpadIntent {
+    LaunchpadIntent {}
+}
+
+/// Check if LaunchpadOutcome is approved for this raise
 /// This is called by keepers to validate before executing intents
+///
+/// Note: State checking (success vs failure) happens during JIT Intent creation,
+/// where the correct specs (success_specs or failure_specs) are selected.
+/// This function only validates that the outcome belongs to this raise.
 public fun is_outcome_approved<RaiseToken, StableCoin>(
     outcome: &launchpad_outcome::LaunchpadOutcome,
     raise: &Raise<RaiseToken, StableCoin>,
 ): bool {
-    object::id(raise) == launchpad_outcome::raise_id(outcome) &&
-    raise.state == STATE_SUCCESSFUL
+    object::id(raise) == launchpad_outcome::raise_id(outcome)
+    // State check removed - specs were already selected correctly during JIT conversion
 }
 
 /// Finalize and share the DAO after init actions complete
@@ -885,7 +945,9 @@ public fun finalize_and_share_dao<RaiseToken: drop, StableCoin: drop>(
     let UnsharedDao { mut account } = unshared;
 
     // CRITICAL: Set state BEFORE JIT conversion so it picks the right spec!
-    raise.state = STATE_SUCCESSFUL;
+    // Determine if raise succeeded based on whether minimum was met
+    let raise_succeeded = raise.final_raise_amount >= raise.min_raise_amount;
+    raise.state = if (raise_succeeded) { STATE_SUCCESSFUL } else { STATE_FAILED };
 
     // JIT CONVERSION: Create Intents from staged InitActionSpecs
     // This happens BEFORE account is shared so we can add intents
@@ -905,10 +967,19 @@ public fun finalize_and_share_dao<RaiseToken: drop, StableCoin: drop>(
     // NOTE: Spot pool is created and shared via init actions, not here
     sui_transfer::public_share_object(account);
 
-    event::emit(RaiseSuccessful {
-        raise_id: object::id(raise),
-        total_raised: raise.final_raise_amount,
-    });
+    // Emit appropriate event based on outcome
+    if (raise_succeeded) {
+        event::emit(RaiseSuccessful {
+            raise_id: object::id(raise),
+            total_raised: raise.final_raise_amount,
+        });
+    } else {
+        event::emit(RaiseFailed {
+            raise_id: object::id(raise),
+            total_raised: raise.final_raise_amount,
+            min_raise_amount: raise.min_raise_amount,
+        });
+    };
 }
 
 /// Public wrapper for complete_raise_unshared - for PTB init action execution
@@ -1301,8 +1372,8 @@ public entry fun cleanup_failed_raise<RaiseToken: drop, StableCoin: drop>(
         timestamp: clock.timestamp_ms(),
     });
 
-    if (df::exists_(&raise.id, CoinMetadataKey {})) {
-        let metadata: CoinMetadata<RaiseToken> = df::remove(&mut raise.id, CoinMetadataKey {});
+    if (df::exists_(&raise.id, RaiseCoinMetadataKey {})) {
+        let metadata: CoinMetadata<RaiseToken> = df::remove(&mut raise.id, RaiseCoinMetadataKey {});
         sui_transfer::public_transfer(metadata, raise.creator);
     };
 }
@@ -1638,12 +1709,13 @@ public fun complete_raise_test<RaiseToken: drop, StableCoin: drop>(
     init_actions::init_lock_treasury_cap<FutarchyConfig, RaiseToken>(&mut account, registry, treasury_cap);
 
     // Deposit metadata if exists
-    if (df::exists_(&raise.id, CoinMetadataKey {})) {
-        let metadata: CoinMetadata<RaiseToken> = df::remove(&mut raise.id, CoinMetadataKey {});
-        init_actions::init_store_object<FutarchyConfig, DaoMetadataKey, CoinMetadata<RaiseToken>>(
+    if (df::exists_(&raise.id, RaiseCoinMetadataKey {})) {
+        let metadata: CoinMetadata<RaiseToken> = df::remove(&mut raise.id, RaiseCoinMetadataKey {});
+        // Store in Account using currency module's standard key
+        init_actions::init_store_object<FutarchyConfig, CoinMetadataKey<RaiseToken>, CoinMetadata<RaiseToken>>(
             &mut account,
             registry,
-            DaoMetadataKey {},
+            currency::coin_metadata_key<RaiseToken>(),
             metadata,
         );
     };

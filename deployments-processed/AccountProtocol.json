@@ -1,12 +1,12 @@
 {
   "packageName": "AccountProtocol",
-  "transactionDigest": "75cZgRfGq5j6Nnb9cSgZEGmJrK7WE7zW5TJ57NQyebcY",
-  "packageId": "0x9dad524c13bef3723e437afa147bab861d2dea174194f660a2be629688db4e21",
+  "transactionDigest": "6GkiqtHrM9HB8PB387qWuh6FT6diH3SGpgtAW9njzUyG",
+  "packageId": "0xdb8b27fdf53a637eb6a738368e2deb61649d5f54fbd6dc9a189b3d32bdd43994",
   "adminCaps": [
     {
       "name": "PackageAdminCap",
-      "objectId": "0x5443ffdb9f61b506e0fc205c42f75c46d1934e9dccc7986304545d42fbd94ea5",
-      "objectType": "0x9dad524c13bef3723e437afa147bab861d2dea174194f660a2be629688db4e21::package_registry::PackageAdminCap",
+      "objectId": "0xf489956e03beaacf83737817460b56b5e415b6d038fc8b53e77472b8f4df4ff1",
+      "objectType": "0xdb8b27fdf53a637eb6a738368e2deb61649d5f54fbd6dc9a189b3d32bdd43994::package_registry::PackageAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -15,19 +15,19 @@
   "sharedObjects": [
     {
       "name": "PackageRegistry",
-      "objectId": "0xc3fbe6bbd93defcd9adce10a46eb76ef7366f42b797d8fcd002920f0b9dce573",
-      "objectType": "0x9dad524c13bef3723e437afa147bab861d2dea174194f660a2be629688db4e21::package_registry::PackageRegistry",
+      "objectId": "0xdf5fb7c6a508201ba268881ee9eb65a37b367c5e496d56dbfa4904aa271ab87a",
+      "objectType": "0xdb8b27fdf53a637eb6a738368e2deb61649d5f54fbd6dc9a189b3d32bdd43994::package_registry::PackageRegistry",
       "owner": {
         "Shared": {
-          "initial_shared_version": 5
+          "initial_shared_version": 12
         }
       },
-      "initialSharedVersion": 5
+      "initialSharedVersion": 12
     }
   ],
   "ownedObjects": [],
   "upgradeCap": {
-    "objectId": "0x9889e2c678eab3e4a0b9df7f95e7d180b2baecb8c41719806d441dadc322e167",
+    "objectId": "0x881fb3ee1912a512083bdfc96d3ed7eb01dbb6e40a1a5ba39d13e0e9db7c8523",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

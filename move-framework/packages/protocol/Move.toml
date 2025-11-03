@@ -7,4 +7,4 @@ authors = [ "Thouny (thouny@tuta.io)", "Greshamscode" ]
 [dependencies]
 
 [addresses]
-account_protocol = "0x9dad524c13bef3723e437afa147bab861d2dea174194f660a2be629688db4e21"
+account_protocol = "0xdb8b27fdf53a637eb6a738368e2deb61649d5f54fbd6dc9a189b3d32bdd43994"

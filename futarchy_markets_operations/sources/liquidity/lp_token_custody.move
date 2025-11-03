@@ -184,6 +184,83 @@ public fun deposit_lp_token<AssetType, StableType, W: drop>(
     });
 }
 
+/// Deposit LP token into custody during init - works on unshared Accounts
+/// This version bypasses auth checks since it's only callable during DAO initialization
+/// Same logic as deposit_lp_token but without witness verification
+public fun deposit_lp_token_unshared<AssetType, StableType>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    pool_id: ID,
+    token: LPToken<AssetType, StableType>,
+    ctx: &mut TxContext,
+) {
+    // Get account ID before mutable borrowing
+    let account_id = object::id(account);
+
+    // Initialize custody if needed
+    if (!has_custody(account)) {
+        init_custody(account, registry, ctx);
+    };
+
+    let custody: &mut LPTokenCustody = account::borrow_managed_data_mut(
+        account,
+        registry,
+        LPCustodyKey {},
+        version::current(),
+    );
+
+    let token_id = object::id(&token);
+    let amount = unified_spot_pool::lp_token_amount(&token);
+
+    // Update tokens by pool
+    if (!custody.tokens_by_pool.contains(pool_id)) {
+        custody.tokens_by_pool.add(pool_id, vector::empty());
+        custody.pool_totals.add(pool_id, 0);
+        // Add to active pools if not already present
+        let (found, _) = custody.active_pools.index_of(&pool_id);
+        if (!found) {
+            custody.active_pools.push_back(pool_id);
+        };
+    };
+    let pool_tokens = custody.tokens_by_pool.borrow_mut(pool_id);
+    pool_tokens.push_back(token_id);
+
+    // Update token tracking tables
+    custody.token_amounts.add(token_id, amount);
+    custody.token_to_pool.add(token_id, pool_id);
+
+    // Update pool total
+    let pool_total = custody.pool_totals.borrow_mut(pool_id);
+    *pool_total = *pool_total + amount;
+
+    // Update global total
+    custody.total_value_locked = custody.total_value_locked + amount;
+
+    // Get values for event before transfer
+    let new_pool_total = *custody.pool_totals.borrow(pool_id);
+    let new_total_value_locked = custody.total_value_locked;
+
+    // Store LP token as a managed asset in the Account
+    // This ensures proper custody under Account's policy engine and prevents accidental outflows
+    // The LPKey with token_id is used as the key for retrieval
+    account::add_managed_asset(
+        account,
+        registry,
+        LPKey { token_id },
+        token,
+        version::current(),
+    );
+
+    event::emit(LPTokenDeposited {
+        account_id,
+        pool_id,
+        token_id,
+        amount,
+        new_pool_total,
+        new_total_value_locked,
+    });
+}
+
 /// Withdraw LP token from custody and return it to caller
 /// The token_id identifies which LP token to withdraw from managed assets
 public fun withdraw_lp_token<AssetType, StableType, W: drop>(

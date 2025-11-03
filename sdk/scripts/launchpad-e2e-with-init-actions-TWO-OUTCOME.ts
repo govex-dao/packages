@@ -351,7 +351,7 @@ async function main() {
 
   // Step 4: Stage SUCCESS init actions
   console.log("\n" + "=".repeat(80));
-  console.log("STEP 4: STAGE SUCCESS INIT ACTIONS (STREAM)");
+  console.log("STEP 4: STAGE SUCCESS INIT ACTIONS (STREAM + AMM POOL)");
   console.log("=".repeat(80));
 
   const streamRecipient = sender;
@@ -401,6 +401,28 @@ async function main() {
     ],
   });
 
+  // Step 2.5: Add pool creation action to specs
+  const poolAssetAmount = TransactionUtils.suiToMist(1000); // Mint 1000 asset tokens
+  const poolStableAmount = TransactionUtils.suiToMist(1); // Use 1 stable from vault
+  const poolFeeBps = 30; // 0.3% fee
+
+  console.log("\n📋 Staging AMM pool creation for SUCCESS outcome...");
+  console.log(`   Vault: treasury`);
+  console.log(`   Asset amount to mint: ${Number(poolAssetAmount) / 1e9} tokens`);
+  console.log(`   Stable amount from vault: ${Number(poolStableAmount) / 1e9} tokens`);
+  console.log(`   Fee: ${poolFeeBps / 100}%`);
+
+  stageTx.moveCall({
+    target: `${sdk.getPackageId("futarchy_actions")}::liquidity_init_actions::add_create_pool_with_mint_spec`,
+    arguments: [
+      specs, // &mut InitActionSpecs
+      stageTx.pure.string("treasury"),
+      stageTx.pure.u64(poolAssetAmount),
+      stageTx.pure.u64(poolStableAmount),
+      stageTx.pure.u64(poolFeeBps),
+    ],
+  });
+
   // Step 3: Stage as SUCCESS intent
   stageTx.moveCall({
     target: `${launchpadPkg}::launchpad::stage_success_intent`,
@@ -420,7 +442,7 @@ async function main() {
     showEffects: false,
   });
 
-  console.log("✅ Stream staged as SUCCESS action!");
+  console.log("✅ Stream and AMM pool staged as SUCCESS actions!");
   console.log(`   Transaction: ${stageResult.digest}`);
 
   // Step 4.5: Stage FAILURE init actions (return caps if raise fails)
@@ -730,7 +752,7 @@ async function main() {
   // Step 9: Execute Intent - different paths for success vs failure
   console.log("\n" + "=".repeat(80));
   if (raiseActuallySucceeded) {
-    console.log("STEP 9: EXECUTE INTENT (SUCCESS PATH - CREATE STREAM)");
+    console.log("STEP 9: EXECUTE INTENT (SUCCESS PATH - STREAM + AMM POOL)");
   } else {
     console.log("STEP 9: EXECUTE INTENT (FAILURE PATH - RETURN CAPS)");
   }
@@ -768,16 +790,37 @@ async function main() {
 
   // 2. Execute the appropriate actions based on raise outcome
   if (raiseActuallySucceeded) {
-    console.log("\n💧 Executing SUCCESS specs: create stream...");
-    console.log("   Using PTB executor pattern: begin → do_init → finalize");
+    console.log("\n💧 Executing SUCCESS specs: create stream and AMM pool...");
+    console.log("   Using PTB executor pattern: begin → do_init → do_init → finalize");
 
-    // Execute stream creation action
+    // Execute stream creation action (Action #1)
     executeTx.moveCall({
       target: `${accountActionsPkg}::vault::do_init_create_stream`,
       typeArguments: [
         `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
         `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
         testCoins.stable.type, // CoinType for the stream
+        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        executable, // Executable hot potato
+        executeTx.object(accountId), // Account
+        executeTx.object(registryId), // PackageRegistry
+        executeTx.object("0x6"), // Clock
+        versionWitness, // VersionWitness
+        launchpadIntentWitness, // LaunchpadIntent witness
+      ],
+    });
+
+    // Execute pool creation action (Action #2)
+    console.log("   → Stream created, now creating AMM pool...");
+    executeTx.moveCall({
+      target: `${futarchyActionsPkg}::liquidity_init_actions::do_init_create_pool_with_mint`,
+      typeArguments: [
+        `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
+        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
+        testCoins.asset.type, // AssetType to mint
+        testCoins.stable.type, // StableType from vault
         `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
       ],
       arguments: [
@@ -858,7 +901,7 @@ async function main() {
     });
 
     if (raiseActuallySucceeded) {
-      console.log("✅ Stream created via Intent execution!");
+      console.log("✅ Stream and AMM pool created via Intent execution!");
       console.log(`   Transaction: ${executeResult.digest}`);
 
       // Find the created stream object
@@ -869,7 +912,16 @@ async function main() {
       if (streamObject) {
         console.log(`   Stream ID: ${streamObject.objectId}`);
       }
-    } else {
+
+      // Find the created pool object
+      const poolObject = executeResult.objectChanges?.find((c: any) =>
+        c.objectType?.includes("::unified_spot_pool::UnifiedSpotPool"),
+      );
+
+      if (poolObject) {
+        console.log(`   Pool ID: ${poolObject.objectId}`);
+      }
+    } else{
       console.log("✅ TreasuryCap and Metadata returned via Intent execution!");
       console.log(`   Transaction: ${executeResult.digest}`);
 
@@ -896,86 +948,11 @@ async function main() {
 
   // Steps 10-11: Only run for successful raises (minting/claiming not allowed on failed raises)
   if (raiseActuallySucceeded) {
-    // Step 10: Create AMM pool with minted asset and stable from vault
-    console.log("\n" + "=".repeat(80));
-    console.log("STEP 10: CREATE AMM POOL (MINT + LIQUIDITY)");
-    console.log("=".repeat(80));
+    // NOTE: STEP 10 (Create AMM pool) has been moved to STEP 9 and now executes via Intent!
+    // Pool creation is now staged in success_specs and executed via do_init_create_pool_with_mint.
+    // This ensures pool creation happens atomically with other init actions during DAO creation.
 
-    console.log("\n🏊 Creating AMM pool with minted asset and vault stable...");
-
-    const ammTx = new Transaction();
-
-    // AMM parameters
-    const assetAmount = TransactionUtils.suiToMist(1000); // Mint 1000 asset tokens
-    const stableAmount = TransactionUtils.suiToMist(1); // Use 1 stable from vault (raised funds)
-    const feeBps = 30; // 0.3% fee
-
-    // First create the witness
-    const witness = ammTx.moveCall({
-      target: `${futarchyCorePkg}::futarchy_config::witness`,
-      arguments: [],
-    });
-
-    // Call init_create_pool_with_mint which:
-    // 1. Mints asset using treasury cap
-    // 2. Withdraws stable from vault
-    // 3. Creates AMM pool
-    // 4. Auto-saves LP token to account custody
-    ammTx.moveCall({
-      target: `${futarchyActionsPkg}::liquidity_init_actions::init_create_pool_with_mint`,
-      typeArguments: [
-        `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        testCoins.asset.type,
-        testCoins.stable.type,
-        `${futarchyCorePkg}::futarchy_config::ConfigWitness`,
-      ],
-      arguments: [
-        ammTx.object(accountId),
-        ammTx.object(registryId),
-        ammTx.pure.string("treasury"),
-        ammTx.pure.u64(assetAmount),
-        ammTx.pure.u64(stableAmount),
-        ammTx.pure.u64(feeBps),
-        witness, // Use the witness result
-        ammTx.object("0x6"), // clock
-      ],
-    });
-
-    try {
-      const ammResult = await executeTransaction(sdk, ammTx, {
-        network: "devnet",
-        dryRun: false,
-        showEffects: true,
-        showObjectChanges: true,
-        showEvents: false,
-      });
-
-      console.log("✅ AMM pool created!");
-      console.log(`   Transaction: ${ammResult.digest}`);
-
-      // Find the created pool object
-      const poolObject = ammResult.objectChanges?.find((c: any) =>
-        c.objectType?.includes("::unified_spot_pool::UnifiedSpotPool"),
-      );
-
-      if (poolObject) {
-        console.log(`   Pool ID: ${poolObject.objectId}`);
-      }
-
-      // Find the LP token custody object
-      const lpCustodyObject = ammResult.objectChanges?.find((c: any) =>
-        c.objectType?.includes("::lp_token_custody::"),
-      );
-
-      if (lpCustodyObject) {
-        console.log(`   LP Token saved to account custody ✅`);
-      }
-    } catch (error: any) {
-      console.error("❌ Failed to create AMM pool:", error.message);
-      throw error;
-    }
-
-    // Step 11: Claim tokens
+    // Step 10 (now 11): Claim tokens
     console.log("\n" + "=".repeat(80));
     console.log("STEP 11: CLAIM TOKENS");
     console.log("=".repeat(80));

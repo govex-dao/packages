@@ -7,13 +7,19 @@
 /// These functions work with unshared Account objects before DAO is shared.
 module futarchy_actions::liquidity_init_actions;
 
-use account_actions::vault;
-use account_actions::init_actions;
-use account_protocol::account::Account;
-use account_protocol::package_registry::PackageRegistry;
+use account_actions::{vault, init_actions, version};
+use account_protocol::{
+    account::{Self as account_mod, Account},
+    package_registry::PackageRegistry,
+    executable::{Self as executable_mod, Executable},
+    intents,
+    version_witness::VersionWitness,
+    bcs_validation,
+    action_validation,
+};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
-use futarchy_markets_operations::lp_token_custody;
 use std::string::{Self, String};
+use sui::bcs;
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::object::{Self, ID};
@@ -25,6 +31,12 @@ const DEFAULT_VAULT_NAME: vector<u8> = b"treasury";
 // === Errors ===
 const EInvalidAmount: u64 = 1;
 const EInvalidRatio: u64 = 2;
+const EUnsupportedActionVersion: u64 = 3;
+
+// === Marker Types (for action validation) ===
+
+/// Marker type for CreatePoolWithMintAction validation
+public struct CreatePoolWithMint has drop {}
 
 // === Action Structs (for staging/dispatching) ===
 
@@ -62,10 +74,10 @@ public fun add_create_pool_with_mint_spec(
     // Serialize
     let action_data = bcs::to_bytes(&action);
 
-    // Add to specs with type marker
+    // CRITICAL: Use marker type (not action struct type) for validation
     account_actions::init_action_specs::add_action(
         specs,
-        type_name::get<CreatePoolWithMintAction>(),
+        type_name::with_defining_ids<CreatePoolWithMint>(),
         action_data
     );
 }
@@ -94,6 +106,68 @@ public fun dispatch_create_pool_with_mint<Config: store, AssetType: drop, Stable
         clock,
         ctx,
     )
+}
+
+// === Intent Execution (for PTB executor pattern) ===
+
+/// Execute pool creation from Intent during launchpad initialization
+/// Follows 3-layer action execution pattern (see IMPORTANT_ACTION_EXECUTION_PATTERN.md)
+///
+/// This function is called from PTB executor after begin_execution:
+/// 1. begin_execution() creates Executable hot potato
+/// 2. PTB calls do_init_* functions in sequence (including this one)
+/// 3. finalize_execution() confirms the executable
+public fun do_init_create_pool_with_mint<Config: store, Outcome: store, AssetType: drop, StableType: drop, IW: copy + drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    clock: &Clock,
+    _version_witness: VersionWitness,
+    _intent_witness: IW,
+    ctx: &mut TxContext,
+): ID {
+    // 1. Assert account ownership
+    executable.intent().assert_is_account(account.addr());
+
+    // 2. Get current ActionSpec from Executable
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // 3. CRITICAL: Validate action type (using marker type)
+    action_validation::assert_action_type<CreatePoolWithMint>(spec);
+
+    // 4. Check version
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // 5. Deserialize CreatePoolWithMintAction from BCS bytes
+    let action_data = intents::action_spec_data(spec);
+    let mut reader = bcs::new(*action_data);
+    let vault_name = string::utf8(bcs::peel_vec_u8(&mut reader));
+    let asset_amount = bcs::peel_u64(&mut reader);
+    let stable_amount = bcs::peel_u64(&mut reader);
+    let fee_bps = bcs::peel_u64(&mut reader);
+
+    // 6. Validate all bytes consumed (security check)
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // 7. Execute with deserialized params
+    let pool_id = init_create_pool_with_mint<Config, AssetType, StableType, IW>(
+        account,
+        registry,
+        vault_name,
+        asset_amount,
+        stable_amount,
+        fee_bps,
+        _intent_witness,
+        clock,
+        ctx,
+    );
+
+    // 8. Increment action index
+    executable_mod::increment_action_idx(executable);
+
+    pool_id
 }
 
 // === Init Actions ===
@@ -147,14 +221,14 @@ public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, W:
     // 3. Share the pool so it can be accessed by anyone
     unified_spot_pool::share(pool);
 
-    // 4. Deposit LP token to custody (AUTOMATIC STORAGE!)
-    lp_token_custody::deposit_lp_token(
+    // 4. Store LP token in account as managed asset (AUTOMATIC STORAGE!)
+    let token_id = object::id(&lp_token);
+    account_mod::add_managed_asset(
         account,
         registry,
-        pool_id,
+        token_id, // Use token_id directly as key
         lp_token,
-        witness,
-        ctx
+        version::current(),
     );
 
     // 5. Return any excess coins to treasury vault
@@ -254,14 +328,14 @@ public fun init_create_pool_with_mint<Config: store, AssetType: drop, StableType
     // 5. Share the pool so it can be accessed by anyone
     unified_spot_pool::share(pool);
 
-    // 6. Deposit LP token to custody (DAO OWNS THE LP!)
-    lp_token_custody::deposit_lp_token(
+    // 6. Store LP token in account as managed asset (DAO OWNS THE LP!)
+    let token_id = object::id(&lp_token);
+    account_mod::add_managed_asset(
         account,
         registry,
-        pool_id,
+        token_id, // Use token_id directly as key
         lp_token,
-        witness,
-        ctx
+        version::current(),
     );
 
     // 7. Return any excess coins to treasury vault
@@ -320,14 +394,14 @@ public fun init_add_liquidity<Config: store, AssetType: drop, StableType: drop, 
             ctx
         );
 
-    // Deposit LP token to custody
-    lp_token_custody::deposit_lp_token(
+    // Store LP token in account as managed asset
+    let token_id = object::id(&lp_token);
+    account_mod::add_managed_asset(
         account,
         registry,
-        pool_id,
+        token_id, // Use token_id directly as key
         lp_token,
-        witness,
-        ctx
+        version::current(),
     );
 
     // Return excess to vault

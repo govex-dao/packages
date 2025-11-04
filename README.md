@@ -7,12 +7,12 @@ The production packages are:
     move-framework/packages/protocol/sources
     move-framework/packages/actions/sources
 
-    // Core futarchy creator, executor  and types
+    // Core futarchy creator, executor and types
     futarchy_core/sources
     futarchy_factory/sources
     futarchy_governance/sources
 
-    // V2 style AMM that supports auto-arbitrade and futarchy TWAP oracle across N conditional outcomes
+    // V2 style AMM that supports auto-arbitrage and futarchy TWAP oracle across N conditional outcomes
     futarchy_markets_core/sources
     futarchy_markets_operations/sources
     futarchy_markets_primitives/sources

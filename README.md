@@ -7,7 +7,7 @@ The production packages are:
     move-framework/packages/protocol/sources
     move-framework/packages/actions/sources
 
-    // Core futarchy creator and types
+    // Core futarchy creator, executor  and types
     futarchy_core/sources
     futarchy_factory/sources
     futarchy_governance/sources

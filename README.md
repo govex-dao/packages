@@ -2,7 +2,7 @@ This is a Sui move implementation of futarchy governed smart account.
 
 The production packages are:
 
-    // Upgradable and extensible smart account with primative actions
+    // Upgradable and extensible smart account with primitive actions
     (Heavily adapted fork of the Move Framework by Account.tech)
     move-framework/packages/protocol/sources
     move-framework/packages/actions/sources
@@ -22,6 +22,6 @@ The production packages are:
     futarchy_actions/sources
     futarchy_oracle_actions/sources
 
-    // Auxilary helper packages
+    // Auxiliary helper packages
     futarchy_one_shot_utils/sources
     futarchy_types/sources

@@ -1,4 +1,4 @@
-This is a Sui move implementation of a smart account for a DAO governed by futarchy.
+This is a Sui move implementation of futarchy governed smart account.
 
 The production packages are:
 

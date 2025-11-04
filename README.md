@@ -12,7 +12,7 @@ The production packages are:
     futarchy_factory/sources
     futarchy_governance/sources
 
-    // V2 style AMM that supports auto-arbitrage and futarchy TWAP oracle across N conditional outcomes
+    // Mixed spot and conditional V2 style AMM with auto-arbitrage, futarchy TWAP oracle and N conditional outcome support
     futarchy_markets_core/sources
     futarchy_markets_operations/sources
     futarchy_markets_primitives/sources

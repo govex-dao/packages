@@ -67,9 +67,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     );
 
     // Create account
-    let deps = deps::new_latest_extensions(
-        &registry,
-        vector[b"AccountProtocol".to_string()],
+    let deps = deps::new(&registry)],
     );
     let account = account::new(
         Config {},

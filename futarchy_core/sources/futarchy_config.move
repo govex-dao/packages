@@ -778,19 +778,8 @@ public fun new_with_package_registry(
     ctx: &mut TxContext,
 ): Account {
     // Create dependencies using PackageRegistry for validation
-    // All common futarchy action packages included by default
-    // FutarchyGovernanceActions enables adding more packages via governance
-    let deps = deps::new_latest_extensions(
-        registry,
-        vector[
-            b"account_protocol".to_string(),
-            b"futarchy_core".to_string(),              // Config and version witness
-            b"account_actions".to_string(),            // Framework actions (currency, vault, etc.)
-            b"futarchy_actions".to_string(),           // Config, liquidity, quota actions
-            b"futarchy_governance_actions".to_string(), // Admin + account extensibility
-            b"futarchy_oracle".to_string(),     // Oracle management actions
-        ],
-    );
+    // All packages must be registered in the global registry
+    let deps = deps::new(registry);
 
     // Create account with FutarchyConfig using the config witness
     account::new(
@@ -807,8 +796,6 @@ public fun new_with_package_registry(
 #[test_only]
 public fun new_account_test(config: FutarchyConfig, registry: &PackageRegistry, ctx: &mut TxContext): Account {
     // Create dependencies for testing with the actual registry
-    // Must include futarchy_core because version::current() creates a VersionWitness
-    // with the @futarchy_core package address
     let deps = deps::new_for_testing_with_config_and_registry(
         b"futarchy_core".to_string(),
         @futarchy_core,

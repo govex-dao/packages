@@ -148,13 +148,12 @@ and patara.app
 
 XXXXXX
 
-
-- [ ] unlocks ratio of launchapd or jsut price or both??? decide??
 - [ ] cap / intent to pause new account creation??
 - [ ] maybe nft for AMM position doesn't make sense
 (check how pools track invidiual nfts's buckets and amounts)
 - [ ] tightly couple intent / action registry with init actions???
-
+- [ ] add extra flag to streams so that can't claim stuff not claimed at end of period
+- [ ] maybe simple decay fee if time of last proposal was 1 hour ago??
 
 > so this makes me think\
 \

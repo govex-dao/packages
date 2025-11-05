@@ -1,0 +1,14 @@
+{
+  "accountId": "0xcae380a04b1ed26df8878823be6e6304d18421b1c4ed73f1dc72d80ae481442a",
+  "assetType": "0x56a30171c1868f897bf2b152c769a439540b16c3e520e43e87edced4d2775f37::coin::COIN",
+  "stableType": "0x34067fd59c79902d8bba4c1c3be6430199156d8b56271fc80fdf24c6677202e0::coin::COIN",
+  "assetTreasuryCap": "0x59708641ca9cf6b9e0440c5ea3f6305459dec901d26178e72c9a1d6d64d72674",
+  "assetMetadata": "0x33de055274c1b2f2ce036a4f4282ed4a33e712aba9e08a8be618a3e649806306",
+  "stableTreasuryCap": "0x546147046014047421fdfa095e8010b5766a3dd969030010544a05ab4ad01ada",
+  "stableMetadata": "0xa1bc7db21e5bf17ac7646d7aee5178e1fd022c0a3dc22d14c7a15458b4c4e756",
+  "spotPoolId": "0x78260fe4f348fc9850255c3f7acafde6535d56fd73759a03d4a8b7cf5488f6c8",
+  "raiseId": "0xc7f1dbd1dccff3ca70e571f0c8f1a8b89bf57e6a6c4d8c22dadb40d328fce5fe",
+  "timestamp": 1762371635396,
+  "network": "devnet",
+  "success": true
+}

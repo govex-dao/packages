@@ -17,7 +17,9 @@ use account_protocol::{
     bcs_validation,
     action_validation,
 };
+use futarchy_core::futarchy_config;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
+use std::option;
 use std::string::{Self, String};
 use sui::bcs;
 use sui::clock::Clock;
@@ -197,10 +199,16 @@ public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, W:
     assert!(coin::value(&stable_coin) > 0, EInvalidAmount);
     assert!(fee_bps <= 10000, EInvalidRatio); // Max 100%
 
-    // 1. Create pool
+    // 1. Get DAO config to read conditional_liquidity_ratio_percent
+    let config = account_mod::config(account);
+    let conditional_liquidity_ratio_percent = futarchy_config::conditional_liquidity_ratio_percent(config);
+
+    // 2. Create pool with FULL FUTARCHY FEATURES
     let mut pool = unified_spot_pool::new<AssetType, StableType>(
         fee_bps,
-        option::none(), // No minimum liquidity requirement for init
+        option::none(), // No dynamic fee schedule
+        5000, // oracle_conditional_threshold_bps (50%)
+        conditional_liquidity_ratio_percent, // From DAO config!
         clock,
         ctx
     );
@@ -304,10 +312,16 @@ public fun init_create_pool_with_mint<Config: store, AssetType: drop, StableType
         ctx
     );
 
-    // 3. Create pool
+    // 3. Get DAO config to read conditional_liquidity_ratio_percent
+    let config = account_mod::config(account);
+    let conditional_liquidity_ratio_percent = futarchy_config::conditional_liquidity_ratio_percent(config);
+
+    // 4. Create pool with FULL FUTARCHY FEATURES
     let mut pool = unified_spot_pool::new<AssetType, StableType>(
         fee_bps,
-        option::none(), // No minimum liquidity requirement for init
+        option::none(), // No dynamic fee schedule
+        5000, // oracle_conditional_threshold_bps (50%)
+        conditional_liquidity_ratio_percent, // From DAO config!
         clock,
         ctx
     );

@@ -427,12 +427,16 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     // Create fee manager for this DAO
     let _dao_fee_manager_id = object::id(fee_manager); // Use factory fee manager for now
 
+    // Extract conditional_liquidity_ratio_percent from trading_params
+    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(&trading_params);
+
     // Create the unified spot pool with aggregator support enabled
     // This provides TWAP oracle, registry, and full aggregator features
     let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
         amm_total_fee_bps, // Factory uses same fee for both conditional and spot
         option::none(), // No launch fee schedule by default (can be added via init specs)
         8000, // oracle_conditional_threshold_bps (80% threshold from trading params)
+        conditional_liquidity_ratio_percent, // From DAO config!
         clock,
         ctx,
     );
@@ -831,11 +835,15 @@ public fun create_dao_unshared<AssetType: drop, StableType: drop>(
     // Create account with config
     let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);
 
+    // Extract conditional_liquidity_ratio_percent from trading_params
+    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(&trading_params);
+
     // Create unified spot pool with aggregator support enabled
     let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
         30, // 0.3% default fee (init actions can configure via governance)
         option::none(), // No launch fee schedule by default (can be added via init specs)
         8000, // oracle_conditional_threshold_bps (80% threshold)
+        conditional_liquidity_ratio_percent, // From DAO config!
         clock,
         ctx,
     );

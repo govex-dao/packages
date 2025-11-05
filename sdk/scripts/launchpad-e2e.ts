@@ -33,6 +33,7 @@ import { Transaction, Inputs } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
 import { execSync } from "child_process";
 import * as fs from "fs";
+import * as path from "path";
 import { LaunchpadOperations } from "../src/lib/launchpad";
 import { TransactionUtils } from "../src/lib/transaction";
 import { initSDK, executeTransaction, getActiveAddress } from "./execute-tx";
@@ -311,7 +312,7 @@ async function main() {
       LaunchpadOperations.UNLIMITED_CAP,
     ],
 
-    startDelayMs: 15_000,
+    startDelayMs: 5_000,
     allowEarlyCompletion: true,
 
     description: "E2E test - two-outcome system with stream",
@@ -532,8 +533,8 @@ async function main() {
   console.log("   ✅ Investors are now protected - specs frozen");
 
   // Wait for start delay
-  console.log("\n⏳ Waiting for start delay (15s)...");
-  await new Promise((resolve) => setTimeout(resolve, 16000));
+  console.log("\n⏳ Waiting for start delay (5s)...");
+  await new Promise((resolve) => setTimeout(resolve, 6000));
   console.log("✅ Raise has started!");
 
   // Step 6: Contribute to meet minimum
@@ -638,8 +639,8 @@ async function main() {
   console.log("STEP 7: WAIT FOR DEADLINE");
   console.log("=".repeat(80));
 
-  console.log("\n⏰ Waiting for deadline (125s)...");
-  await new Promise((resolve) => setTimeout(resolve, 125000));
+  console.log("\n⏰ Waiting for deadline (30s)...");
+  await new Promise((resolve) => setTimeout(resolve, 30000));
   console.log("✅ Deadline passed!");
 
   // Step 8: Complete raise (JIT conversion happens here!)
@@ -713,6 +714,7 @@ async function main() {
   );
 
   let accountId: string | undefined;
+  let poolId: string | undefined;
   let raiseActuallySucceeded = false;
 
   if (raiseSuccessEvent) {
@@ -919,7 +921,8 @@ async function main() {
       );
 
       if (poolObject) {
-        console.log(`   Pool ID: ${poolObject.objectId}`);
+        poolId = poolObject.objectId;
+        console.log(`   Pool ID: ${poolId}`);
       }
     } else{
       console.log("✅ TreasuryCap and Metadata returned via Intent execution!");
@@ -1023,6 +1026,27 @@ async function main() {
 
   console.log(`\n🔗 View raise: https://suiscan.xyz/devnet/object/${raiseId}`);
   console.log(`🔗 View DAO: https://suiscan.xyz/devnet/object/${accountId}`);
+
+  // Save DAO info to shared JSON file for proposal test
+  const daoInfoPath = path.join(__dirname, "..", "test-dao-info.json");
+  const daoInfo = {
+    accountId: accountId,
+    assetType: testCoins.asset.type,
+    stableType: testCoins.stable.type,
+    assetTreasuryCap: testCoins.asset.treasuryCap,
+    assetMetadata: testCoins.asset.metadata,
+    stableTreasuryCap: testCoins.stable.treasuryCap,
+    stableMetadata: testCoins.stable.metadata,
+    spotPoolId: poolId || null,
+    raiseId: raiseId,
+    timestamp: Date.now(),
+    network: "devnet",
+    success: shouldRaiseSucceed,
+  };
+
+  fs.writeFileSync(daoInfoPath, JSON.stringify(daoInfo, null, 2), "utf-8");
+  console.log(`\n💾 DAO info saved to: ${daoInfoPath}`);
+  console.log(`   For use by proposal E2E test`);
 }
 
 main()

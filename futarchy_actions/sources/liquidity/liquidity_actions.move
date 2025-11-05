@@ -132,6 +132,7 @@ public struct CreatePoolAction<phantom AssetType, phantom StableType> has store,
     initial_stable_amount: u64,
     fee_bps: u64,
     minimum_liquidity: u64,
+    conditional_liquidity_ratio_percent: u64, // From DAO config
 }
 
 /// Action to update pool parameters
@@ -170,6 +171,7 @@ public fun do_create_pool<AssetType: drop, StableType: drop, Outcome: store, IW:
     let initial_stable_amount = bcs::peel_u64(&mut reader);
     let fee_bps = bcs::peel_u64(&mut reader);
     let minimum_liquidity = bcs::peel_u64(&mut reader);
+    let conditional_liquidity_ratio_percent = bcs::peel_u64(&mut reader);
     bcs_validation::validate_all_bytes_consumed(reader);
 
     // Create action struct
@@ -178,20 +180,23 @@ public fun do_create_pool<AssetType: drop, StableType: drop, Outcome: store, IW:
         initial_stable_amount,
         fee_bps,
         minimum_liquidity,
+        conditional_liquidity_ratio_percent,
     };
-    
+
     // Validate parameters
     assert!(action.initial_asset_amount > 0, EInvalidAmount);
     assert!(action.initial_stable_amount > 0, EInvalidAmount);
     assert!(action.fee_bps <= 10000, EInvalidRatio);
     assert!(action.minimum_liquidity > 0, EInvalidAmount);
-    
+    assert!(action.conditional_liquidity_ratio_percent > 0 && action.conditional_liquidity_ratio_percent <= 99, EInvalidRatio);
+
     // Create resource request with pool creation parameters
     let mut request = resource_requests::new_request<CreatePoolAction<AssetType, StableType>>(ctx);
     resource_requests::add_context(&mut request, string::utf8(b"initial_asset_amount"), action.initial_asset_amount);
     resource_requests::add_context(&mut request, string::utf8(b"initial_stable_amount"), action.initial_stable_amount);
     resource_requests::add_context(&mut request, string::utf8(b"fee_bps"), action.fee_bps);
     resource_requests::add_context(&mut request, string::utf8(b"minimum_liquidity"), action.minimum_liquidity);
+    resource_requests::add_context(&mut request, string::utf8(b"conditional_liquidity_ratio_percent"), action.conditional_liquidity_ratio_percent);
     resource_requests::add_context(&mut request, string::utf8(b"account_id"), object::id(account));
 
     request
@@ -261,13 +266,22 @@ public fun fulfill_create_pool<AssetType: drop, StableType: drop, IW: copy + dro
     let initial_stable_amount: u64 = resource_requests::get_context(&request, string::utf8(b"initial_stable_amount"));
     let fee_bps: u64 = resource_requests::get_context(&request, string::utf8(b"fee_bps"));
     let _minimum_liquidity: u64 = resource_requests::get_context(&request, string::utf8(b"minimum_liquidity"));
+    let conditional_liquidity_ratio_percent: u64 = resource_requests::get_context(&request, string::utf8(b"conditional_liquidity_ratio_percent"));
 
     // Verify coins match requested amounts
     assert!(coin::value(&asset_coin) >= initial_asset_amount, EInvalidAmount);
     assert!(coin::value(&stable_coin) >= initial_stable_amount, EInvalidAmount);
 
-    // Create the pool using account_spot_pool
-    let mut pool = unified_spot_pool::new<AssetType, StableType>(fee_bps, option::none(), clock, ctx);
+    // Create the pool with FULL FUTARCHY FEATURES (TWAP oracle, escrow tracking, etc.)
+    // oracle_conditional_threshold_bps: 5000 = 50% (use conditional oracle when conditional markets have >50% liquidity)
+    let mut pool = unified_spot_pool::new<AssetType, StableType>(
+        fee_bps,
+        option::none(), // No dynamic fee schedule
+        5000, // oracle_conditional_threshold_bps (50%)
+        conditional_liquidity_ratio_percent, // From action!
+        clock,
+        ctx
+    );
 
     // Add initial liquidity to the pool (returns LP token + any excess coins)
     // For initial liquidity, there should be no excess (all coins used)
@@ -935,17 +949,20 @@ public fun new_create_pool_action<AssetType, StableType>(
     initial_stable_amount: u64,
     fee_bps: u64,
     minimum_liquidity: u64,
+    conditional_liquidity_ratio_percent: u64,
 ): CreatePoolAction<AssetType, StableType> {
     assert!(initial_asset_amount > 0, EInvalidAmount);
     assert!(initial_stable_amount > 0, EInvalidAmount);
     assert!(fee_bps <= 10000, EInvalidRatio); // Max 100%
     assert!(minimum_liquidity > 0, EInvalidAmount);
+    assert!(conditional_liquidity_ratio_percent > 0 && conditional_liquidity_ratio_percent <= 99, EInvalidRatio);
 
     let action = CreatePoolAction<AssetType, StableType> {
         initial_asset_amount,
         initial_stable_amount,
         fee_bps,
         minimum_liquidity,
+        conditional_liquidity_ratio_percent,
     };
     action
 }
@@ -1125,6 +1142,7 @@ public fun destroy_create_pool_action<AssetType, StableType>(action: CreatePoolA
         initial_stable_amount: _,
         fee_bps: _,
         minimum_liquidity: _,
+        conditional_liquidity_ratio_percent: _,
     } = action;
 }
 
@@ -1245,6 +1263,7 @@ public(package) fun create_pool_action_from_bytes<AssetType, StableType>(bytes: 
         initial_stable_amount: bcs::peel_u64(&mut bcs),
         fee_bps: bcs::peel_u64(&mut bcs),
         minimum_liquidity: bcs::peel_u64(&mut bcs),
+        conditional_liquidity_ratio_percent: bcs::peel_u64(&mut bcs),
     }
 }
 

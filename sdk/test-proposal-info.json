@@ -1,0 +1,11 @@
+{
+  "proposalId": "0xf59dde802a2618f2ce91d9376ec4ccb339174176dafbffb0b910f5c74c68f89d",
+  "daoAccountId": "0xcae380a04b1ed26df8878823be6e6304d18421b1c4ed73f1dc72d80ae481442a",
+  "assetType": "0x56a30171c1868f897bf2b152c769a439540b16c3e520e43e87edced4d2775f37::coin::COIN",
+  "stableType": "0x34067fd59c79902d8bba4c1c3be6430199156d8b56271fc80fdf24c6677202e0::coin::COIN",
+  "spotPoolId": "0x78260fe4f348fc9850255c3f7acafde6535d56fd73759a03d4a8b7cf5488f6c8",
+  "timestamp": 1762371819845,
+  "network": "devnet",
+  "escrowId": "0x0256012b8294445a0605a9428386978b172c8b57b319726042e1b1b307e36383",
+  "marketStateId": "0x4da845b846f718fa28b1b5095a520edf0b0fa8335b8df2eb88f34e9ba9b0bd0f"
+}

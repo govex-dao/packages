@@ -877,16 +877,7 @@ public(package) fun metadata_mut(
     &mut account.metadata
 }
 
-/// Returns a mutable reference to the dependencies of the account.
-public(package) fun deps_mut(
-    account: &mut Account,
-    registry: &package_registry::PackageRegistry,
-    version_witness: VersionWitness,
-): &mut Deps {
-    // ensures the package address is a dependency for this account
-    account.deps().check(version_witness, registry);
-    &mut account.deps
-}
+// Deps are no longer mutable - all packages must be in the global registry
 
 /// Receives an object from an account with tracking, only used in owned action lib module.
 /// NOTE: This is for WITHDRAWALS - receiving an object FROM the account to return it.

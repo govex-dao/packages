@@ -111,6 +111,7 @@ public fun create_pool_to_intent<Outcome: store, AssetType, StableType, IW: drop
     initial_stable_amount: u64,
     fee_bps: u64,
     minimum_liquidity: u64,
+    conditional_liquidity_ratio_percent: u64,
     intent_witness: IW,
 ) {
     let action = liquidity_actions::new_create_pool_action<AssetType, StableType>(
@@ -118,6 +119,7 @@ public fun create_pool_to_intent<Outcome: store, AssetType, StableType, IW: drop
         initial_stable_amount,
         fee_bps,
         minimum_liquidity,
+        conditional_liquidity_ratio_percent,
     );
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
@@ -173,6 +175,7 @@ public fun create_and_configure_pool<Outcome: store, AssetType, StableType, IW: 
     initial_stable_amount: u64,
     fee_bps: u64,
     minimum_liquidity: u64,
+    conditional_liquidity_ratio_percent: u64,
     intent_witness: IW,
 ) {
     // Create the pool action - this will generate a ResourceRequest during execution
@@ -183,6 +186,7 @@ public fun create_and_configure_pool<Outcome: store, AssetType, StableType, IW: 
         initial_stable_amount,
         fee_bps,
         minimum_liquidity,
+        conditional_liquidity_ratio_percent,
         intent_witness,
     );
 

@@ -91,10 +91,7 @@ fun start(): (Scenario, PackageRegistry, Account, Factory, FeeManager, Clock) {
     );
 
     // Create account with proper deps
-    let deps = deps::new_latest_extensions(
-        &registry,
-        vector[
-            b"AccountProtocol".to_string(),
+    let deps = deps::new(&registry),
             b"AccountActions".to_string(),
         ],
     );

@@ -205,57 +205,25 @@ public(package) fun destroy_lp_token<AssetType, StableType>(
 
 // === Creation Functions ===
 
-/// Create a basic pool without aggregator support
-/// This is lightweight - no TWAP, no registry, minimal overhead
+/// Create a futarchy spot pool with FULL features
+/// All futarchy pools have: TWAP oracle, escrow tracking, bucket management
+/// There is NO "simple" mode - all pools need these features for governance
 public fun new<AssetType, StableType>(
     fee_bps: u64,
     fee_schedule: Option<FeeSchedule>, // Optional dynamic fee schedule (for launchpad)
-    clock: &Clock,                     // For recording activation time
-    ctx: &mut TxContext,
-): UnifiedSpotPool<AssetType, StableType> {
-    UnifiedSpotPool {
-        id: object::new(ctx),
-        asset_reserve: balance::zero(),
-        stable_reserve: balance::zero(),
-        lp_supply: 0,
-        fee_bps,
-        minimum_liquidity: MINIMUM_LIQUIDITY,
-        // Fee schedule (optional dynamic fees)
-        fee_schedule,
-        fee_schedule_activation_time: clock.timestamp_ms(),
-        // Initialize all bucket system to zero
-        asset_spot_active_quantum_lp: 0,
-        asset_spot_leave_lp_when_proposal_ends: 0,
-        asset_spot_frozen_claimable_lp: 0,
-        asset_spot_join_quantum_lp_when_proposal_ends: 0,
-        stable_spot_active_quantum_lp: 0,
-        stable_spot_leave_lp_when_proposal_ends: 0,
-        stable_spot_frozen_claimable_lp: 0,
-        stable_spot_join_quantum_lp_when_proposal_ends: 0,
-        lp_spot_active_quantum_lp: 0,
-        lp_spot_leave_lp_when_proposal_ends: 0,
-        lp_spot_frozen_claimable_lp: 0,
-        lp_spot_join_quantum_lp_when_proposal_ends: 0,
-        aggregator_config: option::none(),
-    }
-}
-
-/// Create a pool WITH aggregator support
-/// This includes TWAP oracle and all aggregator features
-public fun new_with_aggregator<AssetType, StableType>(
-    fee_bps: u64,
-    fee_schedule: Option<FeeSchedule>, // Optional dynamic fee schedule (for launchpad)
-    oracle_conditional_threshold_bps: u64,
+    oracle_conditional_threshold_bps: u64, // When to use conditional vs spot oracle (typically 5000 = 50%)
+    conditional_liquidity_ratio_percent: u64, // DAO's configured ratio for quantum split (1-99)
     clock: &Clock,
     ctx: &mut TxContext,
 ): UnifiedSpotPool<AssetType, StableType> {
-    let simple_twap = PCW_TWAP_oracle::new_default(0, clock); // Initialize with 0 price (will be updated on first swap)
+    // Initialize TWAP oracle (starts at 0, updated on first swap)
+    let simple_twap = PCW_TWAP_oracle::new_default(0, clock);
 
     let aggregator_config = AggregatorConfig {
         active_escrow: option::none(),
         simple_twap,
         last_proposal_usage: option::none(),
-        conditional_liquidity_ratio_percent: 0,
+        conditional_liquidity_ratio_percent, // Set from DAO config at creation!
         oracle_conditional_threshold_bps,
         spot_cumulative_at_lock: option::none(),
         protocol_fees_asset: balance::zero(),
@@ -269,7 +237,6 @@ public fun new_with_aggregator<AssetType, StableType>(
         lp_supply: 0,
         fee_bps,
         minimum_liquidity: MINIMUM_LIQUIDITY,
-        // Fee schedule (optional dynamic fees)
         fee_schedule,
         fee_schedule_activation_time: clock.timestamp_ms(),
         // Initialize all bucket system to zero
@@ -285,8 +252,22 @@ public fun new_with_aggregator<AssetType, StableType>(
         lp_spot_leave_lp_when_proposal_ends: 0,
         lp_spot_frozen_claimable_lp: 0,
         lp_spot_join_quantum_lp_when_proposal_ends: 0,
-        aggregator_config: option::some(aggregator_config),
+        aggregator_config: option::some(aggregator_config), // ALWAYS enabled
     }
+}
+
+/// DEPRECATED: Use new() instead - all pools now have full features
+/// This function is kept for backwards compatibility but just calls new()
+public fun new_with_aggregator<AssetType, StableType>(
+    fee_bps: u64,
+    fee_schedule: Option<FeeSchedule>, // Optional dynamic fee schedule (for launchpad)
+    oracle_conditional_threshold_bps: u64,
+    conditional_liquidity_ratio_percent: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): UnifiedSpotPool<AssetType, StableType> {
+    // Just forward to new() - they're now identical
+    new(fee_bps, fee_schedule, oracle_conditional_threshold_bps, conditional_liquidity_ratio_percent, clock, ctx)
 }
 
 /// Upgrade existing pool to add aggregator support
@@ -297,23 +278,7 @@ public fun enable_aggregator<AssetType, StableType>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
-    // Only enable if not already enabled
-    if (pool.aggregator_config.is_none()) {
-        let simple_twap = PCW_TWAP_oracle::new_default(get_spot_price(pool), clock); // Initialize with current price
-
-        let config = AggregatorConfig {
-            active_escrow: option::none(),
-            simple_twap,
-            last_proposal_usage: option::none(),
-            conditional_liquidity_ratio_percent: 0,
-            oracle_conditional_threshold_bps,
-            spot_cumulative_at_lock: option::none(),
-            protocol_fees_asset: balance::zero(),
-            protocol_fees_stable: balance::zero(),
-        };
-
-        option::fill(&mut pool.aggregator_config, config);
-    }
+    // No-op: all pools already have full features enabled at creation
 }
 
 // === Escrow Management Functions (Aggregator Only) ===

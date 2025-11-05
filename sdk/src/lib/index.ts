@@ -3,6 +3,7 @@ export * from './factory';
 export * from './factory-admin';
 export * from './factory-validator';
 export * from './launchpad';
+export * from './governance';
 export * from './fee-manager';
 export * from './queries';
 export * from './actions';

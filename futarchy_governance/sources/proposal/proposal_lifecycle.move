@@ -149,32 +149,29 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
     // Finalize the market state
     market_state::finalize(market_state, winning_outcome, clock);
 
-    // If this proposal used DAO liquidity, recombine winning liquidity and integrate its oracle data
-    if (proposal::uses_dao_liquidity(proposal)) {
-        // Return quantum-split liquidity back to the spot pool
-        quantum_lp_manager::auto_redeem_on_proposal_end(
-            winning_outcome,
-            spot_pool,
-            escrow,
-            market_state,
-            clock,
-            ctx,
-        );
+    // Return quantum-split liquidity back to the spot pool
+    quantum_lp_manager::auto_redeem_on_proposal_end(
+        winning_outcome,
+        spot_pool,
+        escrow,
+        market_state,
+        clock,
+        ctx,
+    );
 
-        // CRITICAL FIX (Issue 3): Extract and clear escrow ID from spot pool
-        // This clears the active escrow flag so has_active_escrow() returns false
-        let _escrow_id = unified_spot_pool::extract_active_escrow(spot_pool);
+    // CRITICAL FIX (Issue 3): Extract and clear escrow ID from spot pool
+    // This clears the active escrow flag so has_active_escrow() returns false
+    let _escrow_id = unified_spot_pool::extract_active_escrow(spot_pool);
 
-        // Spot TWAP continues running throughout proposal (no backfill needed)
-        // Auto-arbitrage keeps spot and conditional prices synced
+    // Spot TWAP continues running throughout proposal (no backfill needed)
+    // Auto-arbitrage keeps spot and conditional prices synced
 
-        // Crank: Transition TRANSITIONING bucket to WITHDRAW_ONLY
-        // This allows LPs who marked for withdrawal to claim their coins
-        futarchy_markets_operations::liquidity_interact::crank_recombine_and_transition<
-            AssetType,
-            StableType,
-        >(spot_pool);
-    };
+    // Crank: Transition TRANSITIONING bucket to WITHDRAW_ONLY
+    // This allows LPs who marked for withdrawal to claim their coins
+    futarchy_markets_operations::liquidity_interact::crank_recombine_and_transition<
+        AssetType,
+        StableType,
+    >(spot_pool);
 
     // NEW: Cancel losing outcome intents in the hot path using a scoped witness.
     // This ensures per-proposal isolation and prevents cross-proposal cancellation
@@ -342,8 +339,14 @@ public entry fun advance_proposal_state<AssetType, StableType>(
     // Try to advance the proposal state
     let state_changed = proposal::advance_state(proposal, escrow, clock, ctx);
 
-    // If state just changed to TRADING and proposal uses DAO liquidity
-    if (state_changed && proposal::is_live(proposal) && proposal::uses_dao_liquidity(proposal)) {
+    // If state just changed to TRADING, store escrow and perform quantum split
+    if (state_changed && proposal::is_live(proposal)) {
+        // CRITICAL: Store escrow ID in spot pool FIRST (before quantum split)
+        // This enables has_active_escrow() to return true, which routes LPs to TRANSITIONING bucket
+        // All futarchy pools have full features (TWAP, escrow tracking, etc.)
+        let escrow_id = object::id(escrow);
+        unified_spot_pool::store_active_escrow(spot_pool, escrow_id);
+
         // CRITICAL: Check withdraw_only_mode flag before quantum split
         // If liquidity provider wants to withdraw after this proposal ends,
         // we should NOT quantum-split their liquidity for trading
@@ -354,6 +357,14 @@ public entry fun advance_proposal_state<AssetType, StableType>(
                 config,
             );
 
+            // CRITICAL: Mark liquidity as moving to proposal in spot pool's aggregator config
+            // This stores the conditional_liquidity_ratio_percent for oracle logic
+            unified_spot_pool::mark_liquidity_to_proposal(
+                spot_pool,
+                conditional_liquidity_ratio_percent,
+                clock,
+            );
+
             // Perform quantum split: move liquidity from spot to conditional markets
             quantum_lp_manager::auto_quantum_split_on_proposal_start(
                 spot_pool,
@@ -362,17 +373,145 @@ public entry fun advance_proposal_state<AssetType, StableType>(
                 clock,
                 ctx,
             );
-
-            // CRITICAL FIX (Issue 3): Store escrow ID in spot pool
-            // This enables has_active_escrow() to return true, which routes LPs to TRANSITIONING bucket
-            let escrow_id = object::id(escrow);
-            unified_spot_pool::store_active_escrow(spot_pool, escrow_id);
         };
-        // If withdraw_only_mode = true, skip quantum split
+        // If withdraw_only_mode = true, skip quantum split but still track escrow
         // Liquidity will be returned to provider when proposal finalizes
     };
 
     state_changed
+}
+
+/// Entry function to finalize a proposal with quantum liquidity recombination
+/// This is THE proper way to finalize proposals that use DAO spot pool liquidity
+/// Determines winner via TWAP and returns quantum-split liquidity back to spot pool
+public entry fun finalize_proposal_with_spot_pool<AssetType, StableType>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    proposal: &mut Proposal<AssetType, StableType>,
+    escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Calculate winning outcome and get TWAPs in single computation
+    let (winning_outcome, twap_prices) = calculate_winning_outcome_with_twaps(
+        proposal,
+        escrow,
+        clock,
+    );
+
+    // Store the final TWAPs for third-party access
+    proposal::set_twap_prices(proposal, twap_prices);
+
+    // Set the winning outcome on the proposal
+    proposal::set_winning_outcome(proposal, winning_outcome);
+
+    // Get mutable reference to market_state from escrow and finalize it
+    {
+        let market_state = coin_escrow::get_market_state_mut(escrow);
+        market_state::end_trading(market_state, clock); // Must end trading before finalizing
+        market_state::finalize(market_state, winning_outcome, clock);
+    }; // Borrow ends here
+
+    // Return quantum-split liquidity back to the spot pool
+    // This function extracts market_state from escrow internally to avoid borrow conflicts
+    futarchy_markets_core::quantum_lp_manager::auto_redeem_on_proposal_end_from_escrow(
+        winning_outcome,
+        spot_pool,
+        escrow,
+        clock,
+        ctx,
+    );
+
+    // CRITICAL FIX (Issue 3): Extract and clear escrow ID from spot pool
+    // All futarchy pools have full features, so this always succeeds
+    let _escrow_id = unified_spot_pool::extract_active_escrow(spot_pool);
+
+    // Crank: Transition TRANSITIONING bucket to WITHDRAW_ONLY
+    futarchy_markets_operations::liquidity_interact::crank_recombine_and_transition<
+        AssetType,
+        StableType,
+    >(spot_pool);
+
+    // Cancel losing outcome intents
+    let num_outcomes = proposal::get_num_outcomes(proposal);
+    let mut i = 0u64;
+    while (i < num_outcomes) {
+        if (i != winning_outcome) {
+            let mut cw_opt = proposal::make_cancel_witness(proposal, i);
+            if (option::is_some(&cw_opt)) {
+                let _cw = option::extract(&mut cw_opt);
+            };
+            option::destroy_none(cw_opt);
+        };
+        i = i + 1;
+    };
+
+    // Update proposal state to FINALIZED (state 3)
+    proposal::set_state(proposal, 3);
+
+    // Emit finalization event
+    event::emit(ProposalMarketFinalized {
+        proposal_id: proposal::get_id(proposal),
+        dao_id: proposal::get_dao_id(proposal),
+        winning_outcome,
+        approved: winning_outcome == OUTCOME_ACCEPTED,
+        timestamp: clock.timestamp_ms(),
+    });
+}
+
+/// Entry function to execute proposal actions after finalization
+/// Executes the staged InitActionSpecs if the Accept outcome won
+public entry fun execute_proposal_actions<AssetType, StableType>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    proposal: &mut Proposal<AssetType, StableType>,
+    market_state: &MarketState,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Verify proposal can be executed
+    assert!(can_execute_proposal(proposal, market_state), EProposalNotApproved);
+
+    // Extract IDs before mutable borrow
+    let proposal_id = proposal::get_id(proposal);
+    let dao_id = proposal::get_dao_id(proposal);
+    let market_state_id = proposal::market_state_id(proposal);
+
+    // Build intent key hint
+    let mut key = b"execution_".to_string();
+    key.append(proposal_id.id_to_address().to_string());
+    key.append(b"_".to_string());
+    key.append(clock.timestamp_ms().to_string());
+
+    // Begin execution - creates Executable hot potato
+    let (executable, intent_key) = governance_intents::execute_proposal_intent(
+        account,
+        registry,
+        proposal,
+        market_state,
+        OUTCOME_ACCEPTED, // 0 = Accept
+        futarchy_config::new_futarchy_outcome_full(
+            key,
+            option::some(proposal_id),
+            option::some(market_state_id),
+            true,
+            clock.timestamp_ms(),
+        ),
+        clock,
+        ctx,
+    );
+
+    // Confirm execution (finalize)
+    account::confirm_execution(account, executable);
+
+    // Emit event
+    event::emit(new_proposal_intent_executed(
+        proposal_id,
+        dao_id,
+        intent_key,
+        clock.timestamp_ms(),
+    ));
 }
 
 // === Helper Functions ===

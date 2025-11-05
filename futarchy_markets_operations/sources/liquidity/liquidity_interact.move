@@ -36,66 +36,6 @@ public struct ProtocolFeesCollected has copy, drop {
 
 // === Liquidity Removal (After Finalization) ===
 
-/// Empties the winning AMM pool and transfers the underlying liquidity to the original provider.
-/// Called internally by `advance_stage` when a user-funded proposal finalizes.
-///
-/// IMPORTANT: With TreasuryCap-based conditional coins, this function:
-/// 1. Removes liquidity from winning AMM pool (gets conditional coin amounts)
-/// 2. Burns those conditional coins using TreasuryCaps
-/// 3. Withdraws equivalent spot tokens from escrow
-/// 4. Transfers spot tokens to liquidity provider
-public fun empty_amm_and_return_to_provider<
-    AssetType,
-    StableType,
-    AssetConditionalCoin,
-    StableConditionalCoin,
->(
-    proposal: &mut Proposal<AssetType, StableType>,
-    escrow: &mut TokenEscrow<AssetType, StableType>,
-    ctx: &mut TxContext,
-) {
-    assert!(proposal.is_finalized(), EInvalidState);
-    assert!(!proposal.uses_dao_liquidity(), EInvalidState);
-
-    let market_state = escrow.get_market_state();
-    let winning_outcome = proposal.get_winning_outcome();
-    market_state.assert_market_finalized();
-
-    // Get winning pool from market_state and empty its liquidity (returns conditional coin amounts)
-    let market_state = escrow.get_market_state_mut();
-    let pool = futarchy_markets_primitives::market_state::get_pool_mut_by_outcome(
-        market_state,
-        (winning_outcome as u8),
-    );
-    let (conditional_asset_amt, conditional_stable_amt) = pool.empty_all_amm_liquidity(ctx);
-
-    // Burn the conditional coins (1:1 with spot due to quantum liquidity)
-    let asset_coin = escrow.burn_conditional_asset_and_withdraw<
-        AssetType,
-        StableType,
-        AssetConditionalCoin,
-    >(
-        winning_outcome,
-        conditional_asset_amt,
-        ctx,
-    );
-
-    let stable_coin = escrow.burn_conditional_stable_and_withdraw<
-        AssetType,
-        StableType,
-        StableConditionalCoin,
-    >(
-        winning_outcome,
-        conditional_stable_amt,
-        ctx,
-    );
-
-    // Transfer spot tokens to provider
-    let provider = *proposal.get_liquidity_provider().borrow();
-    transfer::public_transfer(asset_coin, provider);
-    transfer::public_transfer(stable_coin, provider);
-}
-
 /// Empties the winning AMM pool and returns the liquidity.
 /// Called internally by `advance_stage` when a DAO-funded proposal finalizes.
 /// Returns the asset and stable coins for the DAO to handle (e.g., deposit to vault).
@@ -110,7 +50,7 @@ public fun empty_amm_and_return_to_dao<
     ctx: &mut TxContext,
 ): (Coin<AssetType>, Coin<StableType>) {
     assert!(proposal.is_finalized(), EInvalidState);
-    assert!(proposal.uses_dao_liquidity(), EInvalidState);
+    // All proposals now use DAO liquidity, so this check is always true
 
     let market_state = escrow.get_market_state();
     market_state.assert_market_finalized();

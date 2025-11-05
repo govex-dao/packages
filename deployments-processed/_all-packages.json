@@ -1,13 +1,13 @@
 {
   "AccountActions": {
     "packageName": "AccountActions",
-    "transactionDigest": "G4TKe5kZ4fRjNB94UmY7depKtwYUpHFFe2VotQfuKXG7",
-    "packageId": "0x4d09b6f6cd4fd11e1cec427f98e8530aafb53bacd30c5e44ca67855824027546",
+    "transactionDigest": "7JDxHPLKUxLAXEhoqCBVHEiuXajb45co6DQkM8QELDnW",
+    "packageId": "0x1e04afce2c728679d58d32fbb44063eb0d85fbba1d9e75976d800e3b325beee2",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0xd87562daaf887b4e0d14e549470455117fb161ff1740ada5561868165f5fe1f3",
+      "objectId": "0x8455f806d02a11d43e0faf2bfb52154e16fadb3ae7b9422afc018ef733a0f256",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -16,13 +16,13 @@
   },
   "AccountProtocol": {
     "packageName": "AccountProtocol",
-    "transactionDigest": "6GkiqtHrM9HB8PB387qWuh6FT6diH3SGpgtAW9njzUyG",
-    "packageId": "0xdb8b27fdf53a637eb6a738368e2deb61649d5f54fbd6dc9a189b3d32bdd43994",
+    "transactionDigest": "HS2Jb4BtLNkWSHRWwZ7qZsBqtDspRnq9ZYVTW8pJsGAr",
+    "packageId": "0xe026bb03c035570d73c33c550a00a8d626074f533d78872c13cb5da8b827a839",
     "adminCaps": [
       {
         "name": "PackageAdminCap",
-        "objectId": "0xf489956e03beaacf83737817460b56b5e415b6d038fc8b53e77472b8f4df4ff1",
-        "objectType": "0xdb8b27fdf53a637eb6a738368e2deb61649d5f54fbd6dc9a189b3d32bdd43994::package_registry::PackageAdminCap",
+        "objectId": "0x42d629ddf6885847075d8e65123af97afa1b77ed86c2a010484c27a8639ae746",
+        "objectType": "0xe026bb03c035570d73c33c550a00a8d626074f533d78872c13cb5da8b827a839::package_registry::PackageAdminCap",
         "owner": {
           "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
         }
@@ -31,19 +31,19 @@
     "sharedObjects": [
       {
         "name": "PackageRegistry",
-        "objectId": "0xdf5fb7c6a508201ba268881ee9eb65a37b367c5e496d56dbfa4904aa271ab87a",
-        "objectType": "0xdb8b27fdf53a637eb6a738368e2deb61649d5f54fbd6dc9a189b3d32bdd43994::package_registry::PackageRegistry",
+        "objectId": "0xc9481e9f7b2bb336295ada9ba45b2eaace9dca430f660c1227fc7c58e546e59a",
+        "objectType": "0xe026bb03c035570d73c33c550a00a8d626074f533d78872c13cb5da8b827a839::package_registry::PackageRegistry",
         "owner": {
           "Shared": {
-            "initial_shared_version": 12
+            "initial_shared_version": 11
           }
         },
-        "initialSharedVersion": 12
+        "initialSharedVersion": 11
       }
     ],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0x881fb3ee1912a512083bdfc96d3ed7eb01dbb6e40a1a5ba39d13e0e9db7c8523",
+      "objectId": "0x6aaccedf0df96a86317f923642750d3794cee43cc36ef5b8bf1e5861fd780902",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -52,13 +52,13 @@
   },
   "futarchy_actions": {
     "packageName": "futarchy_actions",
-    "transactionDigest": "J3eFxqYEoECdfjALvM4HH7eJjvJfkyYvDyrafCTfBFmk",
-    "packageId": "0x96acdbbe71a4bf9a403e75351d2de163d6f7f603ea9ff05e4f0ee0472dd4f5e2",
+    "transactionDigest": "4X7RHNRXdgGgbYn12EXSYpCSXU8jZFAvPy1XfNEf4uk3",
+    "packageId": "0x92f09151edfac26e3113840b3a442aedf58a9650576a8ba2321c37decf609b46",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0x0702b0f339701f5374d3a6c1026537c6bdb4c490a2932bb64c0bbdae74b864a0",
+      "objectId": "0xecfa34642a8863c13403ef3b955b262a0b5dadc92a3227bae3d2f4c0ea9101ab",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -67,13 +67,13 @@
   },
   "futarchy_core": {
     "packageName": "futarchy_core",
-    "transactionDigest": "8LAmHvVaPL9NTjQLky1q9FfKySLWUCcQttHaeB9dYzss",
-    "packageId": "0x08c37312ffa73d1975a604119ed734673870635b241cfb378aa783aa781d2545",
+    "transactionDigest": "4G4Mvb5vaYo91VYQbtH1VqaRp2dCe6qWpNnJN61oi5TL",
+    "packageId": "0x6865d933e01b147628a62d34fbb90cbb48931e51cb7973a231cf64d77375d5c8",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0xbc40f8893834c7cf6773fd22a133918009359f9650c033ef40dfaf719a5673c5",
+      "objectId": "0x9eccd9de4ac80907e4bca7288042164c4089fb1e908cef0ef11f5ea035ea24a6",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -82,21 +82,21 @@
   },
   "futarchy_factory": {
     "packageName": "futarchy_factory",
-    "transactionDigest": "GkAMPkBFMwB3es4j7ykUb7LhBa4zWbYzqhvLBjnnpiZJ",
-    "packageId": "0x17e7e8a32357757ef951760ade29b94a57202095d60dfecae18df1b15f6b7acd",
+    "transactionDigest": "75K778FswAGrx4LugmsPpfzMFrsfGSGU5sHQJbVfYWrh",
+    "packageId": "0xe6b64b42b235819dcaf1ad43cd77dca7f175a64b296affdd570251f264fb7975",
     "adminCaps": [
       {
-        "name": "FactoryOwnerCap",
-        "objectId": "0x0ab51db551c008e6da5c998c3febd1bc4f35e2c25e0323b6ce6ff71456fb3188",
-        "objectType": "0x17e7e8a32357757ef951760ade29b94a57202095d60dfecae18df1b15f6b7acd::factory::FactoryOwnerCap",
+        "name": "ValidatorAdminCap",
+        "objectId": "0x5545f742393abb4fcc45d81ccb4581ce2aeee5fec3b1870cff6aebcf1d9f7ada",
+        "objectType": "0xe6b64b42b235819dcaf1ad43cd77dca7f175a64b296affdd570251f264fb7975::factory::ValidatorAdminCap",
         "owner": {
           "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
         }
       },
       {
-        "name": "ValidatorAdminCap",
-        "objectId": "0x2a418744e19e4d4c8bcce0c701cfe5f48306ebb20d74bfbd629f6c125f3d028d",
-        "objectType": "0x17e7e8a32357757ef951760ade29b94a57202095d60dfecae18df1b15f6b7acd::factory::ValidatorAdminCap",
+        "name": "FactoryOwnerCap",
+        "objectId": "0x83a2979e2bbe62ac266f914ab9bd75883a78608d9242d35c1972d13a2f938143",
+        "objectType": "0xe6b64b42b235819dcaf1ad43cd77dca7f175a64b296affdd570251f264fb7975::factory::FactoryOwnerCap",
         "owner": {
           "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
         }
@@ -105,19 +105,19 @@
     "sharedObjects": [
       {
         "name": "Factory",
-        "objectId": "0x1c5cb584addbe0d9583a7fdf759d69d756ae9333fbacb91ad3f05abd066a1465",
-        "objectType": "0x17e7e8a32357757ef951760ade29b94a57202095d60dfecae18df1b15f6b7acd::factory::Factory",
+        "objectId": "0x15cff872379b6458c88974ce0c5bdabc6e1086049a32a801e23ebe4d18dda047",
+        "objectType": "0xe6b64b42b235819dcaf1ad43cd77dca7f175a64b296affdd570251f264fb7975::factory::Factory",
         "owner": {
           "Shared": {
-            "initial_shared_version": 22
+            "initial_shared_version": 21
           }
         },
-        "initialSharedVersion": 22
+        "initialSharedVersion": 21
       }
     ],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0x7b62081d7f17f74c65147a305dac7ca53f8c63418b0ca7766cabaec3a822c99f",
+      "objectId": "0xbcfbdf73a9f13ade788fc34cf58772aa723413dae7f9d7026a4cdcafa56fe036",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -126,13 +126,13 @@
   },
   "futarchy_governance": {
     "packageName": "futarchy_governance",
-    "transactionDigest": "849Jgp1VhaYgk2vyuCPQGbx8Bs8dG3XJuPGLY41zbi8C",
-    "packageId": "0xebc55221ef8e55d4ce4a3cbd15912dc4c7397e7c4c7cd76f3069174841cec407",
+    "transactionDigest": "9VWLT1GeiaLBtZqnMjdeDiYpv5wYsQzCaHe6xET9UzTR",
+    "packageId": "0x12a8005e7ddaade9d35983c3c97503e5522bb9e059fbeb09909d2d8174887638",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0xf1281b021520786d5a1754855e65a38a57010f3b934166473c2473496c2a18c4",
+      "objectId": "0x56648cb154f7a6cd7b72c2343c5d7f1b62180f9a869d7b66c5d443ce00c7380e",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -141,13 +141,13 @@
   },
   "futarchy_governance_actions": {
     "packageName": "futarchy_governance_actions",
-    "transactionDigest": "BkvHSbozv5rpadMvpnAkp2tKj536KdmPdjW15KaJivFh",
-    "packageId": "0xc1e98edaa6f4f619d21a95755a46a860cb79848e02fa42f0f9c8f5776558a920",
+    "transactionDigest": "HusBZX3XFMjkkeBbJQz3Xg6aV3Mxt9Rx1ZJUvBv4SXBR",
+    "packageId": "0xd328cda6938b23bfce85db3fe80b8c1200f3ce7e131028598af732e925ec1ce0",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0xa25ea2702ea7394f4e6101783b69f357b7ce02062125a4f61dfe61fdc519125b",
+      "objectId": "0x37f0e4569c5032037399e25163aa35e46da580e5d9866702ef831f32a90ff99b",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -156,13 +156,13 @@
   },
   "futarchy_markets_core": {
     "packageName": "futarchy_markets_core",
-    "transactionDigest": "HXkJfWHVPeSb7fchnLSMBpwXuaHeUH4gxhtsaJJHhDH6",
-    "packageId": "0xd9f12d3378a246b361da05955873f69a8e2dab8590b3dd9c597e5bd75b82519e",
+    "transactionDigest": "FgvUemfpFLFQ7tPDmdFnL28YebyippyDtqjPcrT6bd9q",
+    "packageId": "0x520c8f2f0d0be3a841ebf2ec2c8bb92387cf54719072fc1394adfd551df3f060",
     "adminCaps": [
       {
         "name": "FeeAdminCap",
-        "objectId": "0x6f045485cd96935418d89734024c75ae06236daf6be3fbd922caffc4249fee59",
-        "objectType": "0xd9f12d3378a246b361da05955873f69a8e2dab8590b3dd9c597e5bd75b82519e::fee::FeeAdminCap",
+        "objectId": "0xe18d077a95e3d79146c7d317ef399aa59a5d0b998f635d49d6f656265f024237",
+        "objectType": "0x520c8f2f0d0be3a841ebf2ec2c8bb92387cf54719072fc1394adfd551df3f060::fee::FeeAdminCap",
         "owner": {
           "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
         }
@@ -171,8 +171,35 @@
     "sharedObjects": [
       {
         "name": "FeeManager",
-        "objectId": "0xc2d7787c3ba3f0ea04f6da315b198276b85ea41251fa8fd4c90016178611c5b5",
-        "objectType": "0xd9f12d3378a246b361da05955873f69a8e2dab8590b3dd9c597e5bd75b82519e::fee::FeeManager",
+        "objectId": "0x0194ba1e3736dea6a14f0868702552fe9f2138d3da8288fbb5520c8d152aefab",
+        "objectType": "0x520c8f2f0d0be3a841ebf2ec2c8bb92387cf54719072fc1394adfd551df3f060::fee::FeeManager",
+        "owner": {
+          "Shared": {
+            "initial_shared_version": 17
+          }
+        },
+        "initialSharedVersion": 17
+      }
+    ],
+    "ownedObjects": [],
+    "upgradeCap": {
+      "objectId": "0x11349779acf8124b50c1277721d6bbb0cd9f45c9b1208a4846301913ffd24a60",
+      "objectType": "0x2::package::UpgradeCap",
+      "owner": {
+        "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+      }
+    }
+  },
+  "futarchy_markets_operations": {
+    "packageName": "futarchy_markets_operations",
+    "transactionDigest": "wCHgYfNvFPBhorqBfTAhxzpyT86ePNzEZf85aCb96jR",
+    "packageId": "0xfe4b547cd4add7f250090898de77ddf875ea193877e4d0b2ff20338a70b29ce9",
+    "adminCaps": [],
+    "sharedObjects": [
+      {
+        "name": "PositionImageConfig",
+        "objectId": "0x8d5aa369c3c279b34b2ae40ad0b774fda6153491bff559360d77ef8a155da6fb",
+        "objectType": "0xfe4b547cd4add7f250090898de77ddf875ea193877e4d0b2ff20338a70b29ce9::position_nft::PositionImageConfig",
         "owner": {
           "Shared": {
             "initial_shared_version": 18
@@ -183,34 +210,7 @@
     ],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0x492d4c34936730809d21e98b9290463b256b653bbae215c26a0dba9ace32c7bb",
-      "objectType": "0x2::package::UpgradeCap",
-      "owner": {
-        "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
-      }
-    }
-  },
-  "futarchy_markets_operations": {
-    "packageName": "futarchy_markets_operations",
-    "transactionDigest": "F7cV86m9sK1UjAoXU81AgTKYCxmCVQYTHwgCeQs7jpp4",
-    "packageId": "0xa6dd5a583de019e745a491298e802f0faabcbe4e113b8cc0650e30933cd439a8",
-    "adminCaps": [],
-    "sharedObjects": [
-      {
-        "name": "PositionImageConfig",
-        "objectId": "0xf7aaf8db32e822da12df1daa5d1e6f556f6aa84076fe7229ead0ee523adca84e",
-        "objectType": "0xa6dd5a583de019e745a491298e802f0faabcbe4e113b8cc0650e30933cd439a8::position_nft::PositionImageConfig",
-        "owner": {
-          "Shared": {
-            "initial_shared_version": 19
-          }
-        },
-        "initialSharedVersion": 19
-      }
-    ],
-    "ownedObjects": [],
-    "upgradeCap": {
-      "objectId": "0x8bd5227c6e553f34a7f7b2c5158d7d5dc475a0d21797b18d048043e33c0688e9",
+      "objectId": "0xb769dfcc432f8c573eb70470c36929f8109cb8a097d37988c7fdc353f8343c5e",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -219,13 +219,13 @@
   },
   "futarchy_markets_primitives": {
     "packageName": "futarchy_markets_primitives",
-    "transactionDigest": "Bz43hEpukxJjuHx2WcEwvtfWYnptkvdRGL3q5pDR6iJK",
-    "packageId": "0x1e08c5f3d1344ab7b05d902af61eafda1078275a8ae26c1ef3d8bac5f97e16ff",
+    "transactionDigest": "HRwcJxEtsLXVTELAUG4tqWVJ3YLNEwHPs9MqTFQgVK9B",
+    "packageId": "0x458ad6dacd0e73319897e4e9d16457dbf5be5093c7a257f1473c3d638a13dc70",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0x36cdb8dbbe62e6c15ee2dae8f328bba9b4c1acf3cfee22ea121183e0117efd65",
+      "objectId": "0xcbc692ca2bc0c53eb294c9c8e8334ce0fb8b25d40605fca8611188e65a513bd6",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -234,13 +234,13 @@
   },
   "futarchy_one_shot_utils": {
     "packageName": "futarchy_one_shot_utils",
-    "transactionDigest": "FWZTQ1uuQHRPdy4dQTLzu8QzCMAhX1NvqSYsBx9MZf1Z",
-    "packageId": "0x580bcb8946f2781bfe4e975ea2ae758c7eeeffbb6c3778cde48508943a0064cc",
+    "transactionDigest": "HLJsgiusyujhreBDA8G7i5WHqijXhJqZm228viiqLaog",
+    "packageId": "0x71a6037c0b7b8129f609bf75b59224543f404a1f2cee377524d5a9dc49d050c5",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0xe9721a906cc12f3013660c256acd788ea8fa5dd9f929cd9b46733780839be9d5",
+      "objectId": "0x11b8c8c143812bd3dc7b8d1adacc89948586aeff1039bdb54143a818ac10a278",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -249,13 +249,13 @@
   },
   "futarchy_oracle": {
     "packageName": "futarchy_oracle",
-    "transactionDigest": "J4eKvLiZn7QCi6Kcw5Nnks3y4kPusqKgabH8hcwxGSVZ",
-    "packageId": "0xd8252e28e9328adfca231ccfadd7b528759e20f2b2e99e40b0b4e17116b90d35",
+    "transactionDigest": "CZJMypzwLMbKKTTNTeGZ3TNTQz8hGn31ghJyCDfrkhRR",
+    "packageId": "0x52f3411ea43661691ae9b7c18235b7460c5d512c630131e2e34acbc5591ab166",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0x89894836f0d0cb23463283425161f4b9f15297d71b4f0f9b9a79b2c1b4986491",
+      "objectId": "0x52966fa54cebb5eaa2853a4c95272b685c1c769682b1f5ce90528b00e52bf568",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
@@ -264,13 +264,13 @@
   },
   "futarchy_types": {
     "packageName": "futarchy_types",
-    "transactionDigest": "8dC6daEErbtuRaYPA11w3dDR1dEM4t29BNxiGwXR85r3",
-    "packageId": "0x4f01e0734ba9e975b26dfa746d7712af84f0512f6d4b88b2dcf506d44a9a5167",
+    "transactionDigest": "93KdHyBg1Bc6mCZsMf1qK1GdrZYR6CBPDUCmb2Zph84w",
+    "packageId": "0x2ac5fc1f66a3827cde88494b864485a99bca05e4207de4e03813a92771728f2d",
     "adminCaps": [],
     "sharedObjects": [],
     "ownedObjects": [],
     "upgradeCap": {
-      "objectId": "0x808abb098dd910e6aa88211f6d4b3df221acfce0ca95de45bf38f1c9ecd7918e",
+      "objectId": "0x49925657b5e59afcf02f1a2007eef546f8d81d979604fee063ffc21e9ebeda82",
       "objectType": "0x2::package::UpgradeCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

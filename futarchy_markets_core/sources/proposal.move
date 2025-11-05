@@ -45,6 +45,7 @@ const EConditionalCoinAlreadySet: u64 = 16;
 const ENotLiquidityProvider: u64 = 17;
 const EAlreadySponsored: u64 = 18;
 const ESupplyNotZero: u64 = 19;
+const EInsufficientBalance: u64 = 20;
 
 // === Constants ===
 
@@ -82,7 +83,6 @@ public struct LiquidityConfig has store {
     min_stable_liquidity: u64,
     asset_amounts: vector<u64>,
     stable_amounts: vector<u64>,
-    uses_dao_liquidity: bool,
 }
 
 /// TWAP (Time-Weighted Average Price) configuration
@@ -213,279 +213,6 @@ public struct ProposalOutcomeAdded has copy, drop {
 
 // === Public Functions ===
 
-/// Creates all on-chain objects for a futarchy market when a proposal is activated from the queue.
-/// This is the main entry point for creating a full proposal with market infrastructure.
-#[allow(lint(share_owned))]
-public fun initialize_market<AssetType, StableType>(
-    // Proposal ID (generated when adding to queue)
-    proposal_id: ID,
-    // Market parameters from DAO
-    dao_id: ID,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    min_asset_liquidity: u64,
-    min_stable_liquidity: u64,
-    twap_start_delay: u64,
-    twap_initial_observation: u128,
-    twap_step_max: u64,
-    twap_threshold: SignedU128,
-    amm_total_fee_bps: u64,
-    conditional_liquidity_ratio_percent: u64,  // Percentage of spot liquidity to move (1-99%, base 100)
-    max_outcomes: u64, // DAO's configured max outcomes
-    treasury_address: address,
-    // Proposal specific parameters
-    title: String,
-    introduction_details: String,
-    metadata: String,
-    initial_outcome_messages: vector<String>,
-    initial_outcome_details: vector<String>,
-    asset_coin: Coin<AssetType>,
-    stable_coin: Coin<StableType>,
-    proposer: address,
-    proposer_fee_paid: u64,
-    uses_dao_liquidity: bool,
-    used_quota: bool,
-    dao_fee_payment: Coin<StableType>, // DAO-level proposal creation fee
-    mut intent_spec_for_yes: Option<InitActionSpecs>, // Intent spec for YES outcome
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (ID, ID, u8) {
-
-    // Create a new proposal UID
-    let id = object::new(ctx);
-    let actual_proposal_id = object::uid_to_inner(&id);
-    let outcome_count = initial_outcome_messages.length();
-
-    // Validate outcome count
-    assert!(outcome_count <= max_outcomes, ETooManyOutcomes);
-
-    // Liquidity is split evenly among all outcomes
-    let total_asset_liquidity = asset_coin.value();
-    let total_stable_liquidity = stable_coin.value();
-    assert!(total_asset_liquidity > 0 && total_stable_liquidity > 0, EInvalidAmount);
-    
-    let asset_per_outcome = total_asset_liquidity / outcome_count;
-    let stable_per_outcome = total_stable_liquidity / outcome_count;
-    
-    // Calculate remainders from integer division
-    let asset_remainder = total_asset_liquidity % outcome_count;
-    let stable_remainder = total_stable_liquidity % outcome_count;
-    
-    // Distribute liquidity evenly, with remainder going to first outcomes
-    let mut initial_asset_amounts = vector::empty<u64>();
-    let mut initial_stable_amounts = vector::empty<u64>();
-    let mut i = 0;
-    while (i < outcome_count) {
-        // Add 1 extra token to first 'remainder' outcomes
-        let asset_amount = if (i < asset_remainder) { asset_per_outcome + 1 } else { asset_per_outcome };
-        let stable_amount = if (i < stable_remainder) { stable_per_outcome + 1 } else { stable_per_outcome };
-        
-        vector::push_back(&mut initial_asset_amounts, asset_amount);
-        vector::push_back(&mut initial_stable_amounts, stable_amount);
-        i = i + 1;
-    };
-
-    // Validate minimum liquidity requirements for conditional markets
-    assert!(asset_per_outcome >= min_asset_liquidity, EAssetLiquidityTooLow);
-    assert!(stable_per_outcome >= min_stable_liquidity, EStableLiquidityTooLow);
-
-    // CRITICAL: Pre-validate that spot pool will maintain k >= 1000 after quantum split
-    // Defense-in-depth to catch misconfiguration at proposal creation
-    // Spot ratio = (100 - conditional_liquidity_ratio_percent) / 100
-    // With protocol min = 100,000 and ratio = 99%: spot keeps 1,000 each → k = 1,000,000 ✅
-    // NOTE: This assumes single proposal (current model). If multiple proposals allowed in future,
-    //       may need to store conditional_liquidity_ratio_percent in AMM as optional field.
-    let spot_ratio = 100 - conditional_liquidity_ratio_percent;
-    let spot_asset_projected = (min_asset_liquidity as u128) * (spot_ratio as u128) / 100u128;
-    let spot_stable_projected = (min_stable_liquidity as u128) * (spot_ratio as u128) / 100u128;
-    let projected_spot_k = spot_asset_projected * spot_stable_projected;
-    assert!(projected_spot_k >= 1000u128, EAssetLiquidityTooLow); // Reuse error for simplicity
-
-    // Initialize outcome creators to the original proposer
-    let outcome_creators = vector::tabulate!(outcome_count, |_| proposer);
-
-    // Create market state
-    let market_state = market_state::new(
-        actual_proposal_id,  // Use the actual proposal ID, not the parameter
-        dao_id, 
-        outcome_count, 
-        initial_outcome_messages, 
-        clock, 
-        ctx
-    );
-    let market_state_id = object::id(&market_state);
-
-    // Create escrow
-    let mut escrow = coin_escrow::new<AssetType, StableType>(market_state, ctx);
-    let escrow_id = object::id(&escrow);
-
-    // Create AMM pools and initialize liquidity
-    let mut asset_balance = asset_coin.into_balance();
-    let mut stable_balance = stable_coin.into_balance();
-    
-    // Quantum liquidity: the same liquidity backs all outcomes conditionally
-    // We only need the MAX amount across outcomes since they share the same underlying liquidity
-    let mut max_asset = 0u64;
-    let mut max_stable = 0u64;
-    let mut j = 0;
-    while (j < outcome_count) {
-        let asset_amt = *initial_asset_amounts.borrow(j);
-        let stable_amt = *initial_stable_amounts.borrow(j);
-        if (asset_amt > max_asset) { max_asset = asset_amt };
-        if (stable_amt > max_stable) { max_stable = stable_amt };
-        j = j + 1;
-    };
-    
-    // Extract the exact amount needed for quantum liquidity
-    let asset_total = asset_balance.value();
-    let stable_total = stable_balance.value();
-    
-    let asset_for_pool = if (asset_total > max_asset) {
-        asset_balance.split(max_asset)
-    } else {
-        asset_balance.split(asset_total)
-    };
-    
-    let stable_for_pool = if (stable_total > max_stable) {
-        stable_balance.split(max_stable)
-    } else {
-        stable_balance.split(stable_total)
-    };
-    
-    // Return excess to proposer if any
-    if (asset_balance.value() > 0) {
-        transfer::public_transfer(asset_balance.into_coin(ctx), proposer);
-    } else {
-        asset_balance.destroy_zero();
-    };
-    
-    if (stable_balance.value() > 0) {
-        transfer::public_transfer(stable_balance.into_coin(ctx), proposer);
-    } else {
-        stable_balance.destroy_zero();
-    };
-    
-    let amm_pools = liquidity_initialize::create_outcome_markets(
-        &mut escrow,
-        outcome_count,
-        initial_asset_amounts,
-        initial_stable_amounts,
-        twap_start_delay,
-        twap_initial_observation,
-        twap_step_max,
-        amm_total_fee_bps,
-        asset_for_pool,
-        stable_for_pool,
-        clock,
-        ctx
-    );
-
-    // Move pools to MarketState (architectural fix: pools belong to market, not proposal)
-    let market_state = coin_escrow::get_market_state_mut(&mut escrow);
-    market_state::set_amm_pools(market_state, amm_pools);
-
-    // Prepare intent_specs and actions_per_outcome
-    let mut intent_specs = vector::tabulate!(outcome_count, |_| option::none<InitActionSpecs>());
-    let mut actions_per_outcome = vector::tabulate!(outcome_count, |_| 0);
-
-    // Store the intent spec for YES outcome at index 0 if provided
-    if (intent_spec_for_yes.is_some()) {
-        let spec = intent_spec_for_yes.extract();
-        let actions_count = action_specs::action_count(&spec);
-        *vector::borrow_mut(&mut intent_specs, 0) = option::some(spec);
-        *vector::borrow_mut(&mut actions_per_outcome, 0) = actions_count;
-    };
-
-    // Create proposal object
-    let proposal = Proposal<AssetType, StableType> {
-        id,
-        queued_proposal_id: proposal_id,
-        state: STATE_REVIEW, // Start in REVIEW state since market is initialized
-        dao_id,
-        proposer,
-        liquidity_provider: option::some(ctx.sender()),
-        withdraw_only_mode: false,
-        used_quota,
-        sponsored_by: option::none(), // No sponsorship by default
-        sponsor_threshold_reduction: signed::from_u64(0), // No reduction by default
-        escrow_id: option::some(escrow_id),
-        market_state_id: option::some(market_state_id),
-        conditional_treasury_caps: bag::new(ctx),
-        conditional_metadata: bag::new(ctx),
-        title,
-        introduction_details,
-        details: initial_outcome_details,
-        metadata,
-        timing: ProposalTiming {
-            created_at: clock.timestamp_ms(),
-            market_initialized_at: option::some(clock.timestamp_ms()),
-            review_period_ms,
-            trading_period_ms,
-            last_twap_update: 0,
-            twap_start_delay,
-        },
-        liquidity_config: LiquidityConfig {
-            min_asset_liquidity,
-            min_stable_liquidity,
-            asset_amounts: initial_asset_amounts,
-            stable_amounts: initial_stable_amounts,
-            uses_dao_liquidity,
-        },
-        twap_config: TwapConfig {
-            twap_prices: vector::empty(),
-            twap_initial_observation,
-            twap_step_max,
-            twap_threshold,
-        },
-        outcome_data: OutcomeData {
-            outcome_count,
-            outcome_messages: initial_outcome_messages,
-            outcome_creators,
-            outcome_creator_fees: {
-                // Track actual fees paid by each outcome creator
-                // Outcome 0 (reject): 0 fee
-                // Outcome 1+ (proposer's outcomes): proposer_fee_paid divided by (outcome_count - 1)
-                let mut fees = vector::empty();
-                fees.push_back(0u64); // Outcome 0 (reject) - no fee
-                let mut i = 1u64;
-                while (i < outcome_count) {
-                    fees.push_back(proposer_fee_paid); // Each outcome tracks the proposer's fee
-                    i = i + 1;
-                };
-                fees
-            },
-            intent_specs,
-            actions_per_outcome,
-            winning_outcome: option::none(),
-        },
-        amm_total_fee_bps,
-        conditional_liquidity_ratio_percent,
-        fee_escrow: dao_fee_payment.into_balance(), // Store DAO-level creation fee in escrow
-        treasury_address,
-    };
-
-    event::emit(ProposalCreated {
-        proposal_id: actual_proposal_id,
-        dao_id,
-        proposer,
-        outcome_count,
-        outcome_messages: initial_outcome_messages,
-        created_at: clock.timestamp_ms(),
-        asset_type: type_name::with_defining_ids<AssetType>().into_string(),
-        stable_type: type_name::with_defining_ids<StableType>().into_string(),
-        review_period_ms,
-        trading_period_ms,
-        title,
-        metadata,
-    });
-
-    transfer::public_share_object(proposal);
-    transfer::public_share_object(escrow);
-
-    // Return the actual on-chain proposal ID, not the queue ID
-    (actual_proposal_id, market_state_id, STATE_REVIEW)
-}
-
 /// Create a PREMARKET proposal without market/escrow/liquidity.
 /// This reserves the proposal "as next" without consuming DAO/proposer liquidity.
 #[allow(lint(share_owned))]
@@ -511,7 +238,6 @@ public fun new_premarket<AssetType, StableType>(
     outcome_messages: vector<String>,
     outcome_details: vector<String>,
     proposer: address,
-    uses_dao_liquidity: bool,
     used_quota: bool, // Track if proposal used admin budget
     intent_spec_for_yes: Option<InitActionSpecs>,
     clock: &Clock,
@@ -556,7 +282,6 @@ public fun new_premarket<AssetType, StableType>(
             min_stable_liquidity,
             asset_amounts: vector::empty(),
             stable_amounts: vector::empty(),
-            uses_dao_liquidity,
         },
         twap_config: TwapConfig {
             twap_prices: vector::empty(),
@@ -631,129 +356,71 @@ public fun register_outcome_caps_with_escrow<AssetType, StableType, AssetConditi
     coin_escrow::register_conditional_caps(escrow, outcome_index, asset_cap, stable_cap);
 }
 
-/// Step 3: Initialize market with pre-configured escrow
-/// Called after create_escrow_for_market() and N calls to register_outcome_caps_with_escrow()
-#[allow(lint(share_owned, self_transfer))]
-public fun initialize_market_with_escrow<AssetType, StableType>(
-    proposal: &mut Proposal<AssetType, StableType>,
-    mut escrow: TokenEscrow<AssetType, StableType>,
-    asset_coin: Coin<AssetType>,
-    stable_coin: Coin<StableType>,
+/// Step 2.5: Create conditional AMM pools and store them in MarketState
+/// Called after all outcome caps are registered (PTB calls this once after N cap registrations)
+/// CRITICAL: This must be called BEFORE advancing to REVIEW state, otherwise quantum split will fail
+///
+/// BOOTSTRAP LIQUIDITY MODEL:
+/// - Creates pools with minimal reserves (1000/1000 per pool) for AMM constraints
+/// - These minimal reserves are "bootstrap liquidity" that stays locked in pools permanently
+/// - NO escrow backing needed for bootstrap reserves
+/// - Quantum split will add the REAL liquidity with proper escrow backing
+/// - Recombination only withdraws quantum-split amounts, NOT bootstrap reserves
+public fun create_conditional_amm_pools<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+    escrow: &mut TokenEscrow<AssetType, StableType>,
     clock: &Clock,
     ctx: &mut TxContext,
-): ID {
+) {
     assert!(proposal.state == STATE_PREMARKET, EInvalidState);
 
-    let outcome_count = proposal.outcome_data.outcome_count;
+    // Get market state from escrow
+    let market_state = coin_escrow::get_market_state_mut(escrow);
+    let outcome_count = market_state::outcome_count(market_state);
 
-    // Evenly split liquidity across outcomes
-    let total_asset_liquidity = asset_coin.value();
-    let total_stable_liquidity = stable_coin.value();
-    assert!(total_asset_liquidity > 0 && total_stable_liquidity > 0, EInvalidAmount);
+    // CRITICAL: Pools need minimal reserves to satisfy AMM constraints (MINIMUM_LIQUIDITY = 1000)
+    // These minimal reserves must have matching escrow backing for recombination to work
+    // Quantum split will ADD bulk liquidity on top of these minimal reserves
 
-    let asset_per = total_asset_liquidity / outcome_count;
-    let stable_per = total_stable_liquidity / outcome_count;
-    assert!(asset_per >= proposal.liquidity_config.min_asset_liquidity, EAssetLiquidityTooLow);
-    assert!(stable_per >= proposal.liquidity_config.min_stable_liquidity, EStableLiquidityTooLow);
+    // Use absolute minimum per pool (sqrt(1000*1000) = 1000 satisfies k >= MINIMUM_LIQUIDITY)
+    let min_reserve_per_pool = 1000u64;
 
-    let asset_remainder = total_asset_liquidity % outcome_count;
-    let stable_remainder = total_stable_liquidity % outcome_count;
-
-    let mut initial_asset_amounts = vector::empty<u64>();
-    let mut initial_stable_amounts = vector::empty<u64>();
+    // Create vectors for pool initialization
+    let mut asset_amounts = vector::empty<u64>();
+    let mut stable_amounts = vector::empty<u64>();
     let mut i = 0;
     while (i < outcome_count) {
-        let a = if (i < asset_remainder) { asset_per + 1 } else { asset_per };
-        let s = if (i < stable_remainder) { stable_per + 1 } else { stable_per };
-        vector::push_back(&mut initial_asset_amounts, a);
-        vector::push_back(&mut initial_stable_amounts, s);
+        asset_amounts.push_back(min_reserve_per_pool);
+        stable_amounts.push_back(min_reserve_per_pool);
         i = i + 1;
     };
 
-    let escrow_id = object::id(&escrow);
-    let market_state_id = coin_escrow::market_state_id(&escrow);
-    
-    // Determine quantum liquidity amounts
-    let mut asset_balance = asset_coin.into_balance();
-    let mut stable_balance = stable_coin.into_balance();
-    
-    let mut max_asset = 0u64;
-    let mut max_stable = 0u64;
-    i = 0;
-    while (i < outcome_count) {
-        let a = *initial_asset_amounts.borrow(i);
-        let s = *initial_stable_amounts.borrow(i);
-        if (a > max_asset) { max_asset = a };
-        if (s > max_stable) { max_stable = s };
-        i = i + 1;
-    };
-    
-    let asset_total = asset_balance.value();
-    let stable_total = stable_balance.value();
-    
-    let asset_for_pool = if (asset_total > max_asset) {
-        asset_balance.split(max_asset)
-    } else {
-        asset_balance.split(asset_total)
-    };
-    
-    let stable_for_pool = if (stable_total > max_stable) {
-        stable_balance.split(max_stable)
-    } else {
-        stable_balance.split(stable_total)
-    };
-    
-    // Return any excess to liquidity provider (the activator who supplied coins)
-    let sender = ctx.sender();
-    if (asset_balance.value() > 0) {
-        transfer::public_transfer(asset_balance.into_coin(ctx), sender);
-    } else {
-        asset_balance.destroy_zero();
-    };
-    
-    if (stable_balance.value() > 0) {
-        transfer::public_transfer(stable_balance.into_coin(ctx), sender);
-    } else {
-        stable_balance.destroy_zero();
-    };
-    
-    // Create outcome markets (TreasuryCaps already registered with escrow)
-    let amm_pools = liquidity_initialize::create_outcome_markets(
-        &mut escrow,
-        proposal.outcome_data.outcome_count,
-        initial_asset_amounts,
-        initial_stable_amounts,
+    // Create conditional AMM pools with minimal bootstrap reserves
+    // Bootstrap reserves (1000/1000 per pool) stay locked in pools permanently
+    // Quantum split will add the real liquidity with escrow backing on top
+    let amm_pools = liquidity_initialize::create_outcome_markets<AssetType, StableType>(
+        escrow,
+        outcome_count,
+        asset_amounts,
+        stable_amounts,
         proposal.timing.twap_start_delay,
         proposal.twap_config.twap_initial_observation,
         proposal.twap_config.twap_step_max,
         proposal.amm_total_fee_bps,
-        asset_for_pool,
-        stable_for_pool,
+        balance::zero<AssetType>(), // No backing for bootstrap reserves
+        balance::zero<StableType>(), // They stay locked forever
         clock,
-        ctx
+        ctx,
     );
 
-    // Move pools to MarketState (architectural fix: pools belong to market, not proposal)
-    let market_state = coin_escrow::get_market_state_mut(&mut escrow);
+    // Store the pools in MarketState (CRITICAL - this is the missing piece!)
+    let market_state = coin_escrow::get_market_state_mut(escrow);
     market_state::set_amm_pools(market_state, amm_pools);
-
-    // Update proposal's liquidity amounts
-    proposal.liquidity_config.asset_amounts = initial_asset_amounts;
-    proposal.liquidity_config.stable_amounts = initial_stable_amounts;
-
-    // Initialize market fields: PREMARKET → REVIEW
-    initialize_market_fields(
-        proposal,
-        market_state_id,
-        escrow_id,
-        clock.timestamp_ms(),
-        sender
-    );
-    
-    transfer::public_share_object(escrow);
-    market_state_id
 }
 
+/// Step 3: Initialize market with pre-configured escrow
+/// Called after create_escrow_for_market() and N calls to register_outcome_caps_with_escrow()
+#[allow(lint(share_owned, self_transfer))]
 /// Internal function: Adds a new outcome during the premarket phase.
 /// max_outcomes: The DAO's configured maximum number of outcomes allowed
 /// fee_paid: The fee paid by the outcome creator (for potential refund if their outcome wins)
@@ -1245,10 +912,6 @@ public fun get_twap_step_max<AssetType, StableType>(proposal: &Proposal<AssetTyp
     proposal.twap_config.twap_step_max
 }
 
-public fun uses_dao_liquidity<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): bool {
-    proposal.liquidity_config.uses_dao_liquidity
-}
-
 public fun get_amm_total_fee_bps<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
 ): u64 {
@@ -1690,7 +1353,6 @@ public fun new_for_testing<AssetType, StableType>(
             min_stable_liquidity,
             asset_amounts: vector::empty(),
             stable_amounts: vector::empty(),
-            uses_dao_liquidity: false,
         },
         twap_config: TwapConfig {
             twap_prices: vector::empty(),
@@ -2068,7 +1730,6 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
             min_stable_liquidity: _,
             asset_amounts: _,
             stable_amounts: _,
-            uses_dao_liquidity: _,
         },
         twap_config: TwapConfig {
             twap_prices: _,

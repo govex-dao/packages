@@ -33,6 +33,10 @@ const ENoActiveProposal: u64 = 7;
 
 // === Constants ===
 const MINIMUM_LIQUIDITY_BUFFER: u64 = 1000; // Minimum liquidity to maintain in each AMM
+/// Bootstrap reserve amount per token type (1000 per pool for AssetType and StableType)
+/// These are minimal reserves that stay locked in conditional pools permanently
+/// Only quantum-split liquidity (above this amount) is backed by escrow and can be recombined
+const BOOTSTRAP_RESERVE_PER_TOKEN: u64 = 1000;
 
 // === Withdrawal Check ===
 
@@ -306,6 +310,98 @@ public fun auto_redeem_on_proposal_end<AssetType, StableType>(
 
     // Done! User LP tokens are now backed by spot liquidity again.
     // No need to mint new LP tokens - they existed throughout the quantum split.
+}
+
+/// Entry-friendly wrapper that extracts market_state from escrow and handles borrows properly
+/// This avoids borrow checker issues since it manages escrow/market_state borrow scopes internally
+public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
+    winning_outcome: u64,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    _clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Step 1: Calculate bucket allocations and empty conditional AMM (needs market_state)
+    let (cond_asset_amt, cond_stable_amt, asset_live, asset_transitioning, stable_live, stable_transitioning) = {
+        let market_state = coin_escrow::get_market_state_mut(escrow);
+
+        // Get reserves and bucket data from winning conditional pool
+        let pool = market_state::get_pool_by_outcome(market_state, (winning_outcome as u8));
+        let (total_asset, total_stable) = conditional_amm::get_reserves(pool);
+        let (
+            _asset_live_bucket,
+            _asset_transition_bucket,
+            _stable_live_bucket,
+            _stable_transition_bucket,
+            lp_live_bucket,
+            lp_transition_bucket,
+        ) = conditional_amm::get_bucket_amounts(pool);
+
+        // Calculate bucket allocations
+        let total_lp_bucket = lp_live_bucket + lp_transition_bucket;
+        let (asset_live, asset_transitioning, stable_live, stable_transitioning) = if (total_lp_bucket == 0) {
+            (total_asset, 0, total_stable, 0)
+        } else {
+            let asset_live_calc = math::mul_div_to_64(total_asset, lp_live_bucket, total_lp_bucket);
+            let stable_live_calc = math::mul_div_to_64(total_stable, lp_live_bucket, total_lp_bucket);
+            (
+                asset_live_calc,
+                total_asset - asset_live_calc,
+                stable_live_calc,
+                total_stable - stable_live_calc,
+            )
+        };
+
+        // Empty winning conditional AMM (needs mutable pool access)
+        let pool_mut = market_state::get_pool_mut_by_outcome(market_state, (winning_outcome as u8));
+        let (cond_asset_amt, cond_stable_amt) = conditional_amm::empty_all_amm_liquidity(pool_mut, ctx);
+
+        (cond_asset_amt, cond_stable_amt, asset_live, asset_transitioning, stable_live, stable_transitioning)
+    }; // market_state borrow ends here
+
+    // CRITICAL: Subtract bootstrap reserves before withdrawing from escrow!
+    // Bootstrap reserves (1000/1000 per pool) are NOT backed by escrow - they stay locked in pools
+    // Only the quantum-split liquidity has escrow backing
+    let escrow_backed_asset = if (cond_asset_amt > BOOTSTRAP_RESERVE_PER_TOKEN) {
+        cond_asset_amt - BOOTSTRAP_RESERVE_PER_TOKEN
+    } else {
+        0  // Safety: if somehow less than bootstrap, withdraw nothing
+    };
+    let escrow_backed_stable = if (cond_stable_amt > BOOTSTRAP_RESERVE_PER_TOKEN) {
+        cond_stable_amt - BOOTSTRAP_RESERVE_PER_TOKEN
+    } else {
+        0
+    };
+
+    // Step 2: Withdraw only the escrow-backed amounts (quantum-split liquidity)
+    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, escrow_backed_asset, ctx);
+    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, escrow_backed_stable, ctx);
+
+    // Step 3: Add liquidity back to spot pool with DERIVED bucket amounts
+    // Adjust bucket amounts to exclude bootstrap reserves (they're not being returned)
+    let adjusted_asset_live = if (asset_live > BOOTSTRAP_RESERVE_PER_TOKEN) {
+        asset_live - BOOTSTRAP_RESERVE_PER_TOKEN
+    } else {
+        0
+    };
+    let adjusted_stable_live = if (stable_live > BOOTSTRAP_RESERVE_PER_TOKEN) {
+        stable_live - BOOTSTRAP_RESERVE_PER_TOKEN
+    } else {
+        0
+    };
+
+    unified_spot_pool::add_liquidity_from_quantum_redeem_with_buckets(
+        spot_pool,
+        coin::into_balance(asset_coin),
+        coin::into_balance(stable_coin),
+        adjusted_asset_live,
+        asset_transitioning,  // Transitioning buckets don't include bootstrap
+        adjusted_stable_live,
+        stable_transitioning,
+    );
+
+    // Step 4: Merge PENDING bucket into LIVE
+    unified_spot_pool::merge_joining_to_active_quantum_lp(spot_pool);
 }
 
 // === Entry Functions ===

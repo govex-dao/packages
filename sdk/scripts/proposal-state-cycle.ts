@@ -141,6 +141,36 @@ async function main() {
     process.exit(1);
   }
 
+  // Get spot pool ID from DAO info
+  const spotPoolId = daoInfo.spotPoolId;
+  if (!spotPoolId) {
+    throw new Error("No spot pool ID found in DAO info - cannot perform quantum split!");
+  }
+
+  // Query spot pool reserves BEFORE quantum split
+  console.log("🔍 Querying spot pool reserves BEFORE quantum split...");
+  const spotPoolBefore = await sdk.client.getObject({
+    id: spotPoolId,
+    options: { showContent: true },
+  });
+
+  if (!spotPoolBefore.data?.content || spotPoolBefore.data.content.dataType !== "moveObject") {
+    throw new Error("Failed to fetch spot pool data");
+  }
+
+  const spotFieldsBefore = (spotPoolBefore.data.content as any).fields;
+  const assetReservesBefore = BigInt(spotFieldsBefore.asset_reserve);
+  const stableReservesBefore = BigInt(spotFieldsBefore.stable_reserve);
+
+  console.log(`📊 Spot Pool BEFORE split:`);
+  console.log(`   Asset reserves:  ${assetReservesBefore}`);
+  console.log(`   Stable reserves: ${stableReservesBefore}`);
+  console.log();
+
+  // These will be set after quantum split
+  let assetReservesAfter = assetReservesBefore;
+  let stableReservesAfter = stableReservesBefore;
+
   if (currentState === 1) {
     // REVIEW state - try to advance to TRADING
     if (timeUntilReviewEnd > 0) {
@@ -152,13 +182,6 @@ async function main() {
 
     console.log("📤 Calling advance_proposal_state() to transition REVIEW → TRADING...");
     console.log("   This will perform QUANTUM SPLIT from spot pool!");
-
-    // Get spot pool ID from DAO info
-    const spotPoolId = daoInfo.spotPoolId;
-    if (!spotPoolId) {
-      throw new Error("No spot pool ID found in DAO info - cannot perform quantum split!");
-    }
-
     console.log(`   Using spot pool: ${spotPoolId}`);
     console.log();
 
@@ -185,7 +208,42 @@ async function main() {
     });
 
     console.log("✅ State advanced to TRADING!");
-    console.log("✅ Quantum split completed - liquidity moved from spot pool to conditional AMMs!");
+    console.log();
+
+    // Query spot pool reserves AFTER quantum split to verify liquidity moved OUT
+    console.log("🔍 Querying spot pool reserves AFTER quantum split...");
+    const spotPoolAfter = await sdk.client.getObject({
+      id: spotPoolId,
+      options: { showContent: true },
+    });
+
+    if (!spotPoolAfter.data?.content || spotPoolAfter.data.content.dataType !== "moveObject") {
+      throw new Error("Failed to fetch spot pool data after split");
+    }
+
+    const spotFieldsAfter = (spotPoolAfter.data.content as any).fields;
+    assetReservesAfter = BigInt(spotFieldsAfter.asset_reserve);
+    stableReservesAfter = BigInt(spotFieldsAfter.stable_reserve);
+
+    console.log(`📊 Spot Pool AFTER split:`);
+    console.log(`   Asset reserves:  ${assetReservesAfter}`);
+    console.log(`   Stable reserves: ${stableReservesAfter}`);
+    console.log();
+
+    // Verify liquidity decreased (quantum split moved liquidity OUT)
+    const assetDecreased = assetReservesAfter < assetReservesBefore;
+    const stableDecreased = stableReservesAfter < stableReservesBefore;
+
+    console.log(`📉 Reserves DECREASED (quantum split worked):`);
+    console.log(`   Asset:  ${assetReservesBefore} → ${assetReservesAfter} ${assetDecreased ? '✅' : '❌'}`);
+    console.log(`   Stable: ${stableReservesBefore} → ${stableReservesAfter} ${stableDecreased ? '✅' : '❌'}`);
+    console.log();
+
+    if (!assetDecreased || !stableDecreased) {
+      throw new Error("❌ Quantum split verification failed - reserves did not decrease!");
+    }
+
+    console.log("✅ Quantum split verified - liquidity moved from spot pool to conditional AMMs!");
     console.log();
   } else if (currentState === 2) {
     console.log("✅ Proposal is already in TRADING state");
@@ -276,7 +334,53 @@ async function main() {
     });
 
     console.log("✅ Proposal finalized!");
-    console.log("✅ Quantum liquidity recombination complete - liquidity returned to spot pool!");
+    console.log();
+
+    // Query spot pool reserves AFTER recombination to verify liquidity moved BACK IN
+    console.log("🔍 Querying spot pool reserves AFTER quantum recombination...");
+    const spotPoolFinal = await sdk.client.getObject({
+      id: spotPoolId,
+      options: { showContent: true },
+    });
+
+    if (!spotPoolFinal.data?.content || spotPoolFinal.data.content.dataType !== "moveObject") {
+      throw new Error("Failed to fetch spot pool data after recombination");
+    }
+
+    const spotFieldsFinal = (spotPoolFinal.data.content as any).fields;
+    const assetReservesFinal = BigInt(spotFieldsFinal.asset_reserve);
+    const stableReservesFinal = BigInt(spotFieldsFinal.stable_reserve);
+
+    console.log(`📊 Spot Pool AFTER recombination:`);
+    console.log(`   Asset reserves:  ${assetReservesFinal}`);
+    console.log(`   Stable reserves: ${stableReservesFinal}`);
+    console.log();
+
+    // Verify liquidity increased back (quantum recombination moved liquidity BACK IN)
+    const assetIncreased = assetReservesFinal > assetReservesAfter;
+    const stableIncreased = stableReservesFinal > stableReservesAfter;
+
+    console.log(`📈 Reserves INCREASED (quantum recombination worked):`);
+    console.log(`   Asset:  ${assetReservesAfter} → ${assetReservesFinal} ${assetIncreased ? '✅' : '❌'}`);
+    console.log(`   Stable: ${stableReservesAfter} → ${stableReservesFinal} ${stableIncreased ? '✅' : '❌'}`);
+    console.log();
+
+    // Compare to original (should be approximately equal since no trading happened)
+    const assetDiff = Number(assetReservesFinal - assetReservesBefore);
+    const stableDiff = Number(stableReservesFinal - stableReservesBefore);
+    const assetDiffPercent = (Math.abs(assetDiff) / Number(assetReservesBefore)) * 100;
+    const stableDiffPercent = (Math.abs(stableDiff) / Number(stableReservesBefore)) * 100;
+
+    console.log(`🔄 Reserves compared to ORIGINAL (before → after full cycle):`);
+    console.log(`   Asset:  ${assetReservesBefore} → ${assetReservesFinal} (diff: ${assetDiff > 0 ? '+' : ''}${assetDiff}, ${assetDiffPercent.toFixed(4)}%)`);
+    console.log(`   Stable: ${stableReservesBefore} → ${stableReservesFinal} (diff: ${stableDiff > 0 ? '+' : ''}${stableDiff}, ${stableDiffPercent.toFixed(4)}%)`);
+    console.log();
+
+    if (!assetIncreased || !stableIncreased) {
+      throw new Error("❌ Quantum recombination verification failed - reserves did not increase!");
+    }
+
+    console.log("✅ Quantum recombination verified - winning outcome's liquidity returned to spot pool!");
     console.log();
   }
 

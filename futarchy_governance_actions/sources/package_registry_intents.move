@@ -105,3 +105,33 @@ public fun update_package_metadata_to_intent<Outcome: store, IW: drop>(
         intent_witness
     );
 }
+
+/// Pause account creation system-wide
+/// This prevents any new accounts from being created until unpaused
+public fun pause_account_creation_to_intent<Outcome: store, IW: drop>(
+    intent: &mut Intent<Outcome>,
+    intent_witness: IW,
+) {
+    let action = package_registry_actions::new_pause_account_creation();
+    let action_data = bcs::to_bytes(&action);
+    intent.add_typed_action(
+        package_registry_actions::pause_account_creation_marker(),
+        action_data,
+        intent_witness
+    );
+}
+
+/// Unpause account creation system-wide
+/// This re-enables account creation after it was paused
+public fun unpause_account_creation_to_intent<Outcome: store, IW: drop>(
+    intent: &mut Intent<Outcome>,
+    intent_witness: IW,
+) {
+    let action = package_registry_actions::new_unpause_account_creation();
+    let action_data = bcs::to_bytes(&action);
+    intent.add_typed_action(
+        package_registry_actions::unpause_account_creation_marker(),
+        action_data,
+        intent_witness
+    );
+}

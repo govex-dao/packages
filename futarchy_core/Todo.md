@@ -148,12 +148,20 @@ and patara.app
 
 XXXXXX
 
-- [ ] cap / intent to pause new account creation??
+
+
+- [X] cap / intent to pause new account creation??
 - [ ] maybe nft for AMM position doesn't make sense
 (check how pools track invidiual nfts's buckets and amounts)
 - [ ] tightly couple intent / action registry with init actions???
 - [ ] add extra flag to streams so that can't claim stuff not claimed at end of period
 - [ ] maybe simple decay fee if time of last proposal was 1 hour ago??
+- [ ] cap transfers to 1/3rd treasury
+- [ ] update all actions to use new format streams use. get LLMs to check streams patterm
+- [ ] get prop working with executed stream
+- [ ] Linting and test script pipeline and E2E test pipeline / stop commiting to main / coverage
+
+
 
 > so this makes me think\
 \
@@ -424,6 +432,7 @@ like walrus deep book and leading lending protocols etc
 main ones on defi lama that are new! Deepbook, walrus, jose, account tech, big ones on defillama
 
 # Consider for V3
+- [ ] Need people to be able to long and short conditional tokens!! So people can trade more tokens than they have. so not everyone needs to be monitoring market.  Easy Long short leverage and multisig policiy rules / partialy managed ETF will solve governance risks
 - [ ] Hybrid: Fork Deepbook CritBit tree, keep auction math (2 weeks)
 - [ ] heiarchy / deadman switch for multisgis
 - [ ] amm asubsidy actios

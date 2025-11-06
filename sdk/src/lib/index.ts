@@ -2,6 +2,7 @@ export * from './transaction';
 export * from './factory';
 export * from './factory-admin';
 export * from './factory-validator';
+export * from './package-registry-admin';
 export * from './launchpad';
 export * from './governance';
 export * from './fee-manager';

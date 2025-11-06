@@ -75,6 +75,15 @@ export class DeploymentManager {
     }
 
     /**
+     * Get PackageAdminCap from AccountProtocol
+     * This cap controls account creation pause/unpause and package registry management
+     */
+    getPackageAdminCap() {
+        const protocol = this.getPackage("AccountProtocol");
+        return protocol?.adminCaps.find(cap => cap.name === "PackageAdminCap");
+    }
+
+    /**
      * Get all package IDs as a map
      */
     getAllPackageIds(): Record<string, string> {

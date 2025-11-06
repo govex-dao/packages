@@ -74,6 +74,8 @@ public struct PackageRegistry has key {
     active_versions: Table<address, u64>,
     // Action type tracking (action type name -> package that provides it)
     action_to_package: Table<String, String>,
+    // Account creation pause (governance-controllable)
+    account_creation_paused: bool,
 }
 
 /// Metadata for a registered package
@@ -116,6 +118,7 @@ fun init(ctx: &mut TxContext) {
         by_addr: table::new(ctx),
         active_versions: table::new(ctx),
         action_to_package: table::new(ctx),
+        account_creation_paused: false,
     });
 }
 
@@ -349,6 +352,31 @@ public fun update_package_metadata(
     });
 }
 
+/// Pause account creation system-wide
+/// Requires PackageAdminCap to authorize
+/// When paused, all calls to account::new() will abort
+///
+/// For governance use: Lock the PackageAdminCap in the DAO account first using
+/// access_control::lock_cap(), then borrow it in governance actions
+public fun pause_account_creation(
+    registry: &mut PackageRegistry,
+    _cap: &PackageAdminCap,
+) {
+    registry.account_creation_paused = true;
+}
+
+/// Unpause account creation system-wide
+/// Requires PackageAdminCap to authorize
+///
+/// For governance use: Lock the PackageAdminCap in the DAO account first using
+/// access_control::lock_cap(), then borrow it in governance actions
+public fun unpause_account_creation(
+    registry: &mut PackageRegistry,
+    _cap: &PackageAdminCap,
+) {
+    registry.account_creation_paused = false;
+}
+
 // === View Functions ===
 
 /// Check if a package exists
@@ -449,6 +477,11 @@ public fun registry_id_mut(registry: &mut PackageRegistry): &mut UID {
     &mut registry.id
 }
 
+/// Check if account creation is currently paused
+public fun is_account_creation_paused(registry: &PackageRegistry): bool {
+    registry.account_creation_paused
+}
+
 // === PackageMetadata Accessors ===
 
 /// Get action types from metadata
@@ -530,6 +563,7 @@ public fun new_for_testing(ctx: &mut TxContext): PackageRegistry {
         by_addr: table::new(ctx),
         active_versions: table::new(ctx),
         action_to_package: table::new(ctx),
+        account_creation_paused: false,
     }
 }
 

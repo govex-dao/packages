@@ -67,6 +67,7 @@ const EObjectLimitReached: u64 = 14;
 const EMaxObjectsReached: u64 = 14;
 const EWrongConfigType: u64 = 15;
 const ENotConfigModule: u64 = 16;
+const EAccountCreationPaused: u64 = 17;
 
 // === Structs ===
 
@@ -572,6 +573,9 @@ public fun new<Config: store, CW: drop>(
     config_witness: CW,
     ctx: &mut TxContext,
 ): Account {
+    // Check if account creation is paused
+    assert!(!package_registry::is_account_creation_paused(registry), EAccountCreationPaused);
+
     // Validate witness matches config module at compile time
     assert_is_config_module_static<Config, CW>();
 

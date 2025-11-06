@@ -5,6 +5,7 @@ import { DeploymentConfig } from "../types/deployment";
 import { FactoryOperations } from "../lib/factory";
 import { FactoryAdminOperations } from "../lib/factory-admin";
 import { FactoryValidatorOperations } from "../lib/factory-validator";
+import { PackageRegistryAdminOperations } from "../lib/package-registry-admin";
 import { LaunchpadOperations } from "../lib/launchpad";
 import { FeeManagerOperations } from "../lib/fee-manager";
 import { QueryHelper } from "../lib/queries";
@@ -39,6 +40,7 @@ export class FutarchySDK {
     public factory: FactoryOperations;
     public factoryAdmin: FactoryAdminOperations;
     public factoryValidator: FactoryValidatorOperations;
+    public packageRegistryAdmin: PackageRegistryAdminOperations;
     public launchpad: LaunchpadOperations;
     public feeManager: FeeManagerOperations;
     public query: QueryHelper;
@@ -102,6 +104,15 @@ export class FutarchySDK {
             client,
             factoryPackageId,
             packageRegistry.objectId
+        );
+
+        // Initialize package registry admin operations
+        const protocolPackageId = deployments.getPackageId("AccountProtocol")!;
+        this.packageRegistryAdmin = new PackageRegistryAdminOperations(
+            client,
+            protocolPackageId,
+            packageRegistry.objectId,
+            packageRegistry.initialSharedVersion
         );
 
         // Initialize launchpad operations

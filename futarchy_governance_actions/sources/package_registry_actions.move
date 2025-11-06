@@ -24,6 +24,8 @@ public struct AddPackage has drop {}
 public struct RemovePackage has drop {}
 public struct UpdatePackageVersion has drop {}
 public struct UpdatePackageMetadata has drop {}
+public struct PauseAccountCreation has drop {}
+public struct UnpauseAccountCreation has drop {}
 
 // === Action Structs ===
 
@@ -53,12 +55,22 @@ public struct UpdatePackageMetadataAction has store, drop {
     new_description: String,
 }
 
+public struct PauseAccountCreationAction has store, drop {
+    // No fields needed - this action just sets a flag
+}
+
+public struct UnpauseAccountCreationAction has store, drop {
+    // No fields needed - this action just sets a flag
+}
+
 // === Marker Functions ===
 
 public fun add_package_marker(): AddPackage { AddPackage {} }
 public fun remove_package_marker(): RemovePackage { RemovePackage {} }
 public fun update_package_version_marker(): UpdatePackageVersion { UpdatePackageVersion {} }
 public fun update_package_metadata_marker(): UpdatePackageMetadata { UpdatePackageMetadata {} }
+public fun pause_account_creation_marker(): PauseAccountCreation { PauseAccountCreation {} }
+public fun unpause_account_creation_marker(): UnpauseAccountCreation { UnpauseAccountCreation {} }
 
 // === Errors ===
 
@@ -96,6 +108,14 @@ public fun new_update_package_metadata(
     new_description: String,
 ): UpdatePackageMetadataAction {
     UpdatePackageMetadataAction { name, new_action_types, new_category, new_description }
+}
+
+public fun new_pause_account_creation(): PauseAccountCreationAction {
+    PauseAccountCreationAction {}
+}
+
+public fun new_unpause_account_creation(): UnpauseAccountCreationAction {
+    UnpauseAccountCreationAction {}
 }
 
 // === Execution Functions ===
@@ -274,6 +294,78 @@ public fun do_update_package_metadata<Outcome: store, IW: drop>(
     );
 
     executable::increment_action_idx(executable);
+}
+
+public fun do_pause_account_creation<Outcome: store, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    version_witness: VersionWitness,
+    _witness: IW,
+    registry: &mut PackageRegistry,
+) {
+    let specs = executable::intent(executable).action_specs();
+    let spec = specs.borrow(executable::action_idx(executable));
+    action_validation::assert_action_type<PauseAccountCreation>(spec);
+
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    let action_data = intents::action_spec_data(spec);
+    let reader = bcs::new(*action_data);
+
+    // No data to deserialize - pause action has no parameters
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Increment action index
+    executable::increment_action_idx(executable);
+
+    // Borrow the PackageAdminCap from the account's managed assets
+    // The cap must be locked in the account first using access_control::lock_cap()
+    let cap = account::borrow_managed_asset<String, package_registry::PackageAdminCap>(
+        account,
+        registry,
+        b"protocol:package_admin_cap".to_string(),
+        version_witness,
+    );
+
+    // Pause account creation with proper authorization
+    package_registry::pause_account_creation(registry, cap);
+}
+
+public fun do_unpause_account_creation<Outcome: store, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    version_witness: VersionWitness,
+    _witness: IW,
+    registry: &mut PackageRegistry,
+) {
+    let specs = executable::intent(executable).action_specs();
+    let spec = specs.borrow(executable::action_idx(executable));
+    action_validation::assert_action_type<UnpauseAccountCreation>(spec);
+
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    let action_data = intents::action_spec_data(spec);
+    let reader = bcs::new(*action_data);
+
+    // No data to deserialize - unpause action has no parameters
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Increment action index
+    executable::increment_action_idx(executable);
+
+    // Borrow the PackageAdminCap from the account's managed assets
+    // The cap must be locked in the account first using access_control::lock_cap()
+    let cap = account::borrow_managed_asset<String, package_registry::PackageAdminCap>(
+        account,
+        registry,
+        b"protocol:package_admin_cap".to_string(),
+        version_witness,
+    );
+
+    // Unpause account creation with proper authorization
+    package_registry::unpause_account_creation(registry, cap);
 }
 
 // === Garbage Collection ===

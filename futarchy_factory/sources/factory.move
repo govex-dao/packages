@@ -22,7 +22,7 @@ use futarchy_markets_core::fee::{Self, FeeManager};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_one_shot_utils::constants;
 use futarchy_one_shot_utils::coin_registry;
-use account_actions::init_action_specs::InitActionSpecs;
+use account_protocol::intents::ActionSpec;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use std::ascii::String as AsciiString;
 use std::option::Option;
@@ -251,7 +251,7 @@ public fun create_dao<AssetType: drop, StableType: drop>(
         _agreement_difficulties,
         treasury_cap,
         coin_metadata,
-        vector::empty<InitActionSpecs>(),
+        vector::empty<ActionSpec>(),
         clock,
         ctx,
     );
@@ -281,7 +281,7 @@ public fun create_dao_with_init_specs<AssetType: drop, StableType: drop>(
     _agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
-    init_specs: vector<InitActionSpecs>,
+    init_specs: vector<ActionSpec>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -342,7 +342,7 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     _agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
-    init_specs: vector<InitActionSpecs>,
+    init_specs: vector<ActionSpec>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -570,7 +570,7 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
     _agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
-    init_specs: vector<InitActionSpecs>,
+    init_specs: vector<ActionSpec>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {

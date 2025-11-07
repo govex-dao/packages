@@ -609,31 +609,6 @@ public fun destroy_cancel_stream_action(action: CancelStreamAction) {
 // Intent functions
 
 /// Creates a DepositAction and adds it to an intent with descriptor.
-public fun new_deposit<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    amount: u64,
-    intent_witness: IW,
-) {
-    // Create action struct
-    let action = DepositAction<CoinType> {
-        name,
-        amount,
-    };
-
-    // Serialize the entire struct directly
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with parameterized type witness
-    // The action struct itself serves as the type witness, preserving CoinType parameter
-    intent.add_typed_action(
-        action,  // Action moved here, TypeName becomes DepositAction<CoinType>
-        action_data,
-        intent_witness
-    );
-
-    // Action already consumed by add_typed_action - no need to destroy
-}
 
 /// Processes a DepositAction and deposits a coin to the vault.
 public fun do_deposit<Config: store, Outcome: store, CoinType: drop, IW: drop>(
@@ -688,100 +663,9 @@ public fun delete_deposit<CoinType>(expired: &mut Expired) {
     // No need to deserialize the data
 }
 
-/// Creates a SpendAction and adds it to an intent with descriptor.
-/// If spend_all is true, amount is ignored and entire vault balance is withdrawn.
-public fun new_spend<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    amount: u64,
-    spend_all: bool,
-    intent_witness: IW,
-) {
-    // Create action struct
-    let action = SpendAction<CoinType> {
-        name,
-        amount,
-        spend_all,
-    };
 
-    // Serialize the entire struct directly
-    let action_data = bcs::to_bytes(&action);
 
-    // Add to intent with parameterized type witness
-    // The action struct itself serves as the type witness, preserving CoinType parameter
-    intent.add_typed_action(
-        action,  // Action moved here, TypeName becomes SpendAction<CoinType>
-        action_data,
-        intent_witness
-    );
 
-    // Action already consumed by add_typed_action - no need to destroy
-}
-
-/// Creates an ApproveCoinTypeAction and adds it to an intent with descriptor.
-public fun new_approve_coin_type<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    intent_witness: IW,
-) {
-    // Create action struct
-    let action = ApproveCoinTypeAction<CoinType> {
-        name,
-    };
-
-    // Serialize the entire struct directly
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with parameterized type witness
-    intent.add_typed_action(
-        action,  // Action moved here, TypeName becomes ApproveCoinTypeAction<CoinType>
-        action_data,
-        intent_witness
-    );
-
-    // Action already consumed by add_typed_action - no need to destroy
-}
-
-/// Creates a RemoveApprovedCoinTypeAction and adds it to an intent with descriptor.
-public fun new_remove_approved_coin_type<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    intent_witness: IW,
-) {
-    // Create action struct
-    let action = RemoveApprovedCoinTypeAction<CoinType> {
-        name,
-    };
-
-    // Serialize the entire struct directly
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with parameterized type witness
-    intent.add_typed_action(
-        action,  // Action moved here, TypeName becomes RemoveApprovedCoinTypeAction<CoinType>
-        action_data,
-        intent_witness
-    );
-
-    // Action already consumed by add_typed_action - no need to destroy
-}
-
-/// Creates a CancelStreamAction and adds it to an intent
-public fun new_cancel_stream<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    vault_name: String,
-    stream_id: ID,
-    intent_witness: IW,
-) {
-    let action = CancelStreamAction { vault_name, stream_id };
-    let action_data = bcs::to_bytes(&action);
-    intent.add_typed_action(
-        CancelStream {},
-        action_data,
-        intent_witness
-    );
-    destroy_cancel_stream_action(action);
-}
 
 // === Execution Functions ===
 

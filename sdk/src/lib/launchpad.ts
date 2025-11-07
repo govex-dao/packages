@@ -637,8 +637,8 @@ export class LaunchpadOperations {
      * The launchpad now supports a two-outcome system where you can stage different
      * actions for success vs failure scenarios (just like proposals).
      *
-     * Because this requires building InitActionSpecs in the same PTB as staging,
-     * you should construct these transactions manually rather than using SDK wrappers.
+     * Because this requires building ActionSpec in PTB, you construct these
+     * transactions manually using the Builder pattern.
      *
      * @example Staging success intents (execute when raise succeeds)
      * ```typescript
@@ -647,17 +647,17 @@ export class LaunchpadOperations {
      *
      * const tx = new Transaction();
      *
-     * // Step 1: Create empty InitActionSpecs
-     * const specs = tx.moveCall({
-     *   target: `${actionsPkg}::init_action_specs::new_init_specs`,
+     * // Step 1: Create empty ActionSpec builder
+     * const builder = tx.moveCall({
+     *   target: `${actionsPkg}::action_spec_builder::new`,
      *   arguments: [],
      * });
      *
-     * // Step 2: Add actions to specs (example: create a stream)
+     * // Step 2: Add actions to builder (example: create a stream)
      * tx.moveCall({
      *   target: `${actionsPkg}::stream_init_actions::add_create_stream_spec`,
      *   arguments: [
-     *     specs,
+     *     builder,
      *     tx.pure.string('treasury'),
      *     tx.pure(bcs.Address.serialize(beneficiary).toBytes()),
      *     tx.pure.u64(amountPerIteration), // amount per iteration (NO DIVISION in Move!)
@@ -680,7 +680,7 @@ export class LaunchpadOperations {
      *     tx.object(raiseId),
      *     tx.object(registryId),
      *     tx.object(creatorCapId),
-     *     specs,
+     *     builder,
      *     tx.object('0x6'), // clock
      *   ],
      * });
@@ -692,15 +692,15 @@ export class LaunchpadOperations {
      * ```typescript
      * const tx = new Transaction();
      *
-     * const specs = tx.moveCall({
-     *   target: `${actionsPkg}::init_action_specs::new_init_specs`,
+     * const builder = tx.moveCall({
+     *   target: `${actionsPkg}::action_spec_builder::new`,
      *   arguments: [],
      * });
      *
      * // Example: Return TreasuryCap to creator if raise fails
      * tx.moveCall({
      *   target: `${actionsPkg}::currency_init_actions::add_return_treasury_cap_spec`,
-     *   arguments: [specs, tx.pure(bcs.Address.serialize(creator).toBytes())],
+     *   arguments: [builder, tx.pure(bcs.Address.serialize(creator).toBytes())],
      * });
      *
      * // Stage as FAILURE intent
@@ -711,7 +711,7 @@ export class LaunchpadOperations {
      *     tx.object(raiseId),
      *     tx.object(registryId),
      *     tx.object(creatorCapId),
-     *     specs,
+     *     builder,
      *     tx.object('0x6'), // clock
      *   ],
      * });
@@ -733,7 +733,7 @@ export class LaunchpadOperations {
      * - stageLaunchpadInitIntent() - single set of intents
      *
      * New pattern (recommended):
-     * - Manually build PTB with init_action_specs::new_init_specs()
+     * - Manually build PTB with action_spec_builder::new()
      * - Add actions with action-specific builders
      * - Stage with launchpad::stage_success_intent() or stage_failure_intent()
      *

@@ -175,7 +175,7 @@ async function main() {
 
   console.log(`\n👤 Active Address: ${sender}`);
 
-  // Register packages in PackageRegistry (idempotent - runs automatically from deployments)
+  // Register packages in PackageRegistry (required for deps validation)
   console.log("\n" + "=".repeat(80));
   console.log("PRE-STEP: REGISTER PACKAGES IN PACKAGE REGISTRY");
   console.log("=".repeat(80));
@@ -386,17 +386,17 @@ async function main() {
 
   const stageTx = new Transaction();
 
-  // Step 1: Create empty InitActionSpecs
-  const specs = stageTx.moveCall({
-    target: `${actionsPkg}::init_action_specs::new_init_specs`,
+  // Step 1: Create empty ActionSpec builder
+  const builder = stageTx.moveCall({
+    target: `${actionsPkg}::action_spec_builder::new`,
     arguments: [],
   });
 
-  // Step 2: Add stream action to specs
+  // Step 2: Add stream action to builder
   stageTx.moveCall({
     target: `${actionsPkg}::stream_init_actions::add_create_stream_spec`,
     arguments: [
-      specs, // &mut InitActionSpecs
+      builder, // &mut Builder
       stageTx.pure.string("treasury"),
       stageTx.pure(bcs.Address.serialize(streamRecipient).toBytes()),
       stageTx.pure.u64(amountPerIteration), // amount_per_iteration (NO DIVISION in Move!)
@@ -411,7 +411,7 @@ async function main() {
     ],
   });
 
-  // Step 2.5: Add pool creation action to specs
+  // Step 2.5: Add pool creation action to builder
   const poolAssetAmount = TransactionUtils.suiToMist(1000); // Mint 1000 asset tokens
   const poolStableAmount = TransactionUtils.suiToMist(1); // Use 1 stable from vault
   const poolFeeBps = 30; // 0.3% fee
@@ -425,7 +425,7 @@ async function main() {
   stageTx.moveCall({
     target: `${sdk.getPackageId("futarchy_actions")}::liquidity_init_actions::add_create_pool_with_mint_spec`,
     arguments: [
-      specs, // &mut InitActionSpecs
+      builder, // &mut Builder
       stageTx.pure.string("treasury"),
       stageTx.pure.u64(poolAssetAmount),
       stageTx.pure.u64(poolStableAmount),
@@ -441,7 +441,7 @@ async function main() {
       stageTx.object(raiseId),
       stageTx.object(registryId),
       stageTx.object(creatorCapId!),
-      specs, // InitActionSpecs from step 1
+      builder, // Builder from step 1
       stageTx.object("0x6"), // Clock
     ],
   });
@@ -466,9 +466,9 @@ async function main() {
 
   const failureSpecsTx = new Transaction();
 
-  // Create empty InitActionSpecs for failure
-  const failureSpecs = failureSpecsTx.moveCall({
-    target: `${actionsPkg}::init_action_specs::new_init_specs`,
+  // Create empty ActionSpec builder for failure
+  const failureBuilder = failureSpecsTx.moveCall({
+    target: `${actionsPkg}::action_spec_builder::new`,
     arguments: [],
   });
 
@@ -477,7 +477,7 @@ async function main() {
   failureSpecsTx.moveCall({
     target: `${actionsPkg}::currency_init_actions::add_return_treasury_cap_spec`,
     arguments: [
-      failureSpecs,
+      failureBuilder,
       failureSpecsTx.pure.address(sender), // recipient
     ],
   });
@@ -487,7 +487,7 @@ async function main() {
   failureSpecsTx.moveCall({
     target: `${actionsPkg}::currency_init_actions::add_return_metadata_spec`,
     arguments: [
-      failureSpecs,
+      failureBuilder,
       failureSpecsTx.pure.address(sender), // recipient
     ],
   });
@@ -500,7 +500,7 @@ async function main() {
       failureSpecsTx.object(raiseId),
       failureSpecsTx.object(registryId),
       failureSpecsTx.object(creatorCapId!),
-      failureSpecs,
+      failureBuilder,
       failureSpecsTx.object("0x6"), // Clock
     ],
   });

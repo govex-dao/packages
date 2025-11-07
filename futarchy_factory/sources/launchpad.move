@@ -7,7 +7,7 @@ use account_actions::currency::{Self, CoinMetadataKey, CurrencyRules, CurrencyRu
 use account_actions::init_actions;
 use account_protocol::account::Account;
 use account_protocol::intent_interface;
-use account_protocol::intents;
+use account_protocol::intents::{Self, ActionSpec};
 use account_protocol::package_registry::PackageRegistry;
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
@@ -17,7 +17,6 @@ use futarchy_markets_core::fee;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_one_shot_utils::constants;
 use futarchy_one_shot_utils::math;
-use account_actions::init_action_specs::{Self as action_specs, InitActionSpecs};
 use std::option::{Self, Option};
 use std::string::{Self, String};
 use std::type_name;
@@ -123,8 +122,8 @@ public struct Raise<phantom RaiseToken, phantom StableCoin> has key, store {
     description: String,
 
     // Two-outcome system (like proposals)
-    success_specs: InitActionSpecs,  // Execute if raise succeeds
-    failure_specs: InitActionSpecs,  // Execute if raise fails (return caps to creator)
+    success_specs: vector<ActionSpec>,  // Execute if raise succeeds
+    failure_specs: vector<ActionSpec>,  // Execute if raise fails (return caps to creator)
     treasury_cap: Option<TreasuryCap<RaiseToken>>,
     coin_metadata: Option<CoinMetadata<RaiseToken>>,
 
@@ -285,18 +284,18 @@ fun init(otw: LAUNCHPAD, ctx: &mut TxContext) {
 ///
 /// INIT ACTIONS PATTERN (Disclosure-Only):
 ///
-/// InitActionSpecs serve as INVESTOR TRANSPARENCY - they show what will happen
+/// vector<ActionSpec> serve as INVESTOR TRANSPARENCY - they show what will happen
 /// during DAO initialization, but they are NOT auto-executed.
 ///
 /// FLOW:
-///   1. Creator stages InitActionSpecs (stored in Raise.staged_init_specs)
+///   1. Creator stages vector<ActionSpec> (stored in Raise.staged_init_specs)
 ///   2. Investors see what actions will execute and decide to invest
 ///   3. complete_raise creates DAO and shares Account
 ///   4. Frontend PTB MANUALLY calls init functions (e.g., init_create_stream)
 ///      - Manual execution via PTB, NOT automatic dispatch
 ///      - The staged specs are for disclosure only
 ///
-/// WHY: InitActionSpecs don't have a dispatcher. The action_type is a label
+/// WHY: vector<ActionSpec> don't have a dispatcher. The action_type is a label
 /// for transparency. Execution requires explicit PTB calls to init functions.
 ///
 /// See: futarchy_actions/INIT_ACTION_STAGING_GUIDE.md
@@ -309,30 +308,29 @@ public fun stage_success_intent<RaiseToken, StableCoin>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     _registry: &PackageRegistry,
     creator_cap: &CreatorCap,
-    spec: InitActionSpecs,
+    builder: account_actions::action_spec_builder::Builder,
     _clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    use account_actions::action_spec_builder;
+
     assert!(creator_cap.raise_id == object::id(raise), EInvalidCreatorCap);
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(!raise.intents_locked, EIntentsAlreadyLocked);
 
-    let action_count = action_specs::action_count(&spec);
+    // Convert builder to vector
+    let spec = action_spec_builder::into_vector(builder);
+    let action_count = vector::length(&spec);
     assert!(action_count > 0, EInvalidActionData);
 
-    let current_count = action_specs::action_count(&raise.success_specs);
+    let current_count = vector::length(&raise.success_specs);
     assert!(current_count + action_count <= constants::launchpad_max_init_actions(), ETooManyInitActions);
 
     // Merge specs into success_specs
-    let actions = action_specs::actions(&spec);
     let mut i = 0;
-    while (i < vector::length(actions)) {
-        let action = vector::borrow(actions, i);
-        action_specs::add_action(
-            &mut raise.success_specs,
-            action_specs::action_type(action),
-            *action_specs::action_data(action)
-        );
+    while (i < vector::length(&spec)) {
+        let action = vector::borrow(&spec, i);
+        vector::push_back(&mut raise.success_specs, *action);
         i = i + 1;
     };
 
@@ -349,30 +347,29 @@ public fun stage_failure_intent<RaiseToken, StableCoin>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     _registry: &PackageRegistry,
     creator_cap: &CreatorCap,
-    spec: InitActionSpecs,
+    builder: account_actions::action_spec_builder::Builder,
     _clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    use account_actions::action_spec_builder;
+
     assert!(creator_cap.raise_id == object::id(raise), EInvalidCreatorCap);
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(!raise.intents_locked, EIntentsAlreadyLocked);
 
-    let action_count = action_specs::action_count(&spec);
+    // Convert builder to vector
+    let spec = action_spec_builder::into_vector(builder);
+    let action_count = vector::length(&spec);
     assert!(action_count > 0, EInvalidActionData);
 
-    let current_count = action_specs::action_count(&raise.failure_specs);
+    let current_count = vector::length(&raise.failure_specs);
     assert!(current_count + action_count <= constants::launchpad_max_init_actions(), ETooManyInitActions);
 
     // Merge specs into failure_specs
-    let actions = action_specs::actions(&spec);
     let mut i = 0;
-    while (i < vector::length(actions)) {
-        let action = vector::borrow(actions, i);
-        action_specs::add_action(
-            &mut raise.failure_specs,
-            action_specs::action_type(action),
-            *action_specs::action_data(action)
-        );
+    while (i < vector::length(&spec)) {
+        let action = vector::borrow(&spec, i);
+        vector::push_back(&mut raise.failure_specs, *action);
         i = i + 1;
     };
 
@@ -393,7 +390,7 @@ public entry fun clear_success_specs<RaiseToken, StableCoin>(
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(!raise.intents_locked, EIntentsAlreadyLocked);
 
-    raise.success_specs = action_specs::new_init_specs();
+    raise.success_specs = vector::empty<ActionSpec>();
     event::emit(InitIntentRemoved { raise_id: object::id(raise), staged_index: 0 });
 }
 
@@ -407,7 +404,7 @@ public entry fun clear_failure_specs<RaiseToken, StableCoin>(
     assert!(raise.state == STATE_FUNDING, EInvalidStateForAction);
     assert!(!raise.intents_locked, EIntentsAlreadyLocked);
 
-    raise.failure_specs = action_specs::new_init_specs();
+    raise.failure_specs = vector::empty<ActionSpec>();
     event::emit(InitIntentRemoved { raise_id: object::id(raise), staged_index: 1 });
 }
 
@@ -843,7 +840,7 @@ fun complete_raise_unshared<RaiseToken: drop, StableCoin: drop>(
     }
 }
 
-/// JIT Convert InitActionSpecs to Intents
+/// JIT Convert vector<ActionSpec> to Intents
 /// Picks SUCCESS or FAILURE spec based on raise outcome
 fun create_intents_from_specs<RaiseToken, StableCoin>(
     raise: &Raise<RaiseToken, StableCoin>,
@@ -860,7 +857,7 @@ fun create_intents_from_specs<RaiseToken, StableCoin>(
     };
 
     // Only create intent if there are actions to execute
-    if (action_specs::action_count(specs_to_execute) == 0) {
+    if (vector::length(specs_to_execute) == 0) {
         return
     };
 
@@ -889,18 +886,16 @@ fun create_intents_from_specs<RaiseToken, StableCoin>(
         ctx,
         |intent, iw| {
             // Copy all action specs to intent
-            let actions = action_specs::actions(specs_to_execute);
+            // Extract fields from each ActionSpec and add to intent
             let mut action_idx = 0;
-            while (action_idx < vector::length(actions)) {
-                let action_spec = vector::borrow(actions, action_idx);
-                let action_type = action_specs::action_type(action_spec);
-                let action_data = action_specs::action_data(action_spec);
+            while (action_idx < vector::length(specs_to_execute)) {
+                let action_spec = vector::borrow(specs_to_execute, action_idx);
 
-                // Add to intent (preserves type information!)
+                // Extract type and data from ActionSpec and add to intent
                 intents::add_action_spec_with_typename(
                     intent,
-                    action_type,
-                    *action_data,  // Copy the bytes
+                    intents::action_spec_type(action_spec),
+                    *intents::action_spec_data(action_spec),
                     copy iw  // Copy witness to avoid move in loop
                 );
 
@@ -934,7 +929,7 @@ public fun is_outcome_approved<RaiseToken, StableCoin>(
 
 /// Finalize and share the DAO after init actions complete
 /// Consumes UnsharedDao hot potato, shares objects, marks raise successful
-/// Also creates Intents from staged InitActionSpecs (JIT conversion)
+/// Also creates Intents from staged vector<ActionSpec> (JIT conversion)
 public fun finalize_and_share_dao<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     unshared: UnsharedDao<RaiseToken, StableCoin>,
@@ -949,11 +944,11 @@ public fun finalize_and_share_dao<RaiseToken: drop, StableCoin: drop>(
     let raise_succeeded = raise.final_raise_amount >= raise.min_raise_amount;
     raise.state = if (raise_succeeded) { STATE_SUCCESSFUL } else { STATE_FAILED };
 
-    // JIT CONVERSION: Create Intents from staged InitActionSpecs
+    // JIT CONVERSION: Create Intents from staged vector<ActionSpec>
     // This happens BEFORE account is shared so we can add intents
     // Check if either success or failure specs have actions
-    if (action_specs::action_count(&raise.success_specs) > 0 ||
-        action_specs::action_count(&raise.failure_specs) > 0) {
+    if (vector::length(&raise.success_specs) > 0 ||
+        vector::length(&raise.failure_specs) > 0) {
         create_intents_from_specs<RaiseToken, StableCoin>(
             raise,
             &mut account,
@@ -1351,8 +1346,8 @@ public entry fun cleanup_failed_raise<RaiseToken: drop, StableCoin: drop>(
 
     // Clean up staged init specs (both success and failure specs)
     // NOTE: No pre-created DAO to clean up anymore - DAO is only created in complete_raise
-    raise.success_specs = action_specs::new_init_specs();
-    raise.failure_specs = action_specs::new_init_specs();
+    raise.success_specs = vector::empty<ActionSpec>();
+    raise.failure_specs = vector::empty<ActionSpec>();
 
     // Get DAO ID for event before clearing
     let dao_id = if (raise.dao_id.is_some()) {
@@ -1510,8 +1505,8 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
         tokens_for_sale_amount: tokens_for_sale,
         stable_coin_vault: balance::zero(),
         description,
-        success_specs: action_specs::new_init_specs(),
-        failure_specs: action_specs::new_init_specs(),
+        success_specs: vector::empty<ActionSpec>(),
+        failure_specs: vector::empty<ActionSpec>(),
         treasury_cap: option::some(treasury_cap),
         coin_metadata: option::some(coin_metadata),
         allowed_caps,

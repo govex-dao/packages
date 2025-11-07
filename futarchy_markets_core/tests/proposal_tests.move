@@ -7,7 +7,7 @@ use futarchy_markets_primitives::conditional_amm::LiquidityPool;
 use futarchy_markets_primitives::market_state;
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
-use account_actions::init_action_specs::{Self, InitActionSpecs};
+use account_protocol::intents::ActionSpec;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use std::option;
 use std::string::{Self, String};
@@ -154,7 +154,7 @@ fun test_initialize_market_basic_two_outcomes() {
             false, // uses_dao_liquidity
             false, // used_quota
             coin::mint_for_testing<TEST_COIN_B>(0, ctx), // dao_fee_payment (0 for tests)
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -220,7 +220,7 @@ fun test_initialize_market_three_outcomes() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -283,7 +283,7 @@ fun test_initialize_market_zero_liquidity_fails() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -345,7 +345,7 @@ fun test_initialize_market_insufficient_asset_liquidity() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -406,7 +406,7 @@ fun test_initialize_market_insufficient_stable_liquidity() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -466,7 +466,7 @@ fun test_initialize_market_mismatched_outcome_vectors() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -528,7 +528,7 @@ fun test_initialize_market_too_many_outcomes() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -582,7 +582,7 @@ fun test_new_premarket_basic() {
             PROPOSER_ADDR,
             false, // uses_dao_liquidity
             false, // used_quota
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -638,7 +638,7 @@ fun test_new_premarket_too_many_outcomes() {
             PROPOSER_ADDR,
             false,
             false,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -893,7 +893,7 @@ fun test_proposal_with_single_outcome() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -957,7 +957,7 @@ fun test_proposal_with_max_outcomes() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -1024,7 +1024,7 @@ fun test_proposal_liquidity_distribution() {
             false,
             false,
             fee_escrow,
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );

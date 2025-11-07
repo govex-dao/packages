@@ -886,6 +886,10 @@ public fun do_create_oracle_grant<AssetType, StableType, Outcome: store, IW: dro
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<CreateOracleGrant>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, 0); // EUnsupportedActionVersion
+
     // Deserialize action data from BCS
     let action_data = intents::action_spec_data(spec);
     let mut reader = bcs::new(*action_data);
@@ -940,6 +944,15 @@ public fun do_cancel_grant<AssetType, StableType, Outcome: store, IW: drop>(
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<CancelGrant>(spec);
+
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, 0); // EUnsupportedActionVersion
+
+    // Validate action_data is empty (no fields)
+    let action_data = intents::action_spec_data(spec);
+    let reader = bcs::new(*action_data);
+    bcs_validation::validate_all_bytes_consumed(reader);
 
     cancel_grant(grant, clock);
     executable::increment_action_idx(executable);

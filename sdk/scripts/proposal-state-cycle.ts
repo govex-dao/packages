@@ -502,7 +502,7 @@ async function main() {
   });
 
   // Step 2: Execute each stream action
-  // The InitActionSpecs had 2 stream creation actions
+  // The ActionSpecs had 2 stream creation actions
   console.log("   → Step 2a: Executing stream action #1...");
   executeTx.moveCall({
     target: `${actionsPkg}::vault::do_init_create_stream`,

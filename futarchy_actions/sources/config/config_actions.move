@@ -1110,6 +1110,9 @@ public fun do_batch_config<Outcome: store, IW: drop>(
     // Deserialize the action
     let action = config_action_from_bytes(*action_data);
 
+    // Note: config_action_from_bytes internally validates all bytes consumed
+    // by delegating to specific deserialization functions for each config type
+
     // Validate that the correct field is populated for the config_type
     if (action.config_type == CONFIG_TYPE_TRADING_PARAMS) {
         assert!(action.trading_params.is_some(), EInvalidConfigType);

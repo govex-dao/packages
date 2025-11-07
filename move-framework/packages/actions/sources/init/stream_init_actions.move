@@ -9,9 +9,11 @@ module account_actions::stream_init_actions;
 
 use account_actions::init_actions;
 use account_protocol::account::Account;
+use account_protocol::intents::{Self, ActionSpec};
 use account_protocol::package_registry::PackageRegistry;
 use std::option::Option;
 use std::string::String;
+use std::vector;
 use sui::clock::Clock;
 use sui::object::ID;
 use sui::tx_context::TxContext;
@@ -34,12 +36,12 @@ public struct CreateStreamAction has store, copy, drop {
     is_cancellable: bool,
 }
 
-// === Spec Builders (for staging in InitActionSpecs) ===
+// === Spec Builders (for PTB construction) ===
 
-/// Add CreateStreamAction to InitActionSpecs
-/// Used for staging actions in launchpad raises
+/// Add CreateStreamAction to Builder
+/// Used for staging actions in launchpad raises via PTB
 public fun add_create_stream_spec(
-    specs: &mut account_actions::init_action_specs::InitActionSpecs,
+    builder: &mut account_actions::action_spec_builder::Builder,
     vault_name: String,
     beneficiary: address,
     amount_per_iteration: u64,
@@ -52,6 +54,7 @@ public fun add_create_stream_spec(
     is_transferable: bool,
     is_cancellable: bool,
 ) {
+    use account_actions::action_spec_builder as builder;
     use std::type_name;
     use sui::bcs;
 
@@ -73,12 +76,13 @@ public fun add_create_stream_spec(
     // Serialize
     let action_data = bcs::to_bytes(&action);
 
-    // Add to specs with marker type from vault module (NOT the action struct!)
-    account_actions::init_action_specs::add_action(
-        specs,
+    // Add to builder with marker type from vault module (NOT the action struct!)
+    let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::CreateStream>(),
-        action_data
+        action_data,
+        1  // version
     );
+    builder::add(builder, action_spec);
 }
 
 // === Dispatchers ===

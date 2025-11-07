@@ -19,7 +19,7 @@ use sui::clock::Clock;
 use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 use sui::event;
 use sui::bag::{Self, Bag};
-use account_actions::init_action_specs::{Self as action_specs, InitActionSpecs};
+use account_protocol::intents::ActionSpec;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use futarchy_core::dao_config::{Self, ConditionalCoinConfig};
 
@@ -99,7 +99,7 @@ public struct OutcomeData has store {
     outcome_messages: vector<String>,
     outcome_creators: vector<address>,
     outcome_creator_fees: vector<u64>,  // Track fees paid by each outcome creator (for refunds)
-    intent_specs: vector<Option<InitActionSpecs>>,  // Changed from intent_keys to intent_specs
+    intent_specs: vector<Option<vector<ActionSpec>>>,  // Direct use of protocol ActionSpec
     actions_per_outcome: vector<u64>,
     winning_outcome: Option<u64>,
 }
@@ -239,7 +239,7 @@ public fun new_premarket<AssetType, StableType>(
     outcome_details: vector<String>,
     proposer: address,
     used_quota: bool, // Track if proposal used admin budget
-    intent_spec_for_yes: Option<InitActionSpecs>,
+    intent_spec_for_yes: Option<vector<ActionSpec>>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
@@ -294,7 +294,7 @@ public fun new_premarket<AssetType, StableType>(
             outcome_messages,
             outcome_creators: vector::tabulate!(outcome_count, |_| proposer),
             outcome_creator_fees: vector::tabulate!(outcome_count, |_| 0u64),  // Initialize with 0 fees
-            intent_specs: vector::tabulate!(outcome_count, |_| option::none<InitActionSpecs>()),
+            intent_specs: vector::tabulate!(outcome_count, |_| option::none<vector<ActionSpec>>()),
             actions_per_outcome: vector::tabulate!(outcome_count, |_| 0),
             winning_outcome: option::none(),
         },
@@ -1157,7 +1157,7 @@ public fun get_outcome_messages<AssetType, StableType>(proposal: &Proposal<Asset
 public fun get_intent_spec_for_outcome<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
     outcome_index: u64
-): &Option<InitActionSpecs> {
+): &Option<vector<ActionSpec>> {
     vector::borrow(&proposal.outcome_data.intent_specs, outcome_index)
 }
 
@@ -1166,7 +1166,7 @@ public fun get_intent_spec_for_outcome<AssetType, StableType>(
 public fun take_intent_spec_for_outcome<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     outcome_index: u64
-): Option<InitActionSpecs> {
+): Option<vector<ActionSpec>> {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
     let slot = vector::borrow_mut(&mut proposal.outcome_data.intent_specs, outcome_index);
     let old_value = *slot;
@@ -1205,7 +1205,7 @@ public fun make_cancel_witness<AssetType, StableType>(
 public fun set_intent_spec_for_outcome<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     outcome_index: u64,
-    intent_spec: InitActionSpecs,
+    intent_spec: vector<ActionSpec>,
     max_actions_per_outcome: u64,
 ) {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
@@ -1214,7 +1214,7 @@ public fun set_intent_spec_for_outcome<AssetType, StableType>(
     let action_count = vector::borrow_mut(&mut proposal.outcome_data.actions_per_outcome, outcome_index);
 
     // Get action count from the spec
-    let num_actions = action_specs::action_count(&intent_spec);
+    let num_actions = vector::length(&intent_spec);
 
     // Check outcome limit only
     assert!(num_actions <= max_actions_per_outcome, ETooManyActions);
@@ -1318,7 +1318,7 @@ public fun new_for_testing<AssetType, StableType>(
     amm_total_fee_bps: u64,
     winning_outcome: Option<u64>,
     treasury_address: address,
-    intent_specs: vector<Option<InitActionSpecs>>,
+    intent_specs: vector<Option<vector<ActionSpec>>>,
     ctx: &mut TxContext
 ): Proposal<AssetType, StableType> {
     Proposal {
@@ -1660,7 +1660,7 @@ public fun create_test_proposal<AssetType, StableType>(
 
     let outcome_creators = vector::tabulate!(outcome_count as u64, |_| @0xAAA);
 
-    let intent_specs = vector::tabulate!(outcome_count as u64, |_| option::none<InitActionSpecs>());
+    let intent_specs = vector::tabulate!(outcome_count as u64, |_| option::none<vector<ActionSpec>>());
 
     let mut proposal = new_for_testing<AssetType, StableType>(
         @0x1,                       // dao_id

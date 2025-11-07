@@ -79,6 +79,20 @@ public fun new_action_spec<T>(action_data: vector<u8>, version: u8): ActionSpec 
     }
 }
 
+/// Create ActionSpec with TypeName directly (for init action specs)
+/// Used when action_type is already known (e.g., from staging)
+public fun new_action_spec_with_typename(
+    action_type: TypeName,
+    action_data: vector<u8>,
+    version: u8
+): ActionSpec {
+    ActionSpec {
+        version,
+        action_type,
+        action_data,
+    }
+}
+
 /// Parent struct protecting the intents
 public struct Intents has store {
     // map of intents: key -> Intent<Outcome>
@@ -200,6 +214,25 @@ public fun add_action_spec_with_typename<Outcome, IW: drop>(
         action_type,
         action_data: action_data_bytes,
     };
+    intent.action_specs.push_back(spec);
+}
+
+/// Add an already-constructed ActionSpec to intent (for InitActionSpecs conversion)
+/// Validates size but doesn't reconstruct - uses existing version
+public fun add_existing_action_spec<Outcome, IW: drop>(
+    intent: &mut Intent<Outcome>,
+    spec: ActionSpec,
+    intent_witness: IW,
+) {
+    intent.assert_is_witness(intent_witness);
+
+    // Validate action data size
+    assert!(
+        spec.action_data.length() <= max_action_data_size(),
+        EActionDataTooLarge
+    );
+
+    // Push existing spec directly
     intent.action_specs.push_back(spec);
 }
 

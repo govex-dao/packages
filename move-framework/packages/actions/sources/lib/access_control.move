@@ -113,26 +113,6 @@ public fun destroy_return_action<Cap>(action: ReturnAction<Cap>) {
 // Intent functions
 
 /// Creates and returns a BorrowAction.
-public fun new_borrow<Outcome, Cap, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    intent_witness: IW,
-) {
-    // Create the action struct
-    let action = BorrowAction<Cap> {};
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        access_control_borrow(),
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_borrow_action(action);
-}
 
 /// Processes a BorrowAction and returns a Borrowed hot potato and the Cap.
 public fun do_borrow<Config: store, Outcome: store, Cap: key + store, IW: drop>(
@@ -192,27 +172,6 @@ public fun delete_borrow<Cap>(expired: &mut Expired) {
     // ActionSpec has drop, automatically cleaned up
 }
 
-/// Creates and returns a ReturnAction.
-public fun new_return<Outcome, Cap, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    intent_witness: IW,
-) {
-    // Create the action struct
-    let action = ReturnAction<Cap> {};
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        access_control_return(),
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_return_action(action);
-}
 
 /// Returns a Cap to the Account and validates the ReturnAction.
 public fun do_return<Config: store, Outcome: store, Cap: key + store, IW: drop>(

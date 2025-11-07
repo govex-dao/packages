@@ -11,9 +11,10 @@
 /**
  * Initialization action specification
  *
- * Matches Move's ActionSpec structure from futarchy_types::init_action_specs:
+ * Matches Move's ActionSpec structure from account_protocol::intents:
  * ```move
  * public struct ActionSpec has store, drop, copy {
+ *     version: u8,              // Protocol version
  *     action_type: TypeName,    // Type identity
  *     action_data: vector<u8>,  // BCS-serialized payload
  * }

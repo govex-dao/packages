@@ -21,7 +21,7 @@ use account_protocol::{
     intent_interface,
     package_registry::PackageRegistry,
 };
-use account_actions::init_action_specs::{Self, InitActionSpecs};
+use account_protocol::intents::ActionSpec;
 use futarchy_core::version;
 use futarchy_core::{
     futarchy_config::{Self, FutarchyConfig},
@@ -92,12 +92,12 @@ public fun execute_proposal_intent<AssetType, StableType, Outcome: store + drop 
 
 // === Helper Functions ===
 
-/// Create and store an Intent from an InitActionSpecs blueprint
+/// Create and store an Intent from a vector of ActionSpecs
 /// Returns the intent key for immediate execution
 public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
     account: &mut Account,
     registry: &PackageRegistry,
-    spec: InitActionSpecs,
+    specs: vector<ActionSpec>,
     outcome: Outcome,
     clock: &Clock,
     ctx: &mut TxContext
@@ -128,17 +128,17 @@ public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
         ctx
     );
 
-    // Add all actions from the spec to the intent
-    let actions = init_action_specs::actions(&spec);
+    // Add all actions from the specs vector to the intent
+    // Extract type and data from each ActionSpec and add to intent
     let mut i = 0;
-    let len = vector::length(actions);
+    let len = vector::length(&specs);
     while (i < len) {
-        let action = vector::borrow(actions, i);
-        // Add the action to the intent using add_action_spec
+        let action_spec = vector::borrow(&specs, i);
+        // Extract fields and add to intent
         intents::add_action_spec(
             &mut intent,
-            witness(),
-            *init_action_specs::action_data(action),
+            intents::action_spec_type(action_spec),
+            *intents::action_spec_data(action_spec),
             witness()
         );
         i = i + 1;

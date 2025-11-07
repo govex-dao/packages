@@ -7,6 +7,9 @@
 /// Follows the 3-layer action execution pattern (see IMPORTANT_ACTION_EXECUTION_PATTERN.md)
 module account_actions::currency_init_actions;
 
+use account_protocol::intents::{Self, ActionSpec};
+use std::vector;
+
 // === Action Structs (for BCS serialization) ===
 
 /// Action to return TreasuryCap to creator when raise fails
@@ -23,13 +26,14 @@ public struct ReturnMetadataAction has store, copy, drop {
 
 // === Spec Builders ===
 
-/// Add ReturnTreasuryCapAction to InitActionSpecs
-/// Used for staging failure actions in launchpad raises
+/// Add ReturnTreasuryCapAction to Builder
+/// Used for staging failure actions in launchpad raises via PTB
 /// Uses marker type from currency module (not action struct type)
 public fun add_return_treasury_cap_spec(
-    specs: &mut account_actions::init_action_specs::InitActionSpecs,
+    builder: &mut account_actions::action_spec_builder::Builder,
     recipient: address,
 ) {
+    use account_actions::action_spec_builder;
     use std::type_name;
     use sui::bcs;
 
@@ -37,20 +41,22 @@ public fun add_return_treasury_cap_spec(
     let action_data = bcs::to_bytes(&action);
 
     // CRITICAL: Use marker type from currency module, not action struct type
-    account_actions::init_action_specs::add_action(
-        specs,
+    let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::RemoveTreasuryCap>(),
-        action_data
+        action_data,
+        1  // version
     );
+    action_spec_builder::add(builder, action_spec);
 }
 
-/// Add ReturnMetadataAction to InitActionSpecs
-/// Used for staging failure actions in launchpad raises
+/// Add ReturnMetadataAction to Builder
+/// Used for staging failure actions in launchpad raises via PTB
 /// Uses marker type from currency module (not action struct type)
 public fun add_return_metadata_spec(
-    specs: &mut account_actions::init_action_specs::InitActionSpecs,
+    builder: &mut account_actions::action_spec_builder::Builder,
     recipient: address,
 ) {
+    use account_actions::action_spec_builder;
     use std::type_name;
     use sui::bcs;
 
@@ -58,9 +64,10 @@ public fun add_return_metadata_spec(
     let action_data = bcs::to_bytes(&action);
 
     // CRITICAL: Use marker type from currency module, not action struct type
-    account_actions::init_action_specs::add_action(
-        specs,
+    let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::RemoveMetadata>(),
-        action_data
+        action_data,
+        1  // version
     );
+    action_spec_builder::add(builder, action_spec);
 }

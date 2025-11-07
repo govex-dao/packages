@@ -82,30 +82,6 @@ public fun destroy_emit_memo_action(action: EmitMemoAction) {
 // === Public Functions ===
 
 /// Creates an EmitMemoAction and adds it to an intent
-public fun new_emit_memo<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    memo: String,
-    intent_witness: IW,
-) {
-    assert!(memo.length() > 0, EEmptyMemo);
-    assert!(memo.length() <= MAX_MEMO_LENGTH, EMemoTooLong);
-
-    // Create the action struct
-    let action = EmitMemoAction { memo};
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        memo(),
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_emit_memo_action(action);
-}
 
 /// Execute an emit memo action
 public fun do_emit_memo<Config: store, Outcome: store, IW: drop>(
@@ -134,9 +110,6 @@ public fun do_emit_memo<Config: store, Outcome: store, IW: drop>(
     let memo_bytes = reader.peel_vec_u8();
     let memo = string::utf8(memo_bytes);
 
-    // Deserialize Option<ID>
-    // BCS encodes Option as: 0x00 for None, 0x01 followed by value for Some
-    let option_byte = bcs::peel_u8(&mut reader);
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
 

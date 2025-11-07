@@ -62,12 +62,14 @@ async function main() {
 
   // Get package IDs
   const actionsPkg = sdk.getPackageId("AccountActions");
+  const protocolPkg = sdk.getPackageId("AccountProtocol");
   const marketsPackageId = sdk.getPackageId("futarchy_markets_core");
   const primitivesPackageId = sdk.getPackageId("futarchy_markets_primitives");
   const governancePackageId = sdk.getPackageId("futarchy_governance");
   const typesPackageId = sdk.getPackageId("futarchy_types");
 
   console.log(`📦 Actions Package: ${actionsPkg}`);
+  console.log(`📦 Protocol Package: ${protocolPkg}`);
   console.log(`📦 Markets Package: ${marketsPackageId}`);
   console.log(`📦 Primitives Package: ${primitivesPackageId}`);
   console.log(`📦 Governance Package: ${governancePackageId}`);
@@ -82,7 +84,7 @@ async function main() {
   console.log("=" + "=".repeat(79));
   console.log();
 
-  console.log("📝 Will create InitActionSpecs with 2 stream actions:");
+  console.log("📝 Will create ActionSpecs with 2 stream actions:");
 
   // Stream 1: 1000 stable coins, 30 daily iterations
   const stream1Iterations = 30n;
@@ -164,10 +166,10 @@ async function main() {
   // Create proposal transaction
   const createTx = new Transaction();
 
-  // Create Option::None for InitActionSpecs
+  // Create Option::None for vector<ActionSpec>
   const noneOption = createTx.moveCall({
     target: "0x1::option::none",
-    typeArguments: [`${actionsPkg}::init_action_specs::InitActionSpecs`],
+    typeArguments: [`vector<${protocolPkg}::intents::ActionSpec>`],
     arguments: [],
   });
 
@@ -252,9 +254,9 @@ async function main() {
 
   const addActionsTx = new Transaction();
 
-  // Create InitActionSpecs
-  const specs = addActionsTx.moveCall({
-    target: `${actionsPkg}::init_action_specs::new_init_specs`,
+  // Create ActionSpec builder
+  const builder = addActionsTx.moveCall({
+    target: `${actionsPkg}::action_spec_builder::new`,
     arguments: [],
   });
 
@@ -262,7 +264,7 @@ async function main() {
   addActionsTx.moveCall({
     target: `${actionsPkg}::stream_init_actions::add_create_stream_spec`,
     arguments: [
-      specs,
+      builder,
       addActionsTx.pure.string("treasury"),
       addActionsTx.pure(bcs.Address.serialize(activeAddress).toBytes()),
       addActionsTx.pure.u64(stream1AmountPerIteration), // amount_per_iteration (NO DIVISION in Move!)
@@ -281,7 +283,7 @@ async function main() {
   addActionsTx.moveCall({
     target: `${actionsPkg}::stream_init_actions::add_create_stream_spec`,
     arguments: [
-      specs,
+      builder,
       addActionsTx.pure.string("treasury"),
       addActionsTx.pure(bcs.Address.serialize(activeAddress).toBytes()),
       addActionsTx.pure.u64(stream2AmountPerIteration), // amount_per_iteration (NO DIVISION in Move!)
@@ -296,6 +298,12 @@ async function main() {
     ],
   });
 
+  // Convert builder to vector<ActionSpec>
+  const specs = addActionsTx.moveCall({
+    target: `${actionsPkg}::action_spec_builder::into_vector`,
+    arguments: [builder],
+  });
+
   // Now set the actions for outcome 0 (Accept)
   const setIntentTarget = `${marketsPackageId}::proposal::set_intent_spec_for_outcome`;
   addActionsTx.moveCall({
@@ -304,7 +312,7 @@ async function main() {
     arguments: [
       addActionsTx.object(proposalId), // proposal
       addActionsTx.pure.u64(0), // outcome_index (0 = Accept)
-      specs, // intent_spec
+      specs, // vector<ActionSpec>
       addActionsTx.pure.u64(10), // max_actions_per_outcome
     ],
   });

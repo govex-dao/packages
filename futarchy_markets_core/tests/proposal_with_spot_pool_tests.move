@@ -9,7 +9,7 @@ use futarchy_markets_primitives::conditional_amm::LiquidityPool;
 use futarchy_markets_primitives::market_state;
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
-use account_actions::init_action_specs::InitActionSpecs;
+use account_protocol::intents::ActionSpec;
 use futarchy_types::signed::{Self as signed};
 use std::option;
 use std::string::{Self, String};
@@ -178,7 +178,7 @@ fun test_proposal_with_spot_pool_lifecycle() {
             false, // uses_dao_liquidity
             false, // used_quota
             coin::mint_for_testing<TEST_COIN_B>(0, ctx), // dao_fee_payment (0 for tests)
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -384,7 +384,7 @@ fun test_quantum_split_reserves() {
             false,  // uses_dao_liquidity
             false,  // used_quota
             coin::from_balance(balance::zero<TEST_COIN_B>(), ctx),  // dao_fee_payment
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -510,7 +510,7 @@ fun test_only_one_active_proposal() {
             false,  // uses_dao_liquidity
             false,  // used_quota
             coin::from_balance(balance::zero<TEST_COIN_B>(), ctx),  // dao_fee_payment
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );
@@ -577,7 +577,7 @@ fun test_only_one_active_proposal() {
             false,  // uses_dao_liquidity
             false,  // used_quota
             coin::from_balance(balance::zero<TEST_COIN_B>(), ctx),  // dao_fee_payment
-            option::none<InitActionSpecs>(),
+            option::none<vector<ActionSpec>>(),
             &clock,
             ctx,
         );

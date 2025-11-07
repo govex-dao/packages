@@ -603,28 +603,6 @@ public fun destroy_create_commit_cap_action(action: CreateCommitCapAction) {
 // Intent functions
 
 /// Creates a new UpgradeAction and adds it to an intent.
-public fun new_upgrade<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    digest: vector<u8>,
-    intent_witness: IW,
-) {
-    // Create the action struct
-    let action = UpgradeAction { name, digest };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        package_upgrade(),
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_upgrade_action(action);
-}    
 
 /// Processes an UpgradeAction and returns a UpgradeTicket.
 public fun do_upgrade<Outcome: store, IW: drop>(
@@ -678,28 +656,6 @@ public fun delete_upgrade(expired: &mut Expired) {
     // ActionSpec has drop, automatically cleaned up
 }
 
-/// Creates a new CommitAction and adds it to an intent.
-public fun new_commit<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    intent_witness: IW,
-) {
-    // Create the action struct
-    let action = CommitAction { name };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        package_commit(),
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_commit_action(action);
-}    
 
 // must be called after UpgradeAction is processed, there cannot be any other action processed before
 /// Commits an upgrade WITHOUT requiring commit cap validation
@@ -840,30 +796,6 @@ public fun delete_commit(expired: &mut Expired) {
     // ActionSpec has drop, automatically cleaned up
 }
 
-/// Creates a new RestrictAction and adds it to an intent.
-public fun new_restrict<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    policy: u8,
-    intent_witness: IW,
-) {
-    // Create the action struct
-    let action = RestrictAction { name, policy };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        package_restrict(),
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_restrict_action(action);
-}    
-
 /// Processes a RestrictAction and updates the UpgradeCap policy.
 public fun do_restrict<Outcome: store, IW: drop>(
     executable: &mut Executable<Outcome>,
@@ -918,31 +850,6 @@ public fun do_restrict<Outcome: store, IW: drop>(
 public fun delete_restrict(expired: &mut Expired) {
     let _spec = intents::remove_action_spec(expired);
     // ActionSpec has drop, automatically cleaned up
-}
-
-/// Creates a new CreateCommitCapAction and adds it to an intent.
-public fun new_create_commit_cap<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    name: String,
-    recipient: address,
-    new_reclaim_delay_ms: u64,
-    intent_witness: IW,
-) {
-    // Create the action struct
-    let action = CreateCommitCapAction { name, recipient, new_reclaim_delay_ms };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        package_create_commit_cap(),
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_create_commit_cap_action(action);
 }
 
 /// Processes a CreateCommitCapAction and creates/transfers the commit cap.

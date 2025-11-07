@@ -91,10 +91,10 @@ public fun disable_factory_permanently_marker(): DisableFactoryPermanently { Dis
 // === Errors ===
 const EInvalidAdminCap: u64 = 1;
 const ECapNotFound: u64 = 2;
+const EInvalidFeeAmount: u64 = 3;
+const EUnsupportedActionVersion: u64 = 4;
 
 // === Events ===
-
-const EInvalidFeeAmount: u64 = 3;
 
 // === Action Structs ===
 
@@ -279,6 +279,7 @@ public fun do_set_factory_paused<Outcome: store, IW: drop>(
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let paused = bcs::peel_bool(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = SetFactoryPausedAction { paused };
 
     // Increment action index
@@ -315,6 +316,15 @@ public fun do_disable_factory_permanently<Outcome: store, IW: drop>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<DisableFactoryPermanently>(spec);
 
+    // Check version
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Validate action_data is empty (no fields)
+    let action_data = intents::action_spec_data(spec);
+    let bcs = bcs::new(*action_data);
+    bcs_validation::validate_all_bytes_consumed(bcs);
+
     // No deserialization needed - action has no fields
     let _action = DisableFactoryPermanentlyAction {};
 
@@ -349,6 +359,15 @@ public fun do_add_stable_type<Outcome: store, IW: drop, StableType>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<AddStableType>(spec);
 
+    // Check version
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Validate action_data is empty (type comes from generic parameter)
+    let action_data = intents::action_spec_data(spec);
+    let bcs = bcs::new(*action_data);
+    bcs_validation::validate_all_bytes_consumed(bcs);
+
     // Create action with generic type
     let stable_type = type_name::get<StableType>();
     let action = AddStableTypeAction { stable_type };
@@ -380,6 +399,15 @@ public fun do_remove_stable_type<Outcome: store, IW: drop, StableType>(
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<RemoveStableType>(spec);
+
+    // Check version
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Validate action_data is empty (type comes from generic parameter)
+    let action_data = intents::action_spec_data(spec);
+    let bcs = bcs::new(*action_data);
+    bcs_validation::validate_all_bytes_consumed(bcs);
 
     // Create action with generic type
     let stable_type = type_name::get<StableType>();
@@ -413,10 +441,15 @@ public fun do_update_dao_creation_fee<Outcome: store, IW: drop>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UpdateDaoCreationFee>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let new_fee = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = UpdateDaoCreationFeeAction { new_fee };
 
     // Increment action index
@@ -447,10 +480,15 @@ public fun do_update_proposal_fee<Outcome: store, IW: drop>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UpdateProposalFee>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let new_fee_per_outcome = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = UpdateProposalFeeAction { new_fee_per_outcome };
 
     // Increment action index
@@ -487,11 +525,16 @@ public fun do_update_verification_fee<Outcome: store, IW: drop>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UpdateVerificationFee>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let level = bcs::peel_u8(&mut bcs);
     let new_fee = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = UpdateVerificationFeeAction { level, new_fee };
 
     // Increment action index
@@ -529,11 +572,16 @@ public fun do_add_verification_level<Outcome: store, IW: drop>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<AddVerificationLevel>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let level = bcs::peel_u8(&mut bcs);
     let fee = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = AddVerificationLevelAction { level, fee };
 
     // Increment action index
@@ -564,10 +612,15 @@ public fun do_remove_verification_level<Outcome: store, IW: drop>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<RemoveVerificationLevel>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let level = bcs::peel_u8(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = RemoveVerificationLevelAction { level };
 
     // Increment action index
@@ -598,10 +651,15 @@ public fun do_withdraw_fees_to_treasury<Outcome: store, IW: drop>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<WithdrawFeesToTreasury>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let amount = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = WithdrawFeesToTreasuryAction { amount };
 
     // Increment action index
@@ -638,12 +696,17 @@ public fun do_add_coin_fee_config<Outcome: store, IW: drop, StableType>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<AddCoinFeeConfig>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let decimals = bcs::peel_u8(&mut bcs);
     let dao_creation_fee = bcs::peel_u64(&mut bcs);
     let proposal_fee_per_outcome = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = AddCoinFeeConfigAction {
         coin_type: type_name::get<StableType>(),
         decimals,
@@ -688,10 +751,15 @@ public fun do_update_coin_creation_fee<Outcome: store, IW: drop, StableType>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UpdateCoinCreationFee>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let new_fee = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = UpdateCoinCreationFeeAction { coin_type: type_name::get<StableType>(), new_fee };
 
     // Increment action index
@@ -729,10 +797,15 @@ public fun do_update_coin_proposal_fee<Outcome: store, IW: drop, StableType>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UpdateCoinProposalFee>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
     let new_fee_per_outcome = bcs::peel_u64(&mut bcs);
+    bcs_validation::validate_all_bytes_consumed(bcs);
     let action = UpdateCoinProposalFeeAction { coin_type: type_name::get<StableType>(), new_fee_per_outcome };
 
     // Increment action index
@@ -775,9 +848,15 @@ public fun do_apply_pending_coin_fees<Outcome: store, IW: drop, StableType>(
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<ApplyPendingCoinFees>(spec);
 
-    // Deserialize the action data
+    // Check version
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Validate action_data is empty (type comes from generic parameter)
     let action_data = intents::action_spec_data(spec);
-    let mut bcs = bcs::new(*action_data);
+    let bcs = bcs::new(*action_data);
+    bcs_validation::validate_all_bytes_consumed(bcs);
+
     // This action has no parameters
     let action = ApplyPendingCoinFeesAction { coin_type: type_name::get<StableType>() };
 

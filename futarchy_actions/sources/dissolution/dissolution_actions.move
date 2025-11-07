@@ -326,6 +326,10 @@ public fun do_create_dissolution_capability<AssetType, Outcome: store, IW: drop>
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<CreateDissolutionCapability>(spec);
 
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, 0); // EUnsupportedActionVersion
+
     let action_data = intents::action_spec_data(spec);
     let mut reader = bcs::new(*action_data);
 

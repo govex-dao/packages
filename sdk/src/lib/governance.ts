@@ -43,7 +43,7 @@ export interface CreateProposalConfig {
     twapThreshold: bigint; // Signed threshold for determining winner
 
     // Actions for YES/Accept outcome (optional)
-    intentSpecForYes?: any; // Optional InitActionSpecs for outcome 0 (YES/Accept)
+    intentSpecForYes?: any; // Optional vector<ActionSpec> for outcome 0 (YES/Accept)
 
     // Reference ID (vestigial field, can be any ID - no queue system exists)
     referenceProposalId: string; // Optional reference ID for tracking purposes

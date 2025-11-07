@@ -61,27 +61,6 @@ public fun destroy_transfer_to_sender_action(action: TransferToSenderAction) {
 // === Public functions ===
 
 /// Creates a TransferAction and adds it to an intent with descriptor.
-public fun new_transfer<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    recipient: address,
-    intent_witness: IW,
-) {
-    // Create the action struct (no drop)
-    let action = TransferAction { recipient };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with pre-serialized bytes
-    intent.add_typed_action(
-        TransferObject {},
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_transfer_action(action);
-}
 
 /// Processes a TransferAction and transfers an object to a recipient.
 public fun do_transfer<Outcome: store, T: key + store, IW: drop>(
@@ -131,27 +110,6 @@ public fun delete_transfer(expired: &mut Expired) {
     // ActionSpec has drop, automatically cleaned up
 }
 
-/// Creates a TransferToSenderAction and adds it to an intent
-public fun new_transfer_to_sender<Outcome, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    intent_witness: IW,
-) {
-    // Create the action struct with no fields
-    let action = TransferToSenderAction {};
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with type marker for TransferObject (reusing existing type)
-    intent.add_typed_action(
-        TransferObject {},
-        action_data,
-        intent_witness
-    );
-
-    // Explicitly destroy the action struct
-    destroy_transfer_to_sender_action(action);
-}
 
 /// Processes a TransferToSenderAction and transfers an object to the transaction sender
 public fun do_transfer_to_sender<Outcome: store, T: key + store, IW: drop>(

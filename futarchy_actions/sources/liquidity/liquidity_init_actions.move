@@ -12,7 +12,7 @@ use account_protocol::{
     account::{Self as account_mod, Account},
     package_registry::PackageRegistry,
     executable::{Self as executable_mod, Executable},
-    intents,
+    intents::{Self, ActionSpec},
     version_witness::VersionWitness,
     bcs_validation,
     action_validation,
@@ -21,6 +21,7 @@ use futarchy_core::futarchy_config;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use std::option;
 use std::string::{Self, String};
+use std::vector;
 use sui::bcs;
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
@@ -51,17 +52,18 @@ public struct CreatePoolWithMintAction has store, copy, drop {
     fee_bps: u64,
 }
 
-// === Spec Builders (for staging in InitActionSpecs) ===
+// === Spec Builders (for PTB construction) ===
 
-/// Add CreatePoolWithMintAction to InitActionSpecs
-/// Used for staging actions in launchpad raises
+/// Add CreatePoolWithMintAction to Builder
+/// Used for staging actions in launchpad raises via PTB
 public fun add_create_pool_with_mint_spec(
-    specs: &mut account_actions::init_action_specs::InitActionSpecs,
+    builder: &mut account_actions::action_spec_builder::Builder,
     vault_name: String,
     asset_amount: u64,
     stable_amount: u64,
     fee_bps: u64,
 ) {
+    use account_actions::action_spec_builder;
     use std::type_name;
     use sui::bcs;
 
@@ -77,11 +79,12 @@ public fun add_create_pool_with_mint_spec(
     let action_data = bcs::to_bytes(&action);
 
     // CRITICAL: Use marker type (not action struct type) for validation
-    account_actions::init_action_specs::add_action(
-        specs,
+    let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<CreatePoolWithMint>(),
-        action_data
+        action_data,
+        1  // version
     );
+    action_spec_builder::add(builder, action_spec);
 }
 
 // === Dispatchers ===

@@ -393,31 +393,6 @@ public fun destroy_burn_action<CoinType>(action: BurnAction<CoinType>) {
 // Intent functions
 
 /// Creates a DisableAction and adds it to an intent.
-public fun new_disable<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    mint: bool,
-    burn: bool,
-    update_symbol: bool,
-    update_name: bool,
-    update_description: bool,
-    update_icon: bool,
-    intent_witness: IW,
-) {
-    assert!(mint || burn || update_symbol || update_name || update_description || update_icon, ENoChange);
-
-    // Create the action struct with drop ability
-    let action = DisableAction<CoinType> { mint, burn, update_symbol, update_name, update_description, update_icon };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with type marker (not action struct)
-    intent.add_typed_action(
-        currency_disable(),  // Type marker
-        action_data,
-        intent_witness
-    );
-}
 
 /// Processes a DisableAction and disables the permissions marked as true.
 public fun do_disable<Outcome: store, CoinType, IW: drop>(
@@ -476,30 +451,6 @@ public fun delete_disable<CoinType>(expired: &mut Expired) {
     // ActionSpec has drop, so it's automatically cleaned up
 }
 
-/// Creates an UpdateAction and adds it to an intent.
-public fun new_update<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    symbol: Option<ascii::String>,
-    name: Option<String>,
-    description: Option<String>,
-    icon_url: Option<ascii::String>,
-    intent_witness: IW,
-) {
-    assert!(symbol.is_some() || name.is_some() || description.is_some() || icon_url.is_some(), ENoChange);
-
-    // Create the action struct with drop ability
-    let action = UpdateAction<CoinType> { symbol, name, description, icon_url };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with type marker (not action struct)
-    intent.add_typed_action(
-        currency_update(),  // Type marker
-        action_data,
-        intent_witness
-    );
-}
 
 /// Processes an UpdateAction, updates the CoinMetadata.
 public fun do_update<Outcome: store, CoinType, IW: drop>(
@@ -586,25 +537,6 @@ public fun delete_update<CoinType>(expired: &mut Expired) {
 }
 
 /// Creates a MintAction and adds it to an intent with descriptor.
-public fun new_mint<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    amount: u64,
-    intent_witness: IW,
-) {
-    // Create the action struct (no drop)
-    let action = MintAction<CoinType> { amount };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with type marker (not action struct)
-    // Use CurrencyMint marker so validation matches in do_mint
-    intent.add_typed_action(
-        currency_mint(),  // Type marker
-        action_data,
-        intent_witness
-    );
-}
 
 /// Processes a MintAction, mints and returns new coins.
 public fun do_mint<Outcome: store, CoinType, IW: drop>(
@@ -668,26 +600,6 @@ public fun delete_mint<CoinType>(expired: &mut Expired) {
     // ActionSpec has drop, so it's automatically cleaned up
 }
 
-/// Creates a BurnAction and adds it to an intent with descriptor.
-public fun new_burn<Outcome, CoinType, IW: drop>(
-    intent: &mut Intent<Outcome>,
-    amount: u64,
-    intent_witness: IW,
-) {
-    // Create the action struct
-    let action = BurnAction<CoinType> { amount };
-
-    // Serialize it
-    let action_data = bcs::to_bytes(&action);
-
-    // Add to intent with type marker (not action struct)
-    // Use CurrencyBurn marker so validation matches in do_burn
-    intent.add_typed_action(
-        currency_burn(),  // Type marker
-        action_data,
-        intent_witness
-    );
-}
 
 /// Processes a BurnAction, burns coins and returns the amount burned.
 public fun do_burn<Outcome: store, CoinType, IW: drop>(

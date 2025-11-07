@@ -280,10 +280,10 @@ export class FactoryOperations {
             config.twapThreshold.negative
         );
 
-        // Serialize InitActionSpecs for Move
-        // Move expects: vector<InitActionSpecs> where InitActionSpecs contains vector<ActionSpec>
-        // ActionSpec has: { action_type: TypeName, action_data: vector<u8> }
-        const initSpecsArg = this.serializeInitActionSpecs(tx, initSpecs);
+        // Serialize ActionSpecs for Move
+        // Move expects: vector<ActionSpec> directly (no wrapper)
+        // ActionSpec has: { version: u8, action_type: TypeName, action_data: vector<u8> }
+        const initSpecsArg = this.serializeActionSpecs(tx, initSpecs);
 
         // Create the DAO with init specs
         tx.moveCall({
@@ -333,63 +333,43 @@ export class FactoryOperations {
 
     /**
      * Serialize InitActionSpec[] into format Move expects
-     * Move expects vector<InitActionSpecs> where InitActionSpecs = { actions: vector<ActionSpec> }
+     * Move expects vector<ActionSpec> directly (no wrapper struct)
+     * ActionSpec = { version: u8, action_type: TypeName, action_data: vector<u8> }
      * @private
      */
-    private serializeInitActionSpecs(
+    private serializeActionSpecs(
         tx: Transaction,
         specs: InitActionSpec[]
     ): ReturnType<Transaction["pure"]> {
-        // If no specs, pass empty vector
-        if (specs.length === 0) {
-            // TypeName is a struct with a single `name` field
-            const typeNameBcs = bcs.struct('TypeName', {
-                name: bcs.string()
-            });
-
-            // Empty vector<InitActionSpecs>
-            const emptyVectorBcs = bcs.vector(
-                bcs.struct('InitActionSpecs', {
-                    actions: bcs.vector(
-                        bcs.struct('ActionSpec', {
-                            action_type: typeNameBcs,
-                            action_data: bcs.vector(bcs.u8())
-                        })
-                    )
-                })
-            );
-            const serialized = emptyVectorBcs.serialize([]).toBytes();
-            return tx.pure(serialized, 'vector<u8>');
-        }
-
         // TypeName is a struct with a single `name` field
         const typeNameBcs = bcs.struct('TypeName', {
             name: bcs.string()
         });
 
-        // Create BCS struct for ActionSpec
+        // Create BCS struct for ActionSpec (protocol version)
         const actionSpecBcs = bcs.struct('ActionSpec', {
-            action_type: typeNameBcs,
-            action_data: bcs.vector(bcs.u8())
+            version: bcs.u8(),           // Protocol version (always 1)
+            action_type: typeNameBcs,    // TypeName marker
+            action_data: bcs.vector(bcs.u8())  // Serialized action data
         });
 
-        // Create BCS struct for InitActionSpecs
-        const initActionSpecsBcs = bcs.struct('InitActionSpecs', {
-            actions: bcs.vector(actionSpecBcs)
-        });
+        // If no specs, pass empty vector<ActionSpec>
+        if (specs.length === 0) {
+            const emptyVectorBcs = bcs.vector(actionSpecBcs);
+            const serialized = emptyVectorBcs.serialize([]).toBytes();
+            return tx.pure(serialized, 'vector<u8>');
+        }
 
-        // Convert our InitActionSpec[] to the format Move expects
-        // Move expects vector<InitActionSpecs>, we pass a single InitActionSpecs with all actions
-        const initActionSpecs = {
-            actions: specs.map(spec => ({
-                action_type: { name: spec.actionType }, // Wrap in TypeName struct
-                action_data: spec.actionData
-            }))
-        };
+        // Convert our InitActionSpec[] to ActionSpec[] with version
+        const actionSpecs = specs.map(spec => ({
+            version: 1,  // Protocol version 1
+            action_type: { name: spec.actionType }, // Wrap in TypeName struct
+            action_data: spec.actionData
+        }));
 
-        // Serialize as vector<InitActionSpecs> with single element
-        const vectorBcs = bcs.vector(initActionSpecsBcs);
-        const serialized = vectorBcs.serialize([initActionSpecs]).toBytes();
+        // Serialize as vector<ActionSpec> directly
+        const vectorBcs = bcs.vector(actionSpecBcs);
+        const serialized = vectorBcs.serialize(actionSpecs).toBytes();
 
         // Pass as vector<u8> - Move will deserialize based on function signature
         return tx.pure(serialized, 'vector<u8>');

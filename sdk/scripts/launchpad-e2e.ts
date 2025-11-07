@@ -359,7 +359,12 @@ async function main() {
   const streamAmount = TransactionUtils.suiToMist(0.5); // 0.5 TSTABLE
   const currentTime = Date.now();
   const streamStart = currentTime + 300_000; // Start in 5 minutes (allows time for test to complete)
-  const streamEnd = streamStart + 3_600_000; // End in 1 hour after start
+
+  // Iteration-based vesting: 12 monthly unlocks
+  const iterationsTotal = 12n;
+  const iterationPeriodMs = 2_592_000_000n; // 30 days in milliseconds
+  const amountPerIteration = streamAmount / iterationsTotal; // Equal distribution per month
+  const totalStreamDuration = Number(iterationsTotal) * Number(iterationPeriodMs);
 
   const actionsPkg = sdk.getPackageId("AccountActions");
   const launchpadPkg = sdk.getPackageId("futarchy_factory");
@@ -371,11 +376,13 @@ async function main() {
   console.log("\n📋 Staging stream for SUCCESS outcome...");
   console.log(`   Vault: treasury`);
   console.log(`   Beneficiary: ${streamRecipient}`);
-  console.log(`   Amount: ${Number(streamAmount) / 1e9} TSTABLE`);
+  console.log(`   Total Amount: ${Number(streamAmount) / 1e9} TSTABLE`);
+  console.log(`   Amount per iteration: ${Number(amountPerIteration) / 1e9} TSTABLE`);
+  console.log(`   Iterations: ${Number(iterationsTotal)} (monthly)`);
   console.log(
     `   Start: ${(streamStart - currentTime) / 60000} minutes from now`,
   );
-  console.log(`   Duration: ${(streamEnd - streamStart) / 3600000} hours`);
+  console.log(`   Duration: ${totalStreamDuration / 3600000} hours (${Number(iterationsTotal)} months)`);
 
   const stageTx = new Transaction();
 
@@ -392,13 +399,15 @@ async function main() {
       specs, // &mut InitActionSpecs
       stageTx.pure.string("treasury"),
       stageTx.pure(bcs.Address.serialize(streamRecipient).toBytes()),
-      stageTx.pure.u64(streamAmount),
+      stageTx.pure.u64(amountPerIteration), // amount_per_iteration (NO DIVISION in Move!)
       stageTx.pure.u64(streamStart),
-      stageTx.pure.u64(streamEnd),
+      stageTx.pure.u64(iterationsTotal), // iterations_total
+      stageTx.pure.u64(iterationPeriodMs), // iteration_period_ms
       stageTx.pure.option("u64", null), // cliff_time
-      stageTx.pure.u64(streamAmount), // max_per_withdrawal
-      stageTx.pure.u64(86400000), // min_interval_ms (1 day)
-      stageTx.pure.u64(1), // max_beneficiaries
+      stageTx.pure.option("u64", null), // claim_window_ms (use-or-lose window)
+      stageTx.pure.u64(amountPerIteration), // max_per_withdrawal
+      stageTx.pure.bool(true), // is_transferable
+      stageTx.pure.bool(true), // is_cancellable
     ],
   });
 

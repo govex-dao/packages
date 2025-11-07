@@ -9,9 +9,9 @@ futarchy_types = { local = "../futarchy_types" }
 futarchy_core = { local = "../futarchy_core" }
 
 [addresses]
-futarchy_markets_primitives = "0x458ad6dacd0e73319897e4e9d16457dbf5be5093c7a257f1473c3d638a13dc70"
-futarchy_types = "0x2ac5fc1f66a3827cde88494b864485a99bca05e4207de4e03813a92771728f2d"
-futarchy_one_shot_utils = "0x71a6037c0b7b8129f609bf75b59224543f404a1f2cee377524d5a9dc49d050c5"
-futarchy_core = "0x6865d933e01b147628a62d34fbb90cbb48931e51cb7973a231cf64d77375d5c8"
-account_protocol = "0xe026bb03c035570d73c33c550a00a8d626074f533d78872c13cb5da8b827a839"
-account_actions = "0x1e04afce2c728679d58d32fbb44063eb0d85fbba1d9e75976d800e3b325beee2"
+futarchy_markets_primitives = "0x30b540d5e013c613d7d01c9ee43800358afd7866b98672edce334a3cedee4981"
+futarchy_types = "0x80ecc04c6374cb318c4166b3a2802d45d31a82773f82e8533a8eedb943d8681f"
+futarchy_one_shot_utils = "0x40c68c25eedceca27bfdf3bb5e25300c3c1d75ec3c8eff809e896d38e5c2aa1b"
+futarchy_core = "0xcf84743109ec866c41e9659efc1c1b14582cc566255054455c97cd9d98e6bd0d"
+account_protocol = "0x54d93527a2e54cc8d7a5012496eb0080d1d373b8a4ba05fd2637d21ed5bd29ae"
+account_actions = "0xa467239838009b2e941a1ccfa2c8ffe72663a0a01c71ea9b1f26b0a8ff4426b3"

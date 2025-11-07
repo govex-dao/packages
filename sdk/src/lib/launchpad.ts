@@ -660,13 +660,15 @@ export class LaunchpadOperations {
      *     specs,
      *     tx.pure.string('treasury'),
      *     tx.pure(bcs.Address.serialize(beneficiary).toBytes()),
-     *     tx.pure.u64(amount),
+     *     tx.pure.u64(amountPerIteration), // amount per iteration (NO DIVISION in Move!)
      *     tx.pure.u64(startTime),
-     *     tx.pure.u64(endTime),
-     *     tx.pure.option('u64', null),
+     *     tx.pure.u64(iterationsTotal), // number of unlock events
+     *     tx.pure.u64(iterationPeriodMs), // time between unlocks (ms)
+     *     tx.pure.option('u64', null), // cliff_time
+     *     tx.pure.option('u64', null), // claim_window_ms (use-or-lose)
      *     tx.pure.u64(maxPerWithdrawal),
-     *     tx.pure.u64(minInterval),
-     *     tx.pure.u64(1),
+     *     tx.pure.bool(true), // is_transferable
+     *     tx.pure.bool(true), // is_cancellable
      *   ],
      * });
      *

@@ -365,6 +365,16 @@ public fun pause_account_creation(
     registry.account_creation_paused = true;
 }
 
+/// Pause account creation system-wide (without cap check)
+/// IMPORTANT: Authorization must be verified by caller before calling this function
+/// This is an internal API for governance actions where the cap check is done separately
+/// to avoid borrow checker conflicts
+public fun pause_account_creation_authorized(
+    registry: &mut PackageRegistry,
+) {
+    registry.account_creation_paused = true;
+}
+
 /// Unpause account creation system-wide
 /// Requires PackageAdminCap to authorize
 ///
@@ -373,6 +383,16 @@ public fun pause_account_creation(
 public fun unpause_account_creation(
     registry: &mut PackageRegistry,
     _cap: &PackageAdminCap,
+) {
+    registry.account_creation_paused = false;
+}
+
+/// Unpause account creation system-wide (without cap check)
+/// IMPORTANT: Authorization must be verified by caller before calling this function
+/// This is an internal API for governance actions where the cap check is done separately
+/// to avoid borrow checker conflicts
+public fun unpause_account_creation_authorized(
+    registry: &mut PackageRegistry,
 ) {
     registry.account_creation_paused = false;
 }

@@ -151,14 +151,14 @@ XXXXXX
 
 
 - [X] cap / intent to pause new account creation??
-- [ ] maybe nft for AMM position doesn't make sense
+- [X] get prop working with executed stream
+- [x] maybe nft for AMM position doesn't make sense
 (check how pools track invidiual nfts's buckets and amounts)
 - [ ] tightly couple intent / action registry with init actions???
-- [ ] add extra flag to streams so that can't claim stuff not claimed at end of period
+- [x] add extra flag to streams so that can't claim stuff not claimed at end of period
 - [ ] maybe simple decay fee if time of last proposal was 1 hour ago??
 - [ ] cap transfers to 1/3rd treasury
 - [ ] update all actions to use new format streams use. get LLMs to check streams patterm
-- [ ] get prop working with executed stream
 - [ ] Linting and test script pipeline and E2E test pipeline / stop commiting to main / coverage
 
 

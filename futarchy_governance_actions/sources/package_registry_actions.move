@@ -16,6 +16,7 @@ use account_protocol::{
     version_witness::VersionWitness,
     action_validation,
     package_registry,
+    deps,
 };
 
 // === Action Type Markers ===
@@ -75,6 +76,7 @@ public fun unpause_account_creation_marker(): UnpauseAccountCreation { UnpauseAc
 // === Errors ===
 
 const EUnsupportedActionVersion: u64 = 1;
+const EUnauthorized: u64 = 2;
 
 // === Public Constructors ===
 
@@ -319,17 +321,18 @@ public fun do_pause_account_creation<Outcome: store, IW: drop>(
     // Increment action index
     executable::increment_action_idx(executable);
 
-    // Borrow the PackageAdminCap from the account's managed assets
+    // Verify the account has the PackageAdminCap (proves authorization)
     // The cap must be locked in the account first using access_control::lock_cap()
-    let cap = account::borrow_managed_asset<String, package_registry::PackageAdminCap>(
-        account,
-        registry,
-        b"protocol:package_admin_cap".to_string(),
-        version_witness,
+    assert!(
+        account::has_managed_asset(account, b"protocol:package_admin_cap".to_string()),
+        EUnauthorized
     );
 
-    // Pause account creation with proper authorization
-    package_registry::pause_account_creation(registry, cap);
+    // Verify deps compatibility
+    deps::check(account::deps(account), version_witness, registry);
+
+    // Pause account creation (authorization already verified above)
+    package_registry::pause_account_creation_authorized(registry);
 }
 
 public fun do_unpause_account_creation<Outcome: store, IW: drop>(
@@ -355,17 +358,18 @@ public fun do_unpause_account_creation<Outcome: store, IW: drop>(
     // Increment action index
     executable::increment_action_idx(executable);
 
-    // Borrow the PackageAdminCap from the account's managed assets
+    // Verify the account has the PackageAdminCap (proves authorization)
     // The cap must be locked in the account first using access_control::lock_cap()
-    let cap = account::borrow_managed_asset<String, package_registry::PackageAdminCap>(
-        account,
-        registry,
-        b"protocol:package_admin_cap".to_string(),
-        version_witness,
+    assert!(
+        account::has_managed_asset(account, b"protocol:package_admin_cap".to_string()),
+        EUnauthorized
     );
 
-    // Unpause account creation with proper authorization
-    package_registry::unpause_account_creation(registry, cap);
+    // Verify deps compatibility
+    deps::check(account::deps(account), version_witness, registry);
+
+    // Unpause account creation (authorization already verified above)
+    package_registry::unpause_account_creation_authorized(registry);
 }
 
 // === Garbage Collection ===

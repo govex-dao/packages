@@ -18,18 +18,20 @@ use sui::tx_context::TxContext;
 
 // === Action Structs (for staging/dispatching) ===
 
-/// Action to create a vesting stream
+/// Action to create an iteration-based vesting stream
 /// Stored in InitActionSpecs with BCS serialization
 public struct CreateStreamAction has store, copy, drop {
     vault_name: String,
     beneficiary: address,
-    total_amount: u64,
+    amount_per_iteration: u64,  // Tokens per iteration (NO DIVISION)
     start_time: u64,
-    end_time: u64,
+    iterations_total: u64,
+    iteration_period_ms: u64,
     cliff_time: Option<u64>,
+    claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    min_interval_ms: u64,
-    max_beneficiaries: u64,
+    is_transferable: bool,
+    is_cancellable: bool,
 }
 
 // === Spec Builders (for staging in InitActionSpecs) ===
@@ -40,13 +42,15 @@ public fun add_create_stream_spec(
     specs: &mut account_actions::init_action_specs::InitActionSpecs,
     vault_name: String,
     beneficiary: address,
-    total_amount: u64,
+    amount_per_iteration: u64,
     start_time: u64,
-    end_time: u64,
+    iterations_total: u64,
+    iteration_period_ms: u64,
     cliff_time: Option<u64>,
+    claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    min_interval_ms: u64,
-    max_beneficiaries: u64,
+    is_transferable: bool,
+    is_cancellable: bool,
 ) {
     use std::type_name;
     use sui::bcs;
@@ -55,13 +59,15 @@ public fun add_create_stream_spec(
     let action = CreateStreamAction {
         vault_name,
         beneficiary,
-        total_amount,
+        amount_per_iteration,
         start_time,
-        end_time,
+        iterations_total,
+        iteration_period_ms,
         cliff_time,
+        claim_window_ms,
         max_per_withdrawal,
-        min_interval_ms,
-        max_beneficiaries,
+        is_transferable,
+        is_cancellable,
     };
 
     // Serialize
@@ -92,13 +98,15 @@ public fun dispatch_create_stream<Config: store, CoinType: drop>(
         registry,
         action.vault_name,
         action.beneficiary,
-        action.total_amount,
+        action.amount_per_iteration,
         action.start_time,
-        action.end_time,
+        action.iterations_total,
+        action.iteration_period_ms,
         action.cliff_time,
+        action.claim_window_ms,
         action.max_per_withdrawal,
-        action.min_interval_ms,
-        action.max_beneficiaries,
+        action.is_transferable,
+        action.is_cancellable,
         clock,
         ctx,
     )

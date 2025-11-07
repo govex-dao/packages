@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "73D0A88196FB3904E91757B22EFF20E0AA166A8878332CB551B80AE76FDD95D0"
+manifest_digest = "E159BE00B3DC10350B13BF43FA01B97EC28D201FBEB9580B5A4AB50F4FA7305A"
 deps_digest = "F8BBB0CCB2491CA29A3DF03D6F92277A4F3574266507ACD77214D37ECA3F3082"
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -29,6 +29,6 @@ flavor = "sui"
 
 [env.devnet]
 chain-id = "eaa01338"
-original-published-id = "0x2ac5fc1f66a3827cde88494b864485a99bca05e4207de4e03813a92771728f2d"
-latest-published-id = "0x2ac5fc1f66a3827cde88494b864485a99bca05e4207de4e03813a92771728f2d"
+original-published-id = "0x80ecc04c6374cb318c4166b3a2802d45d31a82773f82e8533a8eedb943d8681f"
+latest-published-id = "0x80ecc04c6374cb318c4166b3a2802d45d31a82773f82e8533a8eedb943d8681f"
 published-version = "1"

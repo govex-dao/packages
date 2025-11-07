@@ -84,20 +84,24 @@ async function main() {
 
   console.log("📝 Will create InitActionSpecs with 2 stream actions:");
 
-  // Stream 1: 1000 stable coins over 30 days to active address
-  const stream1Amount = 1000_000_000; // 1000 stable coins (9 decimals)
+  // Stream 1: 1000 stable coins, 30 daily iterations
+  const stream1Iterations = 30n;
+  const stream1IterationPeriod = 86_400_000n; // 1 day in ms
+  const stream1Amount = 1000_000_000; // Total: 1000 stable coins (9 decimals)
+  const stream1AmountPerIteration = Number(BigInt(stream1Amount) / stream1Iterations);
   const now = Date.now();
   const stream1Start = now;
-  const stream1End = now + (30 * 24 * 60 * 60 * 1000); // 30 days
 
-  console.log(`   Stream 1: ${stream1Amount / 1e9} stable coins over 30 days`);
+  console.log(`   Stream 1: ${stream1Amount / 1e9} stable coins over ${Number(stream1Iterations)} days (daily unlocks)`);
 
-  // Stream 2: 500 stable coins over 15 days to active address
-  const stream2Amount = 500_000_000; // 500 stable coins
+  // Stream 2: 500 stable coins, 15 daily iterations
+  const stream2Iterations = 15n;
+  const stream2IterationPeriod = 86_400_000n; // 1 day in ms
+  const stream2Amount = 500_000_000; // Total: 500 stable coins
+  const stream2AmountPerIteration = Number(BigInt(stream2Amount) / stream2Iterations);
   const stream2Start = now;
-  const stream2End = now + (15 * 24 * 60 * 60 * 1000); // 15 days
 
-  console.log(`   Stream 2: ${stream2Amount / 1e9} stable coins over 15 days`);
+  console.log(`   Stream 2: ${stream2Amount / 1e9} stable coins over ${Number(stream2Iterations)} days (daily unlocks)`);
   console.log(`   (Actions will be created inline with proposal)`);
   console.log();
 
@@ -261,13 +265,15 @@ async function main() {
       specs,
       addActionsTx.pure.string("treasury"),
       addActionsTx.pure(bcs.Address.serialize(activeAddress).toBytes()),
-      addActionsTx.pure.u64(stream1Amount),
+      addActionsTx.pure.u64(stream1AmountPerIteration), // amount_per_iteration (NO DIVISION in Move!)
       addActionsTx.pure.u64(stream1Start),
-      addActionsTx.pure.u64(stream1End),
+      addActionsTx.pure.u64(stream1Iterations), // iterations_total
+      addActionsTx.pure.u64(stream1IterationPeriod), // iteration_period_ms
       addActionsTx.pure.option("u64", null), // cliff_time
-      addActionsTx.pure.u64(stream1Amount), // max_per_withdrawal
-      addActionsTx.pure.u64(86400000), // min_interval_ms (1 day)
-      addActionsTx.pure.u64(1), // max_beneficiaries
+      addActionsTx.pure.option("u64", null), // claim_window_ms (use-or-lose window)
+      addActionsTx.pure.u64(stream1AmountPerIteration), // max_per_withdrawal
+      addActionsTx.pure.bool(true), // is_transferable
+      addActionsTx.pure.bool(true), // is_cancellable
     ],
   });
 
@@ -278,13 +284,15 @@ async function main() {
       specs,
       addActionsTx.pure.string("treasury"),
       addActionsTx.pure(bcs.Address.serialize(activeAddress).toBytes()),
-      addActionsTx.pure.u64(stream2Amount),
+      addActionsTx.pure.u64(stream2AmountPerIteration), // amount_per_iteration (NO DIVISION in Move!)
       addActionsTx.pure.u64(stream2Start),
-      addActionsTx.pure.u64(stream2End),
+      addActionsTx.pure.u64(stream2Iterations), // iterations_total
+      addActionsTx.pure.u64(stream2IterationPeriod), // iteration_period_ms
       addActionsTx.pure.option("u64", null), // cliff_time
-      addActionsTx.pure.u64(stream2Amount), // max_per_withdrawal
-      addActionsTx.pure.u64(86400000), // min_interval_ms (1 day)
-      addActionsTx.pure.u64(1), // max_beneficiaries
+      addActionsTx.pure.option("u64", null), // claim_window_ms (use-or-lose window)
+      addActionsTx.pure.u64(stream2AmountPerIteration), // max_per_withdrawal
+      addActionsTx.pure.bool(true), // is_transferable
+      addActionsTx.pure.bool(true), // is_cancellable
     ],
   });
 

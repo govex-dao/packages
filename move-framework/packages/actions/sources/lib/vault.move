@@ -103,32 +103,30 @@ public struct Vault has store {
     approved_types: VecSet<TypeName>,
 }
 
-/// Stream for time-based vesting from vault
-/// Stream enhancements:
-/// Added features include:
-/// - Multiple beneficiaries support
+/// Stream for iteration-based vesting from vault
+/// Features:
+/// - Iteration-based vesting (discrete unlock events)
+/// - Optional "use or lose" claim window per iteration
+/// - Multiple beneficiaries support (unlimited)
 /// - Metadata for extensibility
 /// - Transfer and reduction capabilities
 public struct VaultStream has store, drop {
     id: ID,
     coin_type: TypeName,
     beneficiary: address,  // Primary beneficiary
-    // Core vesting parameters
-    total_amount: u64,
-    claimed_amount: u64,
+    // Core vesting parameters (iteration-based)
+    amount_per_iteration: u64,   // Tokens that unlock per iteration (NO DIVISION!)
+    claimed_amount: u64,          // Total claimed so far
     start_time: u64,
-    end_time: u64,
+    iterations_total: u64,        // Number of unlock events
+    iteration_period_ms: u64,     // Time between unlocks (ms)
     cliff_time: Option<u64>,
-    // Rate limiting
+    // Use-or-lose feature
+    claim_window_ms: Option<u64>, // If Some(X), must claim within X ms after unlock or forfeit
+    // Rate limiting (per claim)
     max_per_withdrawal: u64,
-    min_interval_ms: u64,
-    last_withdrawal_time: u64,
-    // Additional data for stream management
-    // Multiple beneficiaries support
+    // Multiple beneficiaries support (unlimited)
     additional_beneficiaries: vector<address>,
-    max_beneficiaries: u64,  // Configurable per stream
-    // Expiry
-    expiry_timestamp: Option<u64>,  // Stream becomes invalid after this time
     // Metadata for extensibility
     metadata: Option<String>,
     // Transfer settings
@@ -145,7 +143,8 @@ public struct StreamCreated has copy, drop {
     total_amount: u64,
     coin_type: TypeName,
     start_time: u64,
-    end_time: u64,
+    iterations_total: u64,
+    iteration_period_ms: u64,
 }
 
 /// Emitted when funds are withdrawn from a stream
@@ -830,18 +829,26 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
     assert!(stream.is_cancellable, ENotCancellable);
 
     let current_time = clock.timestamp_ms();
-    let balance_remaining = stream.total_amount - stream.claimed_amount;
 
-    // Calculate what should be paid to beneficiary vs refunded
+    // Calculate total amount (with overflow protection)
+    let total_amount_u128 = (stream.amount_per_iteration as u128) * (stream.iterations_total as u128);
+    assert!(total_amount_u128 <= (18446744073709551615 as u128), 0);
+    let total_amount = (total_amount_u128 as u64);
+
+    let balance_remaining = total_amount - stream.claimed_amount;
+
+    // Calculate what should be paid to beneficiary vs refunded (iteration-based)
     let (to_pay_beneficiary, to_refund, _unvested_claimed) =
-        account_actions::stream_utils::split_vested_unvested(
-            stream.total_amount,
+        account_actions::stream_utils::split_vested_unvested_iterations(
+            stream.amount_per_iteration,
             stream.claimed_amount,
             balance_remaining,
             stream.start_time,
-            stream.end_time,
+            stream.iterations_total,
+            stream.iteration_period_ms,
             current_time,
             &stream.cliff_time,
+            &stream.claim_window_ms,
         );
 
     let balance_mut = vault.bag.borrow_mut<TypeName, Balance<CoinType>>(stream.coin_type);
@@ -1059,20 +1066,22 @@ public fun delete_toggle_stream_freeze(expired: &mut Expired) {
 
 // === Stream Management Functions ===
 
-/// Creates a new stream in the vault
+/// Creates a new iteration-based stream in the vault
 public fun create_stream<Config: store, CoinType: drop>(
     auth: Auth,
     account: &mut Account,
     registry: &PackageRegistry,
     vault_name: String,
     beneficiary: address,
-    total_amount: u64,
+    amount_per_iteration: u64,
     start_time: u64,
-    end_time: u64,
+    iterations_total: u64,
+    iteration_period_ms: u64,
     cliff_time: Option<u64>,
+    claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    min_interval_ms: u64,
-    max_beneficiaries: u64,
+    is_transferable: bool,
+    is_cancellable: bool,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
@@ -1081,16 +1090,24 @@ public fun create_stream<Config: store, CoinType: drop>(
     // Validate stream parameters
     let current_time = clock.timestamp_ms();
     assert!(
-        account_actions::stream_utils::validate_time_parameters(
+        account_actions::stream_utils::validate_iteration_parameters(
             start_time,
-            end_time,
+            iterations_total,
+            iteration_period_ms,
             &cliff_time,
             current_time
         ),
         EInvalidStreamParameters
     );
+    assert!(amount_per_iteration > 0, EAmountMustBeGreaterThanZero);
 
     let vault: &mut Vault = account.borrow_managed_data_mut(registry, VaultKey(vault_name), version::current());
+
+    // Calculate total amount needed for stream
+    // Use u128 to prevent overflow
+    let total_amount_u128 = (amount_per_iteration as u128) * (iterations_total as u128);
+    assert!(total_amount_u128 <= (18446744073709551615 as u128), EInsufficientVestedAmount);
+    let total_amount = (total_amount_u128 as u64);
 
     // Check that vault has sufficient balance
     assert!(vault.coin_type_exists<CoinType>(), EWrongCoinType);
@@ -1103,21 +1120,18 @@ public fun create_stream<Config: store, CoinType: drop>(
         id: object::uid_to_inner(&stream_id),
         coin_type: type_name::with_defining_ids<CoinType>(),
         beneficiary,
-        total_amount,
+        amount_per_iteration,
         claimed_amount: 0,
         start_time,
-        end_time,
+        iterations_total,
+        iteration_period_ms,
         cliff_time,
+        claim_window_ms,
         max_per_withdrawal,
-        min_interval_ms,
-        last_withdrawal_time: 0,
-        // additional checks
         additional_beneficiaries: vector::empty(),
-        max_beneficiaries,
-        expiry_timestamp: option::none(),
         metadata: option::none(),
-        is_transferable: true,
-        is_cancellable: true,
+        is_transferable,
+        is_cancellable,
     };
 
     let id = object::uid_to_inner(&stream_id);
@@ -1130,10 +1144,11 @@ public fun create_stream<Config: store, CoinType: drop>(
     event::emit(StreamCreated {
         stream_id: id,
         beneficiary,
-        total_amount,
+        total_amount: amount_per_iteration,  // Event uses amount_per_iteration for backward compat
         coin_type: type_name::with_defining_ids<CoinType>(),
         start_time,
-        end_time,
+        iterations_total,
+        iteration_period_ms,
     });
 
     id
@@ -1158,18 +1173,26 @@ public fun cancel_stream<Config: store, CoinType: drop>(
     assert!(stream.is_cancellable, ENotCancellable);
 
     let current_time = clock.timestamp_ms();
-    let balance_remaining = stream.total_amount - stream.claimed_amount;
 
-    // Calculate what should be paid to beneficiary vs refunded
+    // Calculate total amount (with overflow protection)
+    let total_amount_u128 = (stream.amount_per_iteration as u128) * (stream.iterations_total as u128);
+    assert!(total_amount_u128 <= (18446744073709551615 as u128), 0);
+    let total_amount = (total_amount_u128 as u64);
+
+    let balance_remaining = total_amount - stream.claimed_amount;
+
+    // Calculate what should be paid to beneficiary vs refunded (iteration-based)
     let (to_pay_beneficiary, to_refund, _unvested_claimed) =
-        account_actions::stream_utils::split_vested_unvested(
-            stream.total_amount,
+        account_actions::stream_utils::split_vested_unvested_iterations(
+            stream.amount_per_iteration,
             stream.claimed_amount,
             balance_remaining,
             stream.start_time,
-            stream.end_time,
+            stream.iterations_total,
+            stream.iteration_period_ms,
             current_time,
             &stream.cliff_time,
+            &stream.claim_window_ms,
         );
 
     let balance_mut = vault.bag.borrow_mut<TypeName, Balance<CoinType>>(stream.coin_type);
@@ -1217,8 +1240,12 @@ public fun withdraw_from_stream<Config: store, CoinType: drop>(
     let stream = table::borrow_mut(&mut vault.streams, stream_id);
     let current_time = clock.timestamp_ms();
 
-    // Check if stream is expired
-    assert!(!stream_utils::is_expired(&stream.expiry_timestamp, current_time), EStreamExpired);
+    // CRITICAL: Check authorization - only beneficiaries can withdraw
+    let sender = tx_context::sender(ctx);
+    assert!(
+        sender == stream.beneficiary || stream.additional_beneficiaries.contains(&sender),
+        EUnauthorizedBeneficiary
+    );
 
     // Check if stream has started
     assert!(current_time >= stream.start_time, EStreamNotStarted);
@@ -1227,16 +1254,6 @@ public fun withdraw_from_stream<Config: store, CoinType: drop>(
     if (stream.cliff_time.is_some()) {
         assert!(current_time >= *stream.cliff_time.borrow(), EStreamCliffNotReached);
     };
-
-    // Check rate limiting
-    assert!(
-        account_actions::stream_utils::check_rate_limit(
-            stream.last_withdrawal_time,
-            stream.min_interval_ms,
-            current_time
-        ),
-        EWithdrawalTooSoon
-    );
 
     // Check withdrawal limits
     assert!(
@@ -1247,21 +1264,22 @@ public fun withdraw_from_stream<Config: store, CoinType: drop>(
         EWithdrawalLimitExceeded
     );
 
-    // Calculate available amount
-    let available = account_actions::stream_utils::calculate_claimable(
-        stream.total_amount,
+    // Calculate available amount (iteration-based)
+    let available = account_actions::stream_utils::calculate_claimable_iterations(
+        stream.amount_per_iteration,
         stream.claimed_amount,
         stream.start_time,
-        stream.end_time,
+        stream.iterations_total,
+        stream.iteration_period_ms,
         current_time,
         &stream.cliff_time,
+        &stream.claim_window_ms,
     );
 
     assert!(available >= amount, EInsufficientVestedAmount);
 
     // Update stream state
     stream.claimed_amount = stream.claimed_amount + amount;
-    stream.last_withdrawal_time = current_time;
 
     // Withdraw from vault balance
     let balance_mut = vault.bag.borrow_mut<TypeName, Balance<CoinType>>(stream.coin_type);
@@ -1297,33 +1315,37 @@ public fun calculate_claimable<Config: store>(
     let stream = table::borrow(&vault.streams, stream_id);
     let current_time = clock.timestamp_ms();
 
-    account_actions::stream_utils::calculate_claimable(
-        stream.total_amount,
+    account_actions::stream_utils::calculate_claimable_iterations(
+        stream.amount_per_iteration,
         stream.claimed_amount,
         stream.start_time,
-        stream.end_time,
+        stream.iterations_total,
+        stream.iteration_period_ms,
         current_time,
         &stream.cliff_time,
+        &stream.claim_window_ms,
     )
 }
 
 /// Get stream information
+/// Returns: (beneficiary, total_amount, claimed_amount, start_time, iterations_total, iteration_period_ms, is_cancellable)
 public fun stream_info<Config: store>(
     account: &Account,
     registry: &PackageRegistry,
     vault_name: String,
     stream_id: ID,
-): (address, u64, u64, u64, u64, bool) {
+): (address, u64, u64, u64, u64, u64, bool) {
     let vault: &Vault = account.borrow_managed_data(registry, VaultKey(vault_name), version::current());
     assert!(table::contains(&vault.streams, stream_id), EStreamNotFound);
 
     let stream = table::borrow(&vault.streams, stream_id);
     (
         stream.beneficiary,
-        stream.total_amount,
+        stream.amount_per_iteration,
         stream.claimed_amount,
         stream.start_time,
-        stream.end_time,
+        stream.iterations_total,
+        stream.iteration_period_ms,
         stream.is_cancellable
     )
 }
@@ -1354,29 +1376,31 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
     registry: &PackageRegistry,
     vault_name: String,
     beneficiary: address,
-    total_amount: u64,
+    amount_per_iteration: u64,
     start_time: u64,
-    end_time: u64,
+    iterations_total: u64,
+    iteration_period_ms: u64,
     cliff_time: Option<u64>,
+    claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    min_interval_ms: u64,
-    max_beneficiaries: u64,
+    is_transferable: bool,
+    is_cancellable: bool,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
     // Validate stream parameters
     let current_time = clock.timestamp_ms();
     assert!(
-        account_actions::stream_utils::validate_time_parameters(
+        account_actions::stream_utils::validate_iteration_parameters(
             start_time,
-            end_time,
+            iterations_total,
+            iteration_period_ms,
             &cliff_time,
             current_time
         ),
         EInvalidStreamParameters
     );
-    assert!(total_amount > 0, EAmountMustBeGreaterThanZero);
-    assert!(max_beneficiaries <= account_actions::stream_utils::max_beneficiaries(), ETooManyBeneficiaries);
+    assert!(amount_per_iteration > 0, EAmountMustBeGreaterThanZero);
 
     // Ensure vault exists and has sufficient balance
     let vault_exists = account.has_managed_data(VaultKey(vault_name));
@@ -1385,6 +1409,11 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
     let vault: &mut Vault = account.borrow_managed_data_mut(registry, VaultKey(vault_name), version::current());
     let coin_type_name = type_name::with_defining_ids<CoinType>();
     assert!(bag::contains(&vault.bag, coin_type_name), ECoinTypeDoesNotExist);
+
+    // Calculate total amount needed (with overflow protection)
+    let total_amount_u128 = (amount_per_iteration as u128) * (iterations_total as u128);
+    assert!(total_amount_u128 <= (18446744073709551615 as u128), EInsufficientBalance);
+    let total_amount = (total_amount_u128 as u64);
 
     let balance = vault.bag.borrow<TypeName, Balance<CoinType>>(coin_type_name);
     assert!(balance.value() >= total_amount, EInsufficientBalance);
@@ -1399,19 +1428,17 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
         id: stream_id,
         coin_type: coin_type_name,
         beneficiary,
-        total_amount,
+        amount_per_iteration,
         claimed_amount: 0,
         start_time,
-        end_time,
+        iterations_total,
+        iteration_period_ms,
         cliff_time,
+        claim_window_ms,
         max_per_withdrawal,
-        min_interval_ms,
-        last_withdrawal_time: 0,
-        expiry_timestamp: option::none(),
-        is_cancellable: true,
-        is_transferable: true,
+        is_transferable,
+        is_cancellable,
         additional_beneficiaries: vector::empty<address>(),
-        max_beneficiaries,
         metadata: option::none(),
     };
 
@@ -1425,10 +1452,11 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
     event::emit(StreamCreated {
         stream_id: stream_id_copy,
         beneficiary,
-        total_amount,
+        total_amount: amount_per_iteration,  // Event uses amount_per_iteration
         coin_type: coin_type_name,
         start_time,
-        end_time,
+        iterations_total,
+        iteration_period_ms,
     });
 
     stream_id_copy
@@ -1464,9 +1492,10 @@ public fun do_init_create_stream<Config: store, Outcome: store, CoinType: drop, 
     let mut reader = bcs::new(*action_data);
     let vault_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
     let beneficiary = bcs::peel_address(&mut reader);
-    let total_amount = bcs::peel_u64(&mut reader);
+    let amount_per_iteration = bcs::peel_u64(&mut reader);
     let start_time = bcs::peel_u64(&mut reader);
-    let end_time = bcs::peel_u64(&mut reader);
+    let iterations_total = bcs::peel_u64(&mut reader);
+    let iteration_period_ms = bcs::peel_u64(&mut reader);
 
     // Deserialize Option<u64> for cliff_time
     let cliff_time = if (bcs::peel_bool(&mut reader)) {
@@ -1475,9 +1504,16 @@ public fun do_init_create_stream<Config: store, Outcome: store, CoinType: drop, 
         option::none()
     };
 
+    // Deserialize Option<u64> for claim_window_ms
+    let claim_window_ms = if (bcs::peel_bool(&mut reader)) {
+        option::some(bcs::peel_u64(&mut reader))
+    } else {
+        option::none()
+    };
+
     let max_per_withdrawal = bcs::peel_u64(&mut reader);
-    let min_interval_ms = bcs::peel_u64(&mut reader);
-    let max_beneficiaries = bcs::peel_u64(&mut reader);
+    let is_transferable = bcs::peel_bool(&mut reader);
+    let is_cancellable = bcs::peel_bool(&mut reader);
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
@@ -1488,13 +1524,15 @@ public fun do_init_create_stream<Config: store, Outcome: store, CoinType: drop, 
         registry,
         vault_name,
         beneficiary,
-        total_amount,
+        amount_per_iteration,
         start_time,
-        end_time,
+        iterations_total,
+        iteration_period_ms,
         cliff_time,
+        claim_window_ms,
         max_per_withdrawal,
-        min_interval_ms,
-        max_beneficiaries,
+        is_transferable,
+        is_cancellable,
         clock,
         ctx,
     );
@@ -1516,11 +1554,6 @@ public fun stream_claimable_now(
     let stream = table::borrow(&vault.streams, stream_id);
     let current_time = clock.timestamp_ms();
 
-    // Check if stream is expired
-    if (stream_utils::is_expired(&stream.expiry_timestamp, current_time)) {
-        return 0
-    };
-
     // Check cliff
     if (stream.cliff_time.is_some()) {
         let cliff = *stream.cliff_time.borrow();
@@ -1531,18 +1564,21 @@ public fun stream_claimable_now(
         return 0
     };
 
-    // Calculate claimable using stream_utils
-    stream_utils::calculate_claimable(
-        stream.total_amount,
+    // Calculate claimable using iteration-based stream_utils
+    stream_utils::calculate_claimable_iterations(
+        stream.amount_per_iteration,
         stream.claimed_amount,
         stream.start_time,
-        stream.end_time,
+        stream.iterations_total,
+        stream.iteration_period_ms,
         current_time,
-        &stream.cliff_time
+        &stream.cliff_time,
+        &stream.claim_window_ms,
     )
 }
 
-/// Get next vesting time for a stream
+/// Get next vesting time for an iteration-based stream
+/// Returns the timestamp when the next iteration will unlock
 public fun stream_next_vest_time(
     vault: &Vault,
     stream_id: ID,
@@ -1551,12 +1587,29 @@ public fun stream_next_vest_time(
     let stream = table::borrow(&vault.streams, stream_id);
     let current_time = clock.timestamp_ms();
 
-    // Use stream_utils for calculation
-    stream_utils::next_vesting_time(
-        stream.start_time,
-        stream.end_time,
-        &stream.cliff_time,
-        &stream.expiry_timestamp,
-        current_time
-    )
+    // Check if before cliff
+    if (stream.cliff_time.is_some()) {
+        let cliff = *stream.cliff_time.borrow();
+        if (current_time < cliff) {
+            return option::some(cliff)
+        };
+    };
+
+    // Check if before start
+    if (current_time < stream.start_time) {
+        return option::some(stream.start_time)
+    };
+
+    // Calculate current iteration
+    let elapsed = current_time - stream.start_time;
+    let current_iteration = elapsed / stream.iteration_period_ms;
+
+    // If all iterations complete, no more vesting
+    if (current_iteration >= stream.iterations_total) {
+        return option::none()
+    };
+
+    // Next iteration time
+    let next_iteration_time = stream.start_time + ((current_iteration + 1) * stream.iteration_period_ms);
+    option::some(next_iteration_time)
 }

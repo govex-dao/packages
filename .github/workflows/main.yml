@@ -1,0 +1,184 @@
+name: Move Packages CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-move-packages:
+    name: Test All Move Packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Sui
+        uses: jaxxstorm/action-install-gh-release@v1.12.0
+        with:
+          repo: MystenLabs/sui
+          platform: ubuntu
+          version: testnet
+          cache: enable
+
+      # Test all packages in dependency order
+      - name: Test move-framework/packages/protocol
+        run: sui move test --silence-warnings --path ./move-framework/packages/protocol/
+
+      - name: Test move-framework/packages/actions
+        run: sui move test --silence-warnings --path ./move-framework/packages/actions/
+
+      - name: Test futarchy_one_shot_utils
+        run: sui move test --silence-warnings --path ./futarchy_one_shot_utils/
+
+      - name: Test futarchy_types
+        run: sui move test --silence-warnings --path ./futarchy_types/
+
+      - name: Test futarchy_core
+        run: sui move test --silence-warnings --path ./futarchy_core/
+
+      - name: Test futarchy_markets_core
+        run: sui move test --silence-warnings --path ./futarchy_markets_core/
+
+      - name: Test futarchy_markets_operations
+        run: sui move test --silence-warnings --path ./futarchy_markets_operations/
+
+      - name: Test futarchy_markets_primitives
+        run: sui move test --silence-warnings --path ./futarchy_markets_primitives/
+
+      - name: Test futarchy_oracle_actions
+        run: sui move test --silence-warnings --path ./futarchy_oracle_actions/
+
+      - name: Test futarchy_factory
+        run: sui move test --silence-warnings --path ./futarchy_factory/
+
+      - name: Test futarchy_governance
+        run: sui move test --silence-warnings --path ./futarchy_governance/
+
+      - name: Test futarchy_governance_actions
+        run: sui move test --silence-warnings --path ./futarchy_governance_actions/
+
+      - name: Test futarchy_actions
+        run: sui move test --silence-warnings --path ./futarchy_actions/
+
+  prettier-move:
+    name: Check Move Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Check formatting
+        run: |
+          npx prettier --check \
+            "move-framework/packages/protocol/**/*.move" \
+            "move-framework/packages/actions/**/*.move" \
+            "futarchy_one_shot_utils/**/*.move" \
+            "futarchy_types/**/*.move" \
+            "futarchy_core/**/*.move" \
+            "futarchy_markets_core/**/*.move" \
+            "futarchy_markets_operations/**/*.move" \
+            "futarchy_markets_primitives/**/*.move" \
+            "futarchy_oracle_actions/**/*.move" \
+            "futarchy_factory/**/*.move" \
+            "futarchy_governance/**/*.move" \
+            "futarchy_governance_actions/**/*.move" \
+            "futarchy_actions/**/*.move"
+
+  build-packages:
+    name: Build All Packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Sui
+        uses: jaxxstorm/action-install-gh-release@v1.12.0
+        with:
+          repo: MystenLabs/sui
+          platform: ubuntu
+          version: testnet
+          cache: enable
+
+      - name: Build all packages
+        run: |
+          for pkg in \
+            "move-framework/packages/protocol" \
+            "move-framework/packages/actions" \
+            "futarchy_one_shot_utils" \
+            "futarchy_types" \
+            "futarchy_core" \
+            "futarchy_markets_core" \
+            "futarchy_markets_operations" \
+            "futarchy_markets_primitives" \
+            "futarchy_oracle_actions" \
+            "futarchy_factory" \
+            "futarchy_governance" \
+            "futarchy_governance_actions" \
+            "futarchy_actions"; do
+            echo "Building $pkg..."
+            sui move build --path ./$pkg/
+          done
+
+  e2e-tests:
+    name: E2E Tests (Blocks Merge)
+    runs-on: ubuntu-latest
+    needs: [test-move-packages, prettier-move, build-packages]
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Sui CLI
+        uses: jaxxstorm/action-install-gh-release@v1.12.0
+        with:
+          repo: MystenLabs/sui
+          platform: ubuntu
+          version: testnet
+          cache: enable
+
+      - name: Setup Sui Client
+        env:
+          SUI_PRIVATE_KEY: ${{ secrets.SUI_PRIVATE_KEY }}
+        run: |
+          # Create sui config directory
+          mkdir -p ~/.sui/sui_config
+
+          # Import the keypair from secret
+          echo "$SUI_PRIVATE_KEY" | sui keytool import --alias ci-test --json
+
+          # Switch to devnet
+          sui client switch --env devnet
+
+          # Verify setup
+          echo "Active address: $(sui client active-address)"
+          echo "Active env: $(sui client active-env)"
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Launchpad E2E Test
+        run: npm run test:launchpad
+
+      - name: Run Proposal E2E Test
+        run: npm run test:proposal-real
+
+      - name: Run Proposal Cycle Test
+        run: npm run test:proposal-cycle
+
+      - name: Tests Passed
+        run: echo "✅ All E2E tests passed! PR can be merged."

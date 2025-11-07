@@ -1,0 +1,78 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Network to test against'
+        required: true
+        default: 'devnet'
+        type: choice
+        options:
+          - devnet
+          - testnet
+          - mainnet
+
+jobs:
+  e2e-tests:
+    name: Run E2E Tests on ${{ inputs.network }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Sui CLI
+        uses: jaxxstorm/action-install-gh-release@v1.12.0
+        with:
+          repo: MystenLabs/sui
+          platform: ubuntu
+          version: ${{ inputs.network == 'mainnet' && 'mainnet' || 'testnet' }}
+          cache: enable
+
+      - name: Setup Sui Client
+        env:
+          SUI_PRIVATE_KEY: ${{ secrets.SUI_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.sui/sui_config
+          echo "$SUI_PRIVATE_KEY" | sui keytool import --alias ci-test --json
+          sui client switch --env ${{ inputs.network }}
+          echo "Active address: $(sui client active-address)"
+          echo "Active env: $(sui client active-env)"
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Launchpad E2E Test
+        id: launchpad
+        run: npm run test:launchpad
+        continue-on-error: true
+
+      - name: Run Proposal E2E Test
+        id: proposal
+        run: npm run test:proposal-real
+        continue-on-error: true
+
+      - name: Run Proposal Cycle Test
+        id: cycle
+        run: npm run test:proposal-cycle
+        continue-on-error: true
+
+      - name: Test Results Summary
+        if: always()
+        run: |
+          echo "## E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Network:** ${{ inputs.network }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Launchpad E2E | ${{ steps.launchpad.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Proposal E2E | ${{ steps.proposal.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Proposal Cycle | ${{ steps.cycle.outcome }} |" >> $GITHUB_STEP_SUMMARY

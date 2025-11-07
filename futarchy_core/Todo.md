@@ -154,13 +154,11 @@ XXXXXX
 - [X] get prop working with executed stream
 - [x] maybe nft for AMM position doesn't make sense
 (check how pools track invidiual nfts's buckets and amounts)
-- [ ] tightly couple intent / action registry with init actions???
 - [x] add extra flag to streams so that can't claim stuff not claimed at end of period
-- [ ] maybe simple decay fee if time of last proposal was 1 hour ago??
-- [ ] cap transfers to 1/3rd treasury
+- [nah] cap transfers to 1/3rd treasury
+- [X] Linting and test script pipeline and E2E test pipeline / stop commiting to main / coverage
 - [ ] update all actions to use new format streams use. get LLMs to check streams patterm
-- [ ] Linting and test script pipeline and E2E test pipeline / stop commiting to main / coverage
-
+- [ ] tightly couple intent / action registry with init actions???
 
 
 > so this makes me think\

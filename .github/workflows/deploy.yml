@@ -1,0 +1,89 @@
+name: Deploy Verified Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Target network'
+        required: true
+        default: 'devnet'
+        type: choice
+        options:
+          - devnet
+          - testnet
+          - mainnet
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.network }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Sui
+        uses: jaxxstorm/action-install-gh-release@v1.12.0
+        with:
+          repo: MystenLabs/sui
+          platform: ubuntu
+          version: ${{ inputs.network }}
+          cache: enable
+
+      - name: Setup Sui wallet
+        env:
+          SUI_PRIVATE_KEY: ${{ secrets.SUI_PRIVATE_KEY }}
+        run: |
+          # Import wallet from private key
+          echo "$SUI_PRIVATE_KEY" | sui keytool import --alias deployer --json
+
+          # Switch to target network
+          sui client switch --env ${{ inputs.network }}
+
+      - name: Deploy packages
+        run: |
+          chmod +x ./deploy_verified.sh
+          ./deploy_verified.sh
+
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-${{ inputs.network }}-${{ github.sha }}
+          path: |
+            deployments/*.json
+            deployments-processed/*.json
+          retention-days: 90
+
+      - name: Comment deployment status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const network = '${{ inputs.network }}';
+            const sha = '${{ github.sha }}';
+
+            let message = `## Package Deployment Summary\n\n`;
+            message += `**Network**: ${network}\n`;
+            message += `**Commit**: ${sha}\n\n`;
+
+            if ('${{ job.status }}' === 'success') {
+              message += '✅ All packages deployed successfully!\n\n';
+              message += 'Deployment artifacts have been uploaded and are available for 90 days.';
+            } else {
+              message += '❌ Package deployment failed. Check the workflow logs for details.';
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            })
+
+      - name: Commit deployment files
+        if: success()
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add deployments/*.json deployments-processed/*.json
+          git add */Move.toml */Move.lock
+          git commit -m "Update deployment artifacts for ${{ inputs.network }}" || echo "No changes to commit"
+          git push

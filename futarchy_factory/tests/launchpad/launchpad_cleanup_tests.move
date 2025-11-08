@@ -165,26 +165,16 @@ fun test_cleanup_failed_raise_returns_treasury_cap() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, creator);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<CLEANUP_TOKEN, CLEANUP_STABLE>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contribute only 10k (below 100k minimum)
@@ -268,26 +258,16 @@ fun test_cleanup_failed_raise_cleans_dao_resources() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, creator);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<CLEANUP_TOKEN, CLEANUP_STABLE>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contribute below minimum
@@ -366,26 +346,16 @@ fun test_cleanup_cannot_run_on_successful_raise() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, creator);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<CLEANUP_TOKEN, CLEANUP_STABLE>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contribute ABOVE minimum (20k > 10k min)

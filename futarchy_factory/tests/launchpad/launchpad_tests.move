@@ -298,6 +298,18 @@ fun test_launchpad_contribution() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents and start raise
+    ts::next_tx(&mut scenario, sender);
+    {
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR_3, TEST_STABLE_REGULAR>>(&scenario);
+
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Contributor makes a contribution
     ts::next_tx(&mut scenario, contributor);
     {
@@ -387,47 +399,13 @@ fun test_settlement_and_successful_raise() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO
-    ts::next_tx(&mut scenario, sender);
-    {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
-
-        launchpad::pre_create_dao_for_raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>(
-            &mut raise,
-            &creator_cap,
-            &mut factory,
-            &registry,
-            &mut fee_manager,
-            dao_payment,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-
-        clock::destroy_for_testing(clock);
-        ts::return_to_sender(&scenario, creator_cap);
-        ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
-    };
-
-    // Lock intents
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
 
-        launchpad::lock_intents_and_start_raise(
-            &mut raise,
-            &creator_cap,
-            ts::ctx(&mut scenario)
-        );
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
@@ -548,36 +526,16 @@ fun test_pro_rata_allocation_logic() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock intents
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
-
-        launchpad::pre_create_dao_for_raise(
-            &mut raise,
-            &creator_cap,
-            &mut factory,
-            &registry,
-            &mut fee_manager,
-            dao_payment,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
 
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Alice: 8k with 10k cap
@@ -654,7 +612,6 @@ fun test_pro_rata_allocation_logic() {
 }
 
 #[test]
-#[expected_failure(abort_code = launchpad::EMinRaiseNotMet)]
 fun test_failed_raise_settlement() {
     let sender = @0xA;
     let contributor = @0xB;
@@ -703,26 +660,16 @@ fun test_failed_raise_settlement() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Only contribute 5k (below 20k minimum)
@@ -739,19 +686,47 @@ fun test_failed_raise_settlement() {
         ts::return_shared(factory);
     };
 
-    // Try to settle (should fail with EMinRaiseNotMet)
+    // Advance past deadline and settle
+    ts::next_tx(&mut scenario, sender);
+    let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
+    clock::increment_for_testing(&mut clock, constants::launchpad_duration_ms() + 1);
+
     ts::next_tx(&mut scenario, sender);
     {
-        let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        clock::increment_for_testing(&mut clock, constants::launchpad_duration_ms() + 1);
-
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
         launchpad::settle_raise(&mut raise, &clock, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
+        // Settlement succeeds even when min not met (new behavior)
+        assert!(launchpad::settlement_done(&raise), 0);
+        assert!(launchpad::final_raise_amount(&raise) == 5_000_000_000, 1);
+
         ts::return_shared(raise);
     };
 
+    // Complete raise - this will set state to FAILED because min not met
+    ts::next_tx(&mut scenario, sender);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
+        let registry = ts::take_shared<PackageRegistry>(&scenario);
+
+        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
+
+        ts::return_shared(raise);
+        ts::return_shared(factory);
+        ts::return_shared(registry);
+    };
+
+    // Verify raise is in FAILED state (STATE_FAILED = 2)
+    ts::next_tx(&mut scenario, sender);
+    {
+        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        assert!(launchpad::state(&raise) == 2, 2);
+        ts::return_shared(raise);
+    };
+
+    clock::destroy_for_testing(clock);
     ts::end(scenario);
 }
 
@@ -804,26 +779,16 @@ fun test_claim_tokens_successful_raise() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO, lock intents
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR_2, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contribute
@@ -855,19 +820,16 @@ fun test_claim_tokens_successful_raise() {
     // Complete raise
     ts::next_tx(&mut scenario, sender);
     {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR_2, TEST_STABLE_REGULAR>>(&scenario);
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        let final_amount = launchpad::final_raise_amount(&raise);
-        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
 
-        ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
+        ts::return_shared(factory);
         ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Claim tokens
@@ -941,26 +903,16 @@ fun test_claim_refund_failed_raise() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR_2, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contribute only 10k (below min)
@@ -1059,26 +1011,16 @@ fun test_batch_claim_tokens() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR_3, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Alice, Bob, Charlie contribute
@@ -1135,19 +1077,16 @@ fun test_batch_claim_tokens() {
 
     ts::next_tx(&mut scenario, sender);
     {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR_3, TEST_STABLE_REGULAR>>(&scenario);
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        let final_amount = launchpad::final_raise_amount(&raise);
-        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
 
-        ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
+        ts::return_shared(factory);
         ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Cranker batch claims for all contributors
@@ -1228,26 +1167,16 @@ fun test_early_raise_completion() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contribute
@@ -1341,36 +1270,16 @@ fun test_raised_stables_in_dao_vault() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, sender);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
-
-        launchpad::pre_create_dao_for_raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>(
-            &mut raise,
-            &creator_cap,
-            &mut factory,
-            &registry,
-            &mut fee_manager,
-            dao_payment,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
 
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contributor 1: 30k with unlimited cap
@@ -1409,19 +1318,16 @@ fun test_raised_stables_in_dao_vault() {
     // Complete raise and verify vault
     ts::next_tx(&mut scenario, sender);
     {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        let final_amount = launchpad::final_raise_amount(&raise);
-        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
 
-        ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
+        ts::return_shared(factory);
         ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Verify the raise state

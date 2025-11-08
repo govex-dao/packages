@@ -167,26 +167,16 @@ fun test_sweep_dust_after_claim_period() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, creator);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Two contributors contribute
@@ -230,19 +220,16 @@ fun test_sweep_dust_after_claim_period() {
 
     ts::next_tx(&mut scenario, creator);
     {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        let final_amount = launchpad::final_raise_amount(&raise);
-        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
 
-        ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
+        ts::return_shared(factory);
         ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Only contributor1 claims (contributor2 doesn't claim - leaving dust)
@@ -265,13 +252,13 @@ fun test_sweep_dust_after_claim_period() {
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
-        let mut dao_account = ts::take_from_sender<Account>(&scenario);
+        let mut dao_account = ts::take_shared<Account>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
         launchpad::sweep_dust(&mut raise, &creator_cap, &mut dao_account, &registry, &clock, ts::ctx(&mut scenario));
 
         ts::return_to_sender(&scenario, creator_cap);
-        ts::return_to_sender(&scenario, dao_account);
+        ts::return_shared(dao_account);
         ts::return_shared(registry);
         ts::return_shared(raise);
     };
@@ -342,26 +329,16 @@ fun test_sweep_dust_fails_before_claim_period() {
         ts::return_shared(fee_manager);
     };
 
-    // Pre-create DAO and lock
+    // Lock intents and start raise
     ts::next_tx(&mut scenario, creator);
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
-        let mut factory = ts::take_shared<factory::Factory>(&scenario);
-        let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        launchpad::pre_create_dao_for_raise(&mut raise, &creator_cap, &mut factory, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
 
-        clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
-        ts::return_shared(factory);
-        ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Contribute
@@ -392,19 +369,16 @@ fun test_sweep_dust_fails_before_claim_period() {
 
     ts::next_tx(&mut scenario, creator);
     {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let dao_payment = create_payment(fee::get_dao_creation_fee(&fee_manager), &mut scenario);
 
-        let final_amount = launchpad::final_raise_amount(&raise);
-        launchpad::complete_raise_test(&mut raise, &creator_cap, final_amount, &registry, &mut fee_manager, dao_payment, &clock, ts::ctx(&mut scenario));
+        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
 
-        ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(raise);
+        ts::return_shared(factory);
         ts::return_shared(registry);
-        ts::return_shared(fee_manager);
     };
 
     // Try to sweep dust immediately after completion (before claim period) - should fail
@@ -412,14 +386,14 @@ fun test_sweep_dust_fails_before_claim_period() {
     {
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
-        let mut dao_account = ts::take_from_sender<Account>(&scenario);
+        let mut dao_account = ts::take_shared<Account>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
         launchpad::sweep_dust(&mut raise, &creator_cap, &mut dao_account, &registry, &clock, ts::ctx(&mut scenario));
 
         clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);
-        ts::return_to_sender(&scenario, dao_account);
+        ts::return_shared(dao_account);
         ts::return_shared(registry);
         ts::return_shared(raise);
     };

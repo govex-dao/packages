@@ -1430,7 +1430,8 @@ public fun new_for_testing<AssetType, StableType>(
         new_with_aggregator<AssetType, StableType>(
             fee_bps,
             option::none(), // No fee schedule in tests by default
-            8000,
+            8000, // oracle_conditional_threshold_bps (80%)
+            50, // conditional_liquidity_ratio_percent (50%)
             &clock,
             ctx
         )
@@ -1438,6 +1439,8 @@ public fun new_for_testing<AssetType, StableType>(
         new<AssetType, StableType>(
             fee_bps,
             option::none(), // No fee schedule in tests by default
+            5000, // oracle_conditional_threshold_bps (50%)
+            50, // conditional_liquidity_ratio_percent (50%)
             &clock,
             ctx
         )

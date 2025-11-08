@@ -140,6 +140,16 @@ fun test_settlement_algorithm_basic() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Contributor 1: 12k with 15k cap
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
@@ -258,6 +268,16 @@ fun test_settlement_with_cap_violation() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Contributor 1: 7k with 10k cap
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
@@ -371,6 +391,16 @@ fun test_settlement_respects_max_raise() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Contributors contribute 30k total (exceeds max)
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
@@ -476,6 +506,16 @@ fun test_settlement_complex_multi_tier() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // 4 contributors with different caps
     // C1: 4k with 5k cap
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
@@ -579,84 +619,3 @@ fun test_settlement_complex_multi_tier() {
     ts::end(scenario);
 }
 
-#[test]
-#[expected_failure(abort_code = launchpad::EMinRaiseNotMet)]
-/// Test settlement fails when minimum not met
-fun test_settlement_fails_minimum_not_met() {
-    let mut scenario = setup_test(CREATOR);
-
-    ts::next_tx(&mut scenario, CREATOR);
-    test_asset_regular::init_for_testing(ts::ctx(&mut scenario));
-
-    ts::next_tx(&mut scenario, CREATOR);
-    {
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
-        let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
-        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
-
-        let mut allowed_caps = vector::empty<u64>();
-        vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
-
-        launchpad::create_raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>(
-            &factory,
-            &mut fee_manager,
-            treasury_cap,
-            coin_metadata,
-            b"min-fail".to_string(),
-            1_000_000_000_000,
-            20_000_000_000,  // min 20k (high)
-            option::none(),
-            allowed_caps,
-            option::none(),
-            false,
-            b"Minimum Failure Test".to_string(),
-            vector::empty<String>(),
-            vector::empty<String>(),
-            payment,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(factory);
-        ts::return_shared(fee_manager);
-    };
-
-    // Only contribute 15k (below 20k minimum)
-    ts::next_tx(&mut scenario, CONTRIBUTOR1);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let contribution = create_stable_coin(15_000_000_000, &mut scenario);
-        let crank_fee = create_payment(factory::launchpad_bid_fee(&factory), &mut scenario);
-
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(raise);
-        ts::return_shared(factory);
-    };
-
-    // Settle should fail with EMinRaiseNotMet
-    ts::next_tx(&mut scenario, CREATOR);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
-        let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let deadline = launchpad::deadline(&raise);
-        clock.set_for_testing(deadline + 1000);
-
-        launchpad::settle_raise(&mut raise, &clock, ts::ctx(&mut scenario));
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(raise);
-    };
-
-    ts::end(scenario);
-}

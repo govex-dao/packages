@@ -33,6 +33,14 @@ public struct TransferObject has drop {}
 /// Transfer object to transaction sender
 public struct TransferToSender has drop {}
 
+// === Constructors ===
+
+/// Create a TransferObject action type marker
+public fun transfer_object(): TransferObject { TransferObject {} }
+
+/// Create a TransferToSender action type marker
+public fun transfer_to_sender(): TransferToSender { TransferToSender {} }
+
 // === Structs ===
 
 /// Action used in combination with other actions (like WithdrawAction) to transfer objects to a recipient.

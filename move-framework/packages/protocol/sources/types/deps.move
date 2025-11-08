@@ -87,7 +87,7 @@ public fun new_for_testing_with_config_and_registry(
 
 #[test]
 fun test_new_and_check(ctx: &mut TxContext) {
-    let registry = package_registry::new_for_testing(ctx);
+    let mut registry = package_registry::new_for_testing(ctx);
 
     // Add AccountProtocol to registry
     package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);

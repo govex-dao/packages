@@ -659,6 +659,7 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
         amm_total_fee_bps, // Factory uses same fee for both conditional and spot
         option::none(), // No launch fee schedule by default (can be added via init specs)
         8000, // oracle_conditional_threshold_bps (80% threshold)
+        50, // conditional_liquidity_ratio_percent (50%)
         clock,
         ctx,
     );

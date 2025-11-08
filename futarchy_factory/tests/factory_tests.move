@@ -39,6 +39,17 @@ fun setup_test(sender: address): Scenario {
         package_registry::init_for_testing(ts::ctx(&mut scenario));
     };
 
+    // Register packages in registry
+    ts::next_tx(&mut scenario, sender);
+    {
+        let mut registry = ts::take_shared<package_registry::PackageRegistry>(&scenario);
+        package_registry::add_for_testing(&mut registry, b"account_protocol".to_string(), @account_protocol, 1);
+        package_registry::add_for_testing(&mut registry, b"account_actions".to_string(), @account_actions, 1);
+        package_registry::add_for_testing(&mut registry, b"futarchy_core".to_string(), @futarchy_core, 1);
+        package_registry::add_for_testing(&mut registry, b"futarchy_factory".to_string(), @futarchy_factory, 1);
+        ts::return_shared(registry);
+    };
+
     // Add TEST_STABLE_REGULAR as allowed stable type
     ts::next_tx(&mut scenario, sender);
     {

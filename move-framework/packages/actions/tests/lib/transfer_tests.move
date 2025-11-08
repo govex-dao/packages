@@ -1,13 +1,14 @@
 #[test_only]
 module account_actions::transfer_tests;
 
-use account_actions::transfer as acc_transfer;
+use account_actions::transfer::{Self as acc_transfer, TransferObject};
 use account_actions::version;
 use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
 use account_protocol::intent_interface;
 use account_protocol::intents;
+use sui::bcs;
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;
@@ -49,8 +50,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
     package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
 
-    let deps = deps::new(&registry), b"AccountActions".to_string()],
-    );
+    let deps = deps::new_for_testing(&extensions);
     let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
@@ -93,7 +93,8 @@ fun test_transfer_basic() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            acc_transfer::new_transfer(intent, RECIPIENT, iw);
+            let action_data = bcs::to_bytes(&RECIPIENT);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), action_data, iw);
         },
     );
 
@@ -154,7 +155,8 @@ fun test_transfer_to_sender() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            acc_transfer::new_transfer_to_sender(intent, iw);
+            let action_data = vector::empty();
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), action_data, iw);
         },
     );
 
@@ -215,9 +217,9 @@ fun test_multiple_transfers() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            acc_transfer::new_transfer(intent, RECIPIENT, iw);
-            acc_transfer::new_transfer(intent, @0xDEAD, iw);
-            acc_transfer::new_transfer(intent, @0xFACE, iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), bcs::to_bytes(&RECIPIENT), iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), bcs::to_bytes(&@0xDEAD), iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), bcs::to_bytes(&@0xFACE), iw);
         },
     );
 
@@ -285,8 +287,8 @@ fun test_transfer_different_types() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            acc_transfer::new_transfer(intent, RECIPIENT, iw);
-            acc_transfer::new_transfer(intent, RECIPIENT, iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), bcs::to_bytes(&RECIPIENT), iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), bcs::to_bytes(&RECIPIENT), iw);
         },
     );
 
@@ -366,7 +368,8 @@ fun test_delete_transfer_action() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            acc_transfer::new_transfer(intent, RECIPIENT, iw);
+            let action_data = bcs::to_bytes(&RECIPIENT);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), action_data, iw);
         },
     );
 
@@ -417,9 +420,9 @@ fun test_transfer_mixed_with_sender() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            acc_transfer::new_transfer(intent, RECIPIENT, iw);
-            acc_transfer::new_transfer_to_sender(intent, iw);
-            acc_transfer::new_transfer(intent, @0xBEEF, iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), bcs::to_bytes(&RECIPIENT), iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), vector::empty(), iw);
+            intents::add_typed_action(intent, acc_transfer::transfer_object(), bcs::to_bytes(&@0xBEEF), iw);
         },
     );
 

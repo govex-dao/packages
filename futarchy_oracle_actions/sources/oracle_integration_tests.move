@@ -40,12 +40,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     package_registry::add_for_testing(&mut registry, b"futarchy_core".to_string(), @futarchy_core, 1);
     package_registry::add_for_testing(&mut registry, b"futarchy_oracle".to_string(), @futarchy_oracle, 1);
 
-    let deps = deps::new(&registry, vector[
-            b"account_actions".to_string(),
-            b"futarchy_core".to_string(),
-            b"futarchy_oracle".to_string()
-        ]
-    );
+    let deps = deps::new_for_testing(&registry);
 
     // Create minimal DaoConfig for testing
     let metadata_config = dao_config::new_metadata_config(

@@ -51,8 +51,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
     package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
 
-    let deps = deps::new(&registry), b"AccountActions".to_string()],
-    );
+    let deps = deps::new_for_testing(&extensions);
     let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
@@ -122,8 +121,10 @@ fun test_borrow_and_return_cap() {
         AccessControlIntent(),
         scenario.ctx(),
         |intent, iw| {
-            access_control::new_borrow<_, TestCap, _>(intent, iw);
-            access_control::new_return<_, TestCap, _>(intent, iw);
+            let action_data = vector[];
+            intents::add_typed_action(intent, access_control::access_control_borrow(), action_data, iw);
+            let action_data = vector[];
+            intents::add_typed_action(intent, access_control::access_control_return(), action_data, iw);
         },
     );
 
@@ -202,8 +203,9 @@ fun test_borrow_without_return_fails() {
         AccessControlIntent(),
         scenario.ctx(),
         |intent, iw| {
-            access_control::new_borrow<_, TestCap, _>(intent, iw);
-            // Missing new_return - should fail at execution
+            let action_data = vector[];
+            intents::add_typed_action(intent, access_control::access_control_borrow(), action_data, iw);
+            // Missing add_typed_action for return - should fail at execution
         },
     );
 
@@ -277,8 +279,10 @@ fun test_delete_borrow_action() {
         AccessControlIntent(),
         scenario.ctx(),
         |intent, iw| {
-            access_control::new_borrow<_, TestCap, _>(intent, iw);
-            access_control::new_return<_, TestCap, _>(intent, iw);
+            let action_data = vector[];
+            intents::add_typed_action(intent, access_control::access_control_borrow(), action_data, iw);
+            let action_data = vector[];
+            intents::add_typed_action(intent, access_control::access_control_return(), action_data, iw);
         },
     );
 

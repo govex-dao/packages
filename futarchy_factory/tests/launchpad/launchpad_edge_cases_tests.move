@@ -135,6 +135,16 @@ fun test_zero_contribution_rejected() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Try to contribute 0 (should fail)
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
@@ -211,6 +221,16 @@ fun test_contribution_before_start_time() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Try to contribute immediately (should fail - not started yet)
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
@@ -284,6 +304,16 @@ fun test_contribution_after_deadline() {
         clock::destroy_for_testing(clock);
         ts::return_shared(factory);
         ts::return_shared(fee_manager);
+    };
+
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
     };
 
     // Try to contribute after deadline
@@ -365,6 +395,16 @@ fun test_settlement_before_deadline() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Contribute
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
@@ -442,6 +482,16 @@ fun test_double_settlement_rejected() {
         clock::destroy_for_testing(clock);
         ts::return_shared(factory);
         ts::return_shared(fee_manager);
+    };
+
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
     };
 
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
@@ -537,6 +587,16 @@ fun test_contribution_of_view_function() {
         clock::destroy_for_testing(clock);
         ts::return_shared(factory);
         ts::return_shared(fee_manager);
+    };
+
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
     };
 
     // Check contribution_of before contribution (should be 0)

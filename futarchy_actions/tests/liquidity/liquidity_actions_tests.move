@@ -50,6 +50,7 @@ fun test_new_create_pool_action() {
         2000u64,       // initial_stable_amount
         30u64,         // fee_bps (0.3%)
         1000u64,       // minimum_liquidity
+        50u64,         // conditional_liquidity_ratio_percent
     );
 
     // Verify getters
@@ -70,6 +71,7 @@ fun test_new_create_pool_zero_asset_fails() {
         2000u64,
         30u64,
         1000u64,
+        50u64,         // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -83,6 +85,7 @@ fun test_new_create_pool_zero_stable_fails() {
         0u64,          // zero stable amount
         30u64,
         1000u64,
+        50u64,         // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -96,6 +99,7 @@ fun test_new_create_pool_invalid_fee_fails() {
         2000u64,
         10001u64,      // > 100%
         1000u64,
+        50u64,         // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -109,6 +113,7 @@ fun test_new_create_pool_zero_min_liquidity_fails() {
         2000u64,
         30u64,
         0u64,          // zero minimum_liquidity
+        50u64,         // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -121,6 +126,7 @@ fun test_new_create_pool_extreme_values() {
         18446744073709551615u64,  // max u64
         10000u64,                  // max fee (100%)
         1u64,                      // min liquidity
+        50u64,                     // conditional_liquidity_ratio_percent
     );
 
     destroy(action);
@@ -423,7 +429,7 @@ fun test_new_withdraw_fees_action_both_zero_fails() {
 /// Test destroy functions work correctly
 fun test_destruction_functions() {
     let create_pool = liquidity_actions::new_create_pool_action<TestAsset, TestStable>(
-        1000u64, 2000u64, 30u64, 1000u64
+        1000u64, 2000u64, 30u64, 1000u64, 50u64
     );
     liquidity_actions::destroy_create_pool_action(create_pool);
 

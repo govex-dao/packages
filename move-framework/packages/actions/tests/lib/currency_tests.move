@@ -1,7 +1,7 @@
 #[test_only]
 module account_actions::currency_tests;
 
-use account_actions::currency;
+use account_actions::currency::{Self, CurrencyMint, CurrencyBurn, CurrencyDisable};
 use account_actions::version;
 use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
@@ -9,6 +9,7 @@ use account_protocol::deps;
 use account_protocol::intent_interface;
 use account_protocol::intents;
 use std::option;
+use sui::bcs;
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin, TreasuryCap};
 use sui::sui::SUI;
@@ -49,8 +50,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
     package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
 
-    let deps = deps::new(&registry), b"AccountActions".to_string()],
-    );
+    let deps = deps::new_for_testing(&extensions);
     let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
@@ -143,7 +143,8 @@ fun test_mint_and_burn_basic() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_mint<_, SUI, _>(intent, 100, iw);
+            let action_data = bcs::to_bytes(&100u64);
+            intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
 
@@ -194,7 +195,8 @@ fun test_mint_and_burn_basic() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_burn<_, SUI, _>(intent, 100, iw);
+            let action_data = bcs::to_bytes(&100u64);
+            intents::add_typed_action(intent, currency::currency_burn(), action_data, iw);
         },
     );
 
@@ -256,7 +258,8 @@ fun test_mint_exceeds_max_supply() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_mint<_, SUI, _>(intent, 100, iw);
+            let action_data = bcs::to_bytes(&100u64);
+            intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
 
@@ -314,16 +317,16 @@ fun test_disable_permissions() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_disable<_, SUI, _>(
-                intent,
-                true, // mint
-                true, // burn
-                false, // update_symbol
-                false, // update_name
-                false, // update_description
-                false, // update_icon
-                iw,
-            );
+            // BCS encode 6 bools: mint, burn, update_symbol, update_name, update_description, update_icon
+            let action_data = vector[
+                0x01, // mint = true
+                0x01, // burn = true
+                0x00, // update_symbol = false
+                0x00, // update_name = false
+                0x00, // update_description = false
+                0x00  // update_icon = false
+            ];
+            intents::add_typed_action(intent, currency::currency_disable(), action_data, iw);
         },
     );
 
@@ -386,7 +389,8 @@ fun test_mint_when_disabled() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_disable<_, SUI, _>(intent, true, false, false, false, false, false, iw);
+            let action_data = vector[0x01, 0x00, 0x00, 0x00, 0x00, 0x00]; // disable mint only
+            intents::add_typed_action(intent, currency::currency_disable(), action_data, iw);
         },
     );
 
@@ -427,7 +431,8 @@ fun test_mint_when_disabled() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_mint<_, SUI, _>(intent, 50, iw);
+            let action_data = bcs::to_bytes(&50u64);
+            intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
 
@@ -485,7 +490,8 @@ fun test_public_burn() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_mint<_, SUI, _>(intent, 200, iw);
+            let action_data = bcs::to_bytes(&200u64);
+            intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
 
@@ -615,7 +621,8 @@ fun test_burn_wrong_value() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_mint<_, SUI, _>(intent, 100, iw);
+            let action_data = bcs::to_bytes(&100u64);
+            intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
     let (_, mut exec1) = account.create_executable<Config, Outcome, Witness>(
@@ -655,7 +662,8 @@ fun test_burn_wrong_value() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_burn<_, SUI, _>(intent, 50, iw);
+            let action_data = bcs::to_bytes(&50u64);
+            intents::add_typed_action(intent, currency::currency_burn(), action_data, iw);
         },
     );
     let (_, mut exec2) = account.create_executable<Config, Outcome, Witness>(
@@ -711,7 +719,8 @@ fun test_delete_actions() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_disable<_, SUI, _>(intent, true, false, false, false, false, false, iw);
+            let action_data = vector[0x01, 0x00, 0x00, 0x00, 0x00, 0x00]; // disable mint only
+            intents::add_typed_action(intent, currency::currency_disable(), action_data, iw);
         },
     );
 
@@ -733,7 +742,8 @@ fun test_delete_actions() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_mint<_, SUI, _>(intent, 10, iw);
+            let action_data = bcs::to_bytes(&10u64);
+            intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
 
@@ -755,7 +765,8 @@ fun test_delete_actions() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            currency::new_burn<_, SUI, _>(intent, 10, iw);
+            let action_data = bcs::to_bytes(&10u64);
+            intents::add_typed_action(intent, currency::currency_burn(), action_data, iw);
         },
     );
 

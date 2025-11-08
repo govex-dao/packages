@@ -41,8 +41,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
     package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
 
-    let deps = deps::new(&registry), b"AccountActions".to_string()],
-    );
+    let deps = deps::new_for_testing(&extensions);
     let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     // create world

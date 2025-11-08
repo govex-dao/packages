@@ -144,6 +144,16 @@ fun test_pro_rata_cap_exclusion() {
         ts::return_shared(fee_manager);
     };
 
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
+    };
+
     // Contributor 1 contributes with 10k cap
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
@@ -276,6 +286,16 @@ fun test_contribution_multiple_times_same_cap() {
         clock::destroy_for_testing(clock);
         ts::return_shared(factory);
         ts::return_shared(fee_manager);
+    };
+
+    // Lock intents before accepting contributions
+    ts::next_tx(&mut scenario, CREATOR);
+    {
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
+        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
+        ts::return_to_sender(&scenario, creator_cap);
+        ts::return_shared(raise);
     };
 
     // First contribution

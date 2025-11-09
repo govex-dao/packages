@@ -1,12 +1,19 @@
 {
   "packageName": "AccountProtocol",
-  "transactionDigest": "GWYSyyC5ruyGsQ2VKsGWXoGzmwbpZ94unNFy91uF2grw",
-  "packageId": "0x6503bcc7f9e1678938e80df33064b127e6c7d5eb26ee27e14fa872ed3a340af6",
+  "transactionDigest": "E2FmEdVvv6kdK2ntjbpGKvEj6hwL4wyT9fAPqf3QD5oa",
+  "packageId": "0xb0d09d6cdd4fc923edd080356460a0c6b481a6aac3cadc968629a5292d3f1c12",
+  "upgradeCap": {
+    "objectId": "0x5ee4828836439267b37e91b585b44eba9a968802095545237f0deeb23695b602",
+    "objectType": "0x2::package::UpgradeCap",
+    "owner": {
+      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+    }
+  },
   "adminCaps": [
     {
       "name": "PackageAdminCap",
-      "objectId": "0x2f5e69158d77b998114bc075ca41d661092f153b855a358a49ccc4b59cb0bf42",
-      "objectType": "0x6503bcc7f9e1678938e80df33064b127e6c7d5eb26ee27e14fa872ed3a340af6::package_registry::PackageAdminCap",
+      "objectId": "0x189038212ce93bffbd62f59a82639d6ad3c88d8fbfbf1863e246473089de625a",
+      "objectType": "0xb0d09d6cdd4fc923edd080356460a0c6b481a6aac3cadc968629a5292d3f1c12::package_registry::PackageAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -15,22 +22,15 @@
   "sharedObjects": [
     {
       "name": "PackageRegistry",
-      "objectId": "0x22bb0b74ebb0cea10a397f9ae0c157d71c9df2241ecfef88db6c57afc1531c6f",
-      "objectType": "0x6503bcc7f9e1678938e80df33064b127e6c7d5eb26ee27e14fa872ed3a340af6::package_registry::PackageRegistry",
+      "objectId": "0x8b4e4fc68a651ea1909eb2c873e76b261d390e3d2083c6c33383f3aa1132acb3",
+      "objectType": "0xb0d09d6cdd4fc923edd080356460a0c6b481a6aac3cadc968629a5292d3f1c12::package_registry::PackageRegistry",
       "owner": {
         "Shared": {
-          "initial_shared_version": 6
+          "initial_shared_version": 9915689
         }
       },
-      "initialSharedVersion": 6
+      "initialSharedVersion": 9915689
     }
   ],
-  "ownedObjects": [],
-  "upgradeCap": {
-    "objectId": "0x97b6d8c89e63acaea71ed527f5d35e78ac08e1978bc164b10781c04c67a54c18",
-    "objectType": "0x2::package::UpgradeCap",
-    "owner": {
-      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
-    }
-  }
+  "ownedObjects": []
 }

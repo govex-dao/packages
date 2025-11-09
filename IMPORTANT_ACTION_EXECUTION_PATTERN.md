@@ -73,9 +73,13 @@ public struct ActionSpec has store, copy, drop {
 - ✅ TypeName allows type validation at execution
 - ✅ Versioned for forward compatibility
 
-### Layer 3: `do_*` Execution Functions
+### Layer 3: `do_init_*` Execution Functions
 
 Execution functions **read from Executable, validate type, deserialize, execute**.
+
+**Naming Convention:**
+- `do_init_*` functions are used for **both launchpad AND proposal execution**
+- Regular `do_*` functions (like `do_spend`, `do_deposit`) are used for **post-initialization operations on shared accounts** (not part of the 3-layer pattern)
 
 ```move
 // Example: packages/move-framework/packages/actions/sources/lib/vault.move:1439
@@ -389,7 +393,8 @@ For each action type (stream, pool, mint, transfer, etc.), implement:
 public struct CreatePool has drop {}
 ```
 
-### 3. `do_*` Execution Function (Layer 3)
+### 3. `do_init_*` Execution Function (Layer 3)
+**Important:** Function MUST be named `do_init_*` for both launchpad AND proposals!
 - [ ] Signature: `public fun do_init_<action_name><Config, Outcome, ...>(executable: &mut Executable<Outcome>, ...)`
 - [ ] Assert account ownership: `executable.intent().assert_is_account(account.addr())`
 - [ ] Get ActionSpec: `let spec = executable.intent().action_specs().borrow(executable.action_idx())`
@@ -537,12 +542,81 @@ launchpad::finalize_init_execution(executable, account, registry, clock, ctx);
 - [ ] `finalize_launchpad_init` (confirms execution, cleans up resources)
 
 #### Phase 2: Proposal Actions (Governance)
-- [ ] `do_spend` (already exists at vault.move:878 - verify pattern)
-- [ ] `do_deposit` (already exists at vault.move:637 - verify pattern)
-- [ ] `do_mint` (needs to be built)
-- [ ] `do_transfer` (needs to be built)
-- [ ] `do_upgrade_package` (needs to be built)
-- [ ] Review `ptb_executor.move` - ensure it uses same pattern
+**Note:** Proposals use `do_init_*` functions (same pattern as launchpad), NOT regular `do_*` functions!
+
+**COMPLETED - Full 3-Layer Pattern:**
+- [X] `do_init_create_stream` (vault.move:1439 - verified working)
+- [X] `do_init_withdraw_and_transfer` (vault.move - NEW - withdraws from vault + transfers)
+- [X] `do_init_remove_treasury_cap` (currency.move - verified working)
+- [X] `do_init_remove_metadata` (currency.move - verified working)
+- [X] `do_emit_memo` (memo.move - reuses existing, has Layer 1 & 2 added)
+- [X] `do_deposit` (vault.move:617 - has Layer 3, added Layers 1 & 2 in vault_init_actions.move)
+- [X] `do_spend` (vault.move:775 - has Layer 3, added Layers 1 & 2 in vault_init_actions.move)
+- [X] `do_cancel_stream` (vault.move:676 - has Layer 3, added Layers 1 & 2 in vault_init_actions.move)
+- [X] `do_approve_coin_type` (vault.move:838 - has Layer 3, added Layers 1 & 2 in vault_init_actions.move)
+- [X] `do_remove_approved_coin_type` (vault.move:879 - has Layer 3, added Layers 1 & 2 in vault_init_actions.move)
+- [X] `do_mint` (currency.move:542 - has Layer 3, added Layers 1 & 2 in currency_init_actions.move)
+- [X] `do_burn` (currency.move:605 - has Layer 3, added Layers 1 & 2 in currency_init_actions.move)
+- [X] `do_disable` (currency.move:398 - has Layer 3, added Layers 1 & 2 in currency_init_actions.move)
+- [X] `do_update` (currency.move:456 - has Layer 3, added Layers 1 & 2 in currency_init_actions.move)
+- [X] `ptb_executor.move` reviewed and updated - uses same pattern as launchpad
+
+**ALSO COMPLETED - Full 3-Layer Pattern:**
+- [X] `do_borrow` (access_control.move:118 - has Layer 3, added Layers 1 & 2 in access_control_init_actions.move)
+- [X] `do_return` (access_control.move:177 - has Layer 3, added Layers 1 & 2 in access_control_init_actions.move)
+- [X] `do_transfer` (transfer.move:74 - has Layer 3, added Layers 1 & 2 in transfer_init_actions.move)
+- [X] `do_transfer_to_sender` (transfer.move:123 - has Layer 3, added Layers 1 & 2 in transfer_init_actions.move)
+- [X] `do_upgrade` (package_upgrade.move:608 - has Layer 3, added Layers 1 & 2 in package_upgrade_init_actions.move)
+- [X] `do_commit_dao_only` (package_upgrade.move:664 - has Layer 3, added Layers 1 & 2 in package_upgrade_init_actions.move)
+- [X] `do_commit_with_cap` (package_upgrade.move:733 - has Layer 3, added Layers 1 & 2 in package_upgrade_init_actions.move)
+- [X] `do_restrict` (package_upgrade.move:800 - has Layer 3, added Layers 1 & 2 in package_upgrade_init_actions.move)
+- [X] `do_create_commit_cap` (package_upgrade.move:856 - has Layer 3, added Layers 1 & 2 in package_upgrade_init_actions.move)
+
+**Oracle Actions (futarchy_oracle_actions package):**
+- [X] `do_create_oracle_grant` (oracle_actions.move:871 - has Layer 3, added Layers 1 & 2 in oracle_init_actions.move)
+- [X] `do_cancel_grant` (oracle_actions.move:935 - has Layer 3, added Layers 1 & 2 in oracle_init_actions.move)
+
+**Futarchy Actions (futarchy_actions package):**
+- [X] `do_create_dissolution_capability` (dissolution_actions.move:317 - has Layer 3, added Layers 1 & 2 in dissolution_init_actions.move)
+- [X] `do_set_quotas` (quota_actions.move:54 - has Layer 3, added Layers 1 & 2 in quota_init_actions.move)
+- [X] `do_set_proposals_enabled` (config_actions.move:267 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_terminate_dao` (config_actions.move:345 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_name` (config_actions.move:411 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_trading_params` (config_actions.move:493 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_metadata` (config_actions.move:572 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_twap_config` (config_actions.move:655 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_governance` (config_actions.move:731 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_metadata_table` (config_actions.move:846 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_conditional_metadata` (config_actions.move:936 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+- [X] `do_update_sponsorship_config` (config_actions.move:1009 - has Layer 3, added Layers 1 & 2 in config_init_actions.move)
+
+**Governance Actions (futarchy_governance_actions package):**
+- [X] `do_add_package` (package_registry_actions.move:136 - has Layer 3, added Layers 1 & 2 in package_registry_init_actions.move)
+- [X] `do_remove_package` (package_registry_actions.move:191 - has Layer 3, added Layers 1 & 2 in package_registry_init_actions.move)
+- [X] `do_update_package_version` (package_registry_actions.move:220 - has Layer 3, added Layers 1 & 2 in package_registry_init_actions.move)
+- [X] `do_update_package_metadata` (package_registry_actions.move:252 - has Layer 3, added Layers 1 & 2 in package_registry_init_actions.move)
+- [X] `do_pause_account_creation` (package_registry_actions.move:301 - has Layer 3, added Layers 1 & 2 in package_registry_init_actions.move)
+- [X] `do_unpause_account_creation` (package_registry_actions.move:338 - has Layer 3, added Layers 1 & 2 in package_registry_init_actions.move)
+- [X] `do_set_factory_paused` (protocol_admin_actions.move:264 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_disable_factory_permanently` (protocol_admin_actions.move:304 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_add_stable_type` (protocol_admin_actions.move:347 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_remove_stable_type` (protocol_admin_actions.move:388 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_update_dao_creation_fee` (protocol_admin_actions.move:429 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_update_proposal_fee` (protocol_admin_actions.move:468 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_update_verification_fee` (protocol_admin_actions.move:513 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_add_verification_level` (protocol_admin_actions.move:560 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_remove_verification_level` (protocol_admin_actions.move:600 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_withdraw_fees_to_treasury` (protocol_admin_actions.move:639 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_add_coin_fee_config` (protocol_admin_actions.move:684 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_update_coin_creation_fee` (protocol_admin_actions.move:739 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_update_coin_proposal_fee` (protocol_admin_actions.move:785 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+- [X] `do_apply_pending_coin_fees` (protocol_admin_actions.move:836 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
+
+**✅ ALL ACTIONS COMPLETE! All 57 actions now have full 3-layer pattern implementation.**
+- 23 actions in account_actions package
+- 2 actions in futarchy_oracle_actions package
+- 12 actions in futarchy_actions package
+- 20 actions in futarchy_governance_actions package
 
 #### Phase 3: SDK Integration
 - [ ] Update SDK to build PTBs with direct `do_*` calls
@@ -694,7 +768,10 @@ A: Follow 7-step checklist above. Use `do_init_create_stream` as reference imple
 A: No. Parameters are BCS-serialized in ActionSpec. `do_*` functions don't accept param arguments, they MUST deserialize from ActionSpec.
 
 **Q: Is this the same pattern for proposals and launchpad?**
-A: Yes! Same 3-layer pattern, same guarantees. Only difference is Outcome type (LaunchpadOutcome vs FutarchyOutcome).
+A: Yes! Same 3-layer pattern, same guarantees, same `do_init_*` function naming. Only difference is Outcome type (LaunchpadOutcome vs FutarchyOutcome).
+
+**Q: What's the difference between `do_init_*` and `do_*` functions?**
+A: `do_init_*` functions are used for the 3-layer pattern (launchpad init + proposal execution). They read parameters from ActionSpecs in an Executable. Regular `do_*` functions (like `do_spend`, `do_deposit`) are for direct operations on shared accounts and accept parameters as function arguments. Only actions with all 3 layers can be staged in launchpad/proposals.
 
 ---
 

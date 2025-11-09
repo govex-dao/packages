@@ -24,6 +24,34 @@ public struct ReturnMetadataAction has store, copy, drop {
     recipient: address,
 }
 
+/// Action to mint new coins
+public struct MintAction has store, copy, drop {
+    amount: u64,
+}
+
+/// Action to burn coins
+public struct BurnAction has store, copy, drop {
+    amount: u64,
+}
+
+/// Action to disable currency operations (immutable - can only disable, not re-enable)
+public struct DisableAction has store, copy, drop {
+    mint: bool,           // Disable minting
+    burn: bool,           // Disable burning
+    update_symbol: bool,  // Disable symbol updates
+    update_name: bool,    // Disable name updates
+    update_description: bool, // Disable description updates
+    update_icon: bool,    // Disable icon updates
+}
+
+/// Action to update currency metadata
+public struct UpdateAction has store, copy, drop {
+    symbol: std::option::Option<vector<u8>>,        // ASCII string
+    name: std::option::Option<vector<u8>>,          // UTF-8 string
+    description: std::option::Option<vector<u8>>,   // UTF-8 string
+    icon_url: std::option::Option<vector<u8>>,      // ASCII string
+}
+
 // === Spec Builders ===
 
 /// Add ReturnTreasuryCapAction to Builder
@@ -66,6 +94,106 @@ public fun add_return_metadata_spec(
     // CRITICAL: Use marker type from currency module, not action struct type
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::RemoveMetadata>(),
+        action_data,
+        1  // version
+    );
+    action_spec_builder::add(builder, action_spec);
+}
+
+/// Add MintAction to Builder
+public fun add_mint_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    amount: u64,
+) {
+    use account_actions::action_spec_builder;
+    use std::type_name;
+    use sui::bcs;
+
+    let action = MintAction { amount };
+    let action_data = bcs::to_bytes(&action);
+
+    let action_spec = intents::new_action_spec_with_typename(
+        type_name::with_defining_ids<account_actions::currency::CurrencyMint>(),
+        action_data,
+        1  // version
+    );
+    action_spec_builder::add(builder, action_spec);
+}
+
+/// Add BurnAction to Builder
+public fun add_burn_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    amount: u64,
+) {
+    use account_actions::action_spec_builder;
+    use std::type_name;
+    use sui::bcs;
+
+    let action = BurnAction { amount };
+    let action_data = bcs::to_bytes(&action);
+
+    let action_spec = intents::new_action_spec_with_typename(
+        type_name::with_defining_ids<account_actions::currency::CurrencyBurn>(),
+        action_data,
+        1  // version
+    );
+    action_spec_builder::add(builder, action_spec);
+}
+
+/// Add DisableAction to Builder
+public fun add_disable_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    mint: bool,
+    burn: bool,
+    update_symbol: bool,
+    update_name: bool,
+    update_description: bool,
+    update_icon: bool,
+) {
+    use account_actions::action_spec_builder;
+    use std::type_name;
+    use sui::bcs;
+
+    let action = DisableAction {
+        mint,
+        burn,
+        update_symbol,
+        update_name,
+        update_description,
+        update_icon,
+    };
+    let action_data = bcs::to_bytes(&action);
+
+    let action_spec = intents::new_action_spec_with_typename(
+        type_name::with_defining_ids<account_actions::currency::CurrencyDisable>(),
+        action_data,
+        1  // version
+    );
+    action_spec_builder::add(builder, action_spec);
+}
+
+/// Add UpdateAction to Builder
+public fun add_update_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    symbol: std::option::Option<vector<u8>>,
+    name: std::option::Option<vector<u8>>,
+    description: std::option::Option<vector<u8>>,
+    icon_url: std::option::Option<vector<u8>>,
+) {
+    use account_actions::action_spec_builder;
+    use std::type_name;
+    use sui::bcs;
+
+    let action = UpdateAction {
+        symbol,
+        name,
+        description,
+        icon_url,
+    };
+    let action_data = bcs::to_bytes(&action);
+
+    let action_spec = intents::new_action_spec_with_typename(
+        type_name::with_defining_ids<account_actions::currency::CurrencyUpdate>(),
         action_data,
         1  // version
     );

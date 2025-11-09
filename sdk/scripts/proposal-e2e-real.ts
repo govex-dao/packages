@@ -67,6 +67,7 @@ async function main() {
   const primitivesPackageId = sdk.getPackageId("futarchy_markets_primitives");
   const governancePackageId = sdk.getPackageId("futarchy_governance");
   const typesPackageId = sdk.getPackageId("futarchy_types");
+  const futarchyActionsPkg = sdk.getPackageId("futarchy_actions");
 
   console.log(`📦 Actions Package: ${actionsPkg}`);
   console.log(`📦 Protocol Package: ${protocolPkg}`);
@@ -74,6 +75,7 @@ async function main() {
   console.log(`📦 Primitives Package: ${primitivesPackageId}`);
   console.log(`📦 Governance Package: ${governancePackageId}`);
   console.log(`📦 Types Package: ${typesPackageId}`);
+  console.log(`📦 Futarchy Actions Package: ${futarchyActionsPkg}`);
   console.log();
 
   // ============================================================================
@@ -84,7 +86,7 @@ async function main() {
   console.log("=" + "=".repeat(79));
   console.log();
 
-  console.log("📝 Will create ActionSpecs with 2 stream actions:");
+  console.log("📝 Will create ActionSpecs with 5 actions:");
 
   // Stream 1: 1000 stable coins, 30 daily iterations
   const stream1Iterations = 30n;
@@ -104,6 +106,20 @@ async function main() {
   const stream2Start = now;
 
   console.log(`   Stream 2: ${stream2Amount / 1e9} stable coins over ${Number(stream2Iterations)} days (daily unlocks)`);
+
+  // Transfer: 250 stable coins to community wallet
+  const transferAmount = 250_000_000; // 250 stable coins
+  const transferRecipient = activeAddress; // For testing, transfer to self
+
+  console.log(`   Transfer: ${transferAmount / 1e9} stable coins to ${transferRecipient.slice(0, 10)}...`);
+
+  // Governance Update: Increase DAO capabilities
+  console.log(`   Governance Update: max_outcomes 2→5, max_actions 10→20, bond 0→100 stable`);
+
+  // Memo: Record decision
+  const memoText = "DAO Evolution Proposal: Funding team vesting (2 streams) + operations (250 stable transfer) + governance upgrades (increased limits & bond requirements)";
+
+  console.log(`   Memo: "${memoText.slice(0, 50)}..."`);
   console.log(`   (Actions will be created inline with proposal)`);
   console.log();
 
@@ -123,10 +139,10 @@ async function main() {
     stableType: stableType,
 
     title: "Fund Community Development",
-    introduction: "Proposal to fund community development initiatives",
+    introduction: "Proposal to fund community development initiatives with streams, direct transfer, and memo",
     outcomeMessages: ["Accept", "Reject"],
     outcomeDetails: [
-      "Accept: Fund 2 streams for community development",
+      "Accept: Fund 2 streams + 250 stable direct transfer + record memo",
       "Reject: Do not fund",
     ],
     metadata: JSON.stringify({
@@ -298,6 +314,46 @@ async function main() {
     ],
   });
 
+  // Add transfer action (withdraw from treasury vault + transfer)
+  addActionsTx.moveCall({
+    target: `${actionsPkg}::transfer_init_actions::add_withdraw_and_transfer_spec`,
+    arguments: [
+      builder,
+      addActionsTx.pure.string("treasury"), // vault_name
+      addActionsTx.pure.u64(transferAmount), // amount
+      addActionsTx.pure.address(transferRecipient), // recipient
+    ],
+  });
+
+  // Add memo action
+  addActionsTx.moveCall({
+    target: `${actionsPkg}::memo_init_actions::add_emit_memo_spec`,
+    arguments: [
+      builder,
+      addActionsTx.pure.string(memoText), // memo text
+    ],
+  });
+
+  // Add governance update action - DAO governs itself!
+  addActionsTx.moveCall({
+    target: `${futarchyActionsPkg}::config_init_actions::add_update_governance_spec`,
+    arguments: [
+      builder,
+      addActionsTx.pure.option("u64", 5), // max_outcomes: 2 → 5
+      addActionsTx.pure.option("u64", 20), // max_actions_per_outcome: 10 → 20
+      addActionsTx.pure.option("u64", 100_000_000_000), // required_bond_amount: 0 → 100 stable (9 decimals)
+      addActionsTx.pure.option("u64", null), // max_intents_per_outcome: keep current
+      addActionsTx.pure.option("u64", null), // proposal_intent_expiry_ms: keep current
+      addActionsTx.pure.option("u64", null), // optimistic_challenge_fee: keep current
+      addActionsTx.pure.option("u64", null), // optimistic_challenge_period_ms: keep current
+      addActionsTx.pure.option("u64", null), // proposal_creation_fee: keep current
+      addActionsTx.pure.option("u64", null), // proposal_fee_per_outcome: keep current
+      addActionsTx.pure.option("bool", null), // accept_new_proposals: keep current
+      addActionsTx.pure.option("bool", null), // enable_premarket_reservation_lock: keep current
+      addActionsTx.pure.option("bool", null), // show_proposal_details: keep current
+    ],
+  });
+
   // Convert builder to vector<ActionSpec>
   const specs = addActionsTx.moveCall({
     target: `${actionsPkg}::action_spec_builder::into_vector`,
@@ -324,7 +380,7 @@ async function main() {
   });
 
   console.log(`✅ Actions added to Accept outcome!`);
-  console.log(`   2 stream actions staged for execution if proposal passes`);
+  console.log(`   5 actions staged: 2 streams + 1 transfer + 1 memo + 1 governance update`);
   console.log();
 
   // Save proposal info for later tests

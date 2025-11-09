@@ -463,7 +463,9 @@ async function main() {
   console.log("🔨 Building execution PTB:");
   console.log("   1. begin_execution() → create Executable");
   console.log("   2. do_init_create_stream() × 2 → execute stream actions");
-  console.log("   3. finalize_execution() → complete execution");
+  console.log("   3. do_init_withdraw_and_transfer() → execute transfer action");
+  console.log("   4. do_emit_memo() → execute memo action");
+  console.log("   5. finalize_execution() → complete execution");
   console.log();
 
   const executeTx = new Transaction();
@@ -549,6 +551,46 @@ async function main() {
     ],
   });
 
+  // Step 2c: Execute transfer action
+  console.log("   → Step 2c: Executing transfer action (250 stable coins)...");
+  executeTx.moveCall({
+    target: `${actionsPkg}::vault::do_init_withdraw_and_transfer`,
+    typeArguments: [
+      `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
+      `${futarchyCorePkg}::futarchy_config::FutarchyOutcome`,
+      stableType, // CoinType for the transfer
+      `${sdk.getPackageId("futarchy_governance_actions")}::governance_intents::GovernanceWitness`,
+    ],
+    arguments: [
+      executable, // Executable hot potato
+      executeTx.object(daoAccountId), // Account
+      executeTx.object(registryId), // PackageRegistry
+      versionWitness, // VersionWitness
+      govWitness, // GovernanceWitness
+    ],
+  });
+
+  // Step 2d: Execute memo action
+  console.log("   → Step 2d: Executing memo action...");
+  executeTx.moveCall({
+    target: `${actionsPkg}::memo::do_emit_memo`,
+    typeArguments: [
+      `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
+      `${futarchyCorePkg}::futarchy_config::FutarchyOutcome`,
+      `${sdk.getPackageId("futarchy_governance_actions")}::governance_intents::GovernanceWitness`,
+    ],
+    arguments: [
+      executable, // Executable hot potato
+      executeTx.object(daoAccountId), // Account
+      govWitness, // GovernanceWitness
+      executeTx.sharedObjectRef({
+        objectId: "0x6",
+        initialSharedVersion: 1,
+        mutable: false,
+      }), // Clock
+    ],
+  });
+
   // Step 3: Finalize execution
   console.log("   → Step 3: Calling finalize_execution()...");
   executeTx.moveCall({
@@ -599,7 +641,7 @@ async function main() {
   console.log("  ✅ REVIEW → TRADING transition successful");
   console.log("  ✅ TRADING → FINALIZED transition successful");
   console.log("  ✅ Winning outcome determined via TWAP");
-  console.log("  ✅ Actions executed (2 streams created)");
+  console.log("  ✅ Actions executed (2 streams + 1 transfer + 1 memo)");
   console.log();
 }
 

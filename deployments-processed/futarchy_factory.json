@@ -1,20 +1,27 @@
 {
   "packageName": "futarchy_factory",
-  "transactionDigest": "HRQYSfknT5XvDHxY2RUrZeV7svkbwH17YkmPtbTHvuPj",
-  "packageId": "0x570935e3459022cce59ade0d423c10719e287a453de1b3399613adc134407bda",
+  "transactionDigest": "6cbFzc8qQvPCCjbPK6NVbGnmmcXV7cGvcDipnk2XEk41",
+  "packageId": "0x41d7ca1822fd463c0636f600fd29e754c388a9c6d9a95dbf7f8ce4ed02cdbea4",
+  "upgradeCap": {
+    "objectId": "0x47a8e119f3d6745ae6da2c8c8fdb09d0f29edd4bdb3d96ecdf4ec04958cde9cd",
+    "objectType": "0x2::package::UpgradeCap",
+    "owner": {
+      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
+    }
+  },
   "adminCaps": [
     {
-      "name": "ValidatorAdminCap",
-      "objectId": "0x8b385bced9739e8d62fc00806ec0b4ca468ca799f184aed9b3038391a5a5b303",
-      "objectType": "0x570935e3459022cce59ade0d423c10719e287a453de1b3399613adc134407bda::factory::ValidatorAdminCap",
+      "name": "FactoryOwnerCap",
+      "objectId": "0xc150ced30570d7f948ef48f6cf83a7e92d81195a8621c7d7fd60b5a232c067b5",
+      "objectType": "0x41d7ca1822fd463c0636f600fd29e754c388a9c6d9a95dbf7f8ce4ed02cdbea4::factory::FactoryOwnerCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
     },
     {
-      "name": "FactoryOwnerCap",
-      "objectId": "0x9ab72516076d7c5c2df0c8bcd4c597b433679903b72cf3a89228fcae773d088e",
-      "objectType": "0x570935e3459022cce59ade0d423c10719e287a453de1b3399613adc134407bda::factory::FactoryOwnerCap",
+      "name": "ValidatorAdminCap",
+      "objectId": "0xdd0cd0b974cf20b5a1d8dcfb9904b6b9a98624ef4f11d59f6bc3f28c970c7f74",
+      "objectType": "0x41d7ca1822fd463c0636f600fd29e754c388a9c6d9a95dbf7f8ce4ed02cdbea4::factory::ValidatorAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -23,22 +30,15 @@
   "sharedObjects": [
     {
       "name": "Factory",
-      "objectId": "0xc4b09f1a3331c3e078744dda4ba53083324ffabe3cebb1b0b336fd5a2cbfec26",
-      "objectType": "0x570935e3459022cce59ade0d423c10719e287a453de1b3399613adc134407bda::factory::Factory",
+      "objectId": "0xb73287fc67b266c3f34d1966b4af556cbd2489ff9049b7ab9c3beb12347f8939",
+      "objectType": "0x41d7ca1822fd463c0636f600fd29e754c388a9c6d9a95dbf7f8ce4ed02cdbea4::factory::Factory",
       "owner": {
         "Shared": {
-          "initial_shared_version": 16
+          "initial_shared_version": 9915699
         }
       },
-      "initialSharedVersion": 16
+      "initialSharedVersion": 9915699
     }
   ],
-  "ownedObjects": [],
-  "upgradeCap": {
-    "objectId": "0x114762b9b7e12f1681a300b02c7435957c328a218d8b5f7f9285c0d299eb6902",
-    "objectType": "0x2::package::UpgradeCap",
-    "owner": {
-      "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
-    }
-  }
+  "ownedObjects": []
 }

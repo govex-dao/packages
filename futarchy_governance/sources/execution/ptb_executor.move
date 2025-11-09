@@ -5,11 +5,14 @@
 ///
 /// The frontend composes a programmable transaction that:
 /// 1. Calls `begin_execution` to receive the governance executable hot potato.
-/// 2. Invokes the relevant `do_*` action functions in order (routing is handled client-side).
+/// 2. Invokes the relevant `do_init_*` action functions in order (routing is handled client-side).
 /// 3. Calls `finalize_execution` to confirm the intent, perform cleanup, and emit events.
 ///
 /// This keeps execution logic flexible while guaranteeing on-chain sequencing with the
 /// executable's action counter.
+///
+/// Note: Uses `do_init_*` functions (same 3-layer pattern as launchpad initialization).
+/// See packages/IMPORTANT_ACTION_EXECUTION_PATTERN.md for details.
 module futarchy_governance::ptb_executor;
 
 use account_protocol::{

@@ -8,6 +8,13 @@ import { FactoryValidatorOperations } from "../lib/factory-validator";
 import { PackageRegistryAdminOperations } from "../lib/package-registry-admin";
 import { LaunchpadOperations } from "../lib/launchpad";
 import { FeeManagerOperations } from "../lib/fee-manager";
+import { OracleActionsOperations } from "../lib/oracle-actions";
+import { MarketsOperations, TWAPOperations } from "../lib/markets";
+import { GovernanceOperations } from "../lib/governance";
+import { ProposalSponsorshipOperations } from "../lib/proposal-sponsorship";
+import { ProposalEscrowOperations } from "../lib/proposal-escrow";
+import { IntentJanitorOperations } from "../lib/governance-actions/intent-janitor";
+import { DAODissolutionOperations } from "../lib/dao-actions/dao-dissolution-actions";
 import { QueryHelper } from "../lib/queries";
 
 /**
@@ -43,6 +50,14 @@ export class FutarchySDK {
     public packageRegistryAdmin: PackageRegistryAdminOperations;
     public launchpad: LaunchpadOperations;
     public feeManager: FeeManagerOperations;
+    public oracleActions: OracleActionsOperations;
+    public markets: MarketsOperations;
+    public twap: TWAPOperations;
+    public governance: GovernanceOperations;
+    public proposalSponsorship: ProposalSponsorshipOperations;
+    public proposalEscrow: ProposalEscrowOperations;
+    public intentJanitor: IntentJanitorOperations;
+    public daoDissolution: DAODissolutionOperations;
     public query: QueryHelper;
 
     // Convenience properties for commonly used package IDs
@@ -133,6 +148,53 @@ export class FutarchySDK {
             client,
             feeManager.objectId,
             marketsCorePackageId
+        );
+
+        // Initialize oracle actions operations
+        const oracleActionsPackageId = deployments.getPackageId("futarchy_oracle_actions")!;
+        this.oracleActions = new OracleActionsOperations(
+            client,
+            oracleActionsPackageId,
+            packageRegistry.objectId
+        );
+
+        // Initialize markets operations
+        this.markets = new MarketsOperations(client, marketsCorePackageId);
+        this.twap = new TWAPOperations(client, marketsCorePackageId);
+
+        // Initialize governance operations
+        const governancePackageId = deployments.getPackageId("futarchy_governance")!;
+        this.governance = new GovernanceOperations(
+            client,
+            marketsCorePackageId,
+            governancePackageId,
+            packageRegistry.objectId
+        );
+
+        // Initialize proposal sponsorship operations
+        this.proposalSponsorship = new ProposalSponsorshipOperations(
+            client,
+            governancePackageId
+        );
+
+        // Initialize proposal escrow operations
+        this.proposalEscrow = new ProposalEscrowOperations(
+            client,
+            governancePackageId
+        );
+
+        // Initialize intent janitor operations
+        const governanceActionsPackageId = deployments.getPackageId("futarchy_governance_actions")!;
+        this.intentJanitor = new IntentJanitorOperations(
+            client,
+            governanceActionsPackageId
+        );
+
+        // Initialize DAO dissolution operations
+        const futarchyActionsPackageId = deployments.getPackageId("futarchy_actions")!;
+        this.daoDissolution = new DAODissolutionOperations(
+            client,
+            futarchyActionsPackageId
         );
     }
 

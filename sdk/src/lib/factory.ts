@@ -1,8 +1,6 @@
-import { Transaction } from "@mysten/sui/transactions";
+import { Transaction, TransactionObjectArgument } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
-import { bcs } from "@mysten/sui/bcs";
 import { TransactionBuilder, TransactionUtils } from "./transaction";
-import { InitActionSpec } from "../types/init-actions";
 
 /**
  * DAO creation configuration
@@ -225,157 +223,6 @@ export class FactoryOperations {
     }
 
     /**
-     * Create a DAO with initialization actions that execute atomically
-     * Allows setting up the DAO with intents that execute immediately upon creation
-     *
-     * @param config - DAO configuration (same as createDAO)
-     * @param initSpecs - Array of initialization action specifications from action builders
-     * @param clock - Clock object ID
-     * @returns Transaction for creating DAO with init actions
-     *
-     * @example
-     * ```typescript
-     * import { ConfigActions, LiquidityActions } from '@govex/futarchy-sdk/actions';
-     *
-     * const tx = factory.createDAOWithInitSpecs(
-     *   {
-     *     assetType: "0xPKG::coin::MYCOIN",
-     *     stableType: "0x2::sui::SUI",
-     *     // ... other DAO config
-     *   },
-     *   [
-     *     ConfigActions.updateMetadata({ daoName: "My DAO" }),
-     *     LiquidityActions.createPool({ ... })
-     *   ]
-     * );
-     * ```
-     */
-    createDAOWithInitSpecs(
-        config: DAOConfig,
-        initSpecs: InitActionSpec[],
-        clock: string = "0x6"
-    ): Transaction {
-        const builder = new TransactionBuilder(this.client);
-        const tx = builder.getTransaction();
-
-        // Build target
-        const target = TransactionUtils.buildTarget(
-            this.factoryPackageId,
-            "factory",
-            "create_dao_with_init_specs"
-        );
-
-        // Prepare payment
-        const payment = builder.splitSui(config.paymentAmount);
-
-        // Prepare optional parameters
-        const affiliateId = config.affiliateId || "";
-        const agreementLines = config.agreementLines || [];
-        const agreementDifficulties = config.agreementDifficulties || [];
-
-        // Build SignedU128 for TWAP threshold
-        const twapThresholdArg = this.buildSignedU128(
-            tx,
-            config.twapThreshold.value,
-            config.twapThreshold.negative
-        );
-
-        // Serialize ActionSpecs for Move
-        // Move expects: vector<ActionSpec> directly (no wrapper)
-        // ActionSpec has: { version: u8, action_type: TypeName, action_data: vector<u8> }
-        const initSpecsArg = this.serializeActionSpecs(tx, initSpecs);
-
-        // Create the DAO with init specs
-        tx.moveCall({
-            target,
-            typeArguments: [config.assetType, config.stableType],
-            arguments: [
-                tx.sharedObjectRef({
-                    objectId: this.factoryObjectId,
-                    initialSharedVersion: this.factoryInitialSharedVersion,
-                    mutable: true,
-                }), // factory
-                tx.object(this.packageRegistryId), // registry
-                tx.sharedObjectRef({
-                    objectId: this.feeManagerId,
-                    initialSharedVersion: this.feeManagerInitialSharedVersion,
-                    mutable: true,
-                }), // fee_manager
-                payment, // payment
-                tx.pure.string(affiliateId), // affiliate_id
-                tx.pure.u64(config.minAssetAmount), // min_asset_amount
-                tx.pure.u64(config.minStableAmount), // min_stable_amount
-                tx.pure.string(config.daoName), // dao_name
-                tx.pure.string(config.iconUrl), // icon_url_string
-                tx.pure.u64(config.reviewPeriodMs), // review_period_ms
-                tx.pure.u64(config.tradingPeriodMs), // trading_period_ms
-                tx.pure.u64(config.twapStartDelay), // twap_start_delay
-                tx.pure.u64(config.twapStepMax), // twap_step_max
-                tx.pure.u128(config.twapInitialObservation), // twap_initial_observation
-                twapThresholdArg, // twap_threshold
-                tx.pure.u64(config.ammTotalFeeBps), // amm_total_fee_bps
-                tx.pure.string(config.description), // description
-                tx.pure.u64(config.maxOutcomes), // max_outcomes
-                tx.makeMoveVec({
-                    type: '0x1::string::String',
-                    elements: agreementLines.map(line => tx.pure.string(line))
-                }), // _agreement_lines
-                tx.pure.vector('u64', agreementDifficulties), // _agreement_difficulties
-                tx.object(config.treasuryCap), // treasury_cap
-                tx.object(config.coinMetadata), // coin_metadata
-                initSpecsArg, // init_specs
-                tx.object(clock), // clock
-            ],
-        });
-
-        return tx;
-    }
-
-    /**
-     * Serialize InitActionSpec[] into format Move expects
-     * Move expects vector<ActionSpec> directly (no wrapper struct)
-     * ActionSpec = { version: u8, action_type: TypeName, action_data: vector<u8> }
-     * @private
-     */
-    private serializeActionSpecs(
-        tx: Transaction,
-        specs: InitActionSpec[]
-    ): ReturnType<Transaction["pure"]> {
-        // TypeName is a struct with a single `name` field
-        const typeNameBcs = bcs.struct('TypeName', {
-            name: bcs.string()
-        });
-
-        // Create BCS struct for ActionSpec (protocol version)
-        const actionSpecBcs = bcs.struct('ActionSpec', {
-            version: bcs.u8(),           // Protocol version (always 1)
-            action_type: typeNameBcs,    // TypeName marker
-            action_data: bcs.vector(bcs.u8())  // Serialized action data
-        });
-
-        // If no specs, pass empty vector<ActionSpec>
-        if (specs.length === 0) {
-            const emptyVectorBcs = bcs.vector(actionSpecBcs);
-            const serialized = emptyVectorBcs.serialize([]).toBytes();
-            return tx.pure(serialized, 'vector<u8>');
-        }
-
-        // Convert our InitActionSpec[] to ActionSpec[] with version
-        const actionSpecs = specs.map(spec => ({
-            version: 1,  // Protocol version 1
-            action_type: { name: spec.actionType }, // Wrap in TypeName struct
-            action_data: spec.actionData
-        }));
-
-        // Serialize as vector<ActionSpec> directly
-        const vectorBcs = bcs.vector(actionSpecBcs);
-        const serialized = vectorBcs.serialize(actionSpecs).toBytes();
-
-        // Pass as vector<u8> - Move will deserialize based on function signature
-        return tx.pure(serialized, 'vector<u8>');
-    }
-
-    /**
      * Create a DAO with init actions using the atomic PTB pattern
      *
      * This uses a three-step atomic flow:
@@ -524,6 +371,158 @@ export class FactoryOperations {
             arguments: [
                 tx.object(accountId), // account
                 tx.object(spotPoolId), // spot_pool
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * View: Get total DAO count
+     */
+    async getDaoCount(): Promise<number> {
+        const factory = await this.client.getObject({
+            id: this.factoryObjectId,
+            options: { showContent: true },
+        });
+
+        if (!factory.data?.content || factory.data.content.dataType !== 'moveObject') {
+            throw new Error('Factory not found');
+        }
+
+        const fields = factory.data.content.fields as any;
+        return Number(fields.dao_count || 0);
+    }
+
+    /**
+     * View: Check if factory is paused
+     */
+    async isPaused(): Promise<boolean> {
+        const factory = await this.client.getObject({
+            id: this.factoryObjectId,
+            options: { showContent: true },
+        });
+
+        if (!factory.data?.content || factory.data.content.dataType !== 'moveObject') {
+            throw new Error('Factory not found');
+        }
+
+        const fields = factory.data.content.fields as any;
+        return fields.is_paused === true;
+    }
+
+    /**
+     * View: Check if factory is permanently disabled
+     */
+    async isPermanentlyDisabled(): Promise<boolean> {
+        const factory = await this.client.getObject({
+            id: this.factoryObjectId,
+            options: { showContent: true },
+        });
+
+        if (!factory.data?.content || factory.data.content.dataType !== 'moveObject') {
+            throw new Error('Factory not found');
+        }
+
+        const fields = factory.data.content.fields as any;
+        return fields.permanently_disabled === true;
+    }
+
+    /**
+     * View: Check if a stable type is allowed
+     */
+    async isStableTypeAllowed(stableType: string): Promise<boolean> {
+        const factory = await this.client.getObject({
+            id: this.factoryObjectId,
+            options: { showContent: true },
+        });
+
+        if (!factory.data?.content || factory.data.content.dataType !== 'moveObject') {
+            throw new Error('Factory not found');
+        }
+
+        const fields = factory.data.content.fields as any;
+        const allowedTypes = fields.allowed_stable_types?.fields?.contents || [];
+
+        // Check if stableType is in the allowed list
+        return allowedTypes.some((entry: any) => {
+            const typeName = entry.fields?.key?.fields?.name;
+            return typeName === stableType;
+        });
+    }
+
+    /**
+     * View: Get launchpad bid fee
+     */
+    async getLaunchpadBidFee(): Promise<bigint> {
+        const factory = await this.client.getObject({
+            id: this.factoryObjectId,
+            options: { showContent: true },
+        });
+
+        if (!factory.data?.content || factory.data.content.dataType !== 'moveObject') {
+            throw new Error('Factory not found');
+        }
+
+        const fields = factory.data.content.fields as any;
+        return BigInt(fields.launchpad_bid_fee || 0);
+    }
+
+    /**
+     * View: Get launchpad cranker reward
+     */
+    async getLaunchpadCrankerReward(): Promise<bigint> {
+        const factory = await this.client.getObject({
+            id: this.factoryObjectId,
+            options: { showContent: true },
+        });
+
+        if (!factory.data?.content || factory.data.content.dataType !== 'moveObject') {
+            throw new Error('Factory not found');
+        }
+
+        const fields = factory.data.content.fields as any;
+        return BigInt(fields.launchpad_cranker_reward || 0);
+    }
+
+    /**
+     * View: Get launchpad settlement reward
+     */
+    async getLaunchpadSettlementReward(): Promise<bigint> {
+        const factory = await this.client.getObject({
+            id: this.factoryObjectId,
+            options: { showContent: true },
+        });
+
+        if (!factory.data?.content || factory.data.content.dataType !== 'moveObject') {
+            throw new Error('Factory not found');
+        }
+
+        const fields = factory.data.content.fields as any;
+        return BigInt(fields.launchpad_settlement_reward || 0);
+    }
+
+    /**
+     * Borrow CoinMetadata from DAO Account
+     * Returns reference to CoinMetadata for reading
+     */
+    borrowCoinMetadata(
+        accountId: string,
+        coinType: string
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                this.factoryPackageId,
+                'factory',
+                'borrow_coin_metadata'
+            ),
+            typeArguments: [coinType],
+            arguments: [
+                tx.object(accountId), // account
+                tx.object(this.packageRegistryId), // registry
             ],
         });
 

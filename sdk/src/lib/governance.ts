@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
+import { bcs } from "@mysten/sui/bcs";
 import { TransactionBuilder, TransactionUtils } from "./transaction";
-import { InitActionSpec } from "../types/init-actions";
 
 /**
  * Configuration for creating a proposal
@@ -75,6 +75,17 @@ export interface FinalizeProposalConfig {
 }
 
 /**
+ * Configuration for executing proposal actions
+ */
+export interface ExecuteProposalActionsConfig {
+    daoId: string;
+    proposalId: string;
+    marketStateId: string;
+    assetType: string;
+    stableType: string;
+}
+
+/**
  * Governance operations for proposal lifecycle management
  */
 export class GovernanceOperations {
@@ -145,8 +156,8 @@ export class GovernanceOperations {
                 tx.pure.bool(config.usesDaoLiquidity), // uses_dao_liquidity
                 tx.pure.bool(config.usedQuota), // used_quota
                 config.intentSpecForYes
-                    ? tx.pure.option("object", config.intentSpecForYes)
-                    : tx.pure.option("object", null), // intent_spec_for_yes
+                    ? tx.pure(bcs.option(bcs.vector(bcs.u8())).serialize(config.intentSpecForYes).toBytes())
+                    : tx.pure(bcs.option(bcs.vector(bcs.u8())).serialize(null).toBytes()), // intent_spec_for_yes
                 tx.sharedObjectRef({
                     objectId: clock,
                     initialSharedVersion: 1,
@@ -250,5 +261,175 @@ export class GovernanceOperations {
         });
 
         return tx;
+    }
+
+    /**
+     * Finalize proposal with spot pool liquidity recombination
+     *
+     * Alternative to finalizeProposal() that combines market finalization
+     * with quantum liquidity recombination in a single call.
+     *
+     * This is the recommended finalization method as it:
+     * 1. Finalizes the proposal market
+     * 2. Returns conditional liquidity back to spot pool
+     * 3. Clears active escrow
+     *
+     * @param config - Finalize configuration
+     * @param clock - Clock object ID
+     * @returns Transaction for finalizing with spot pool
+     */
+    finalizeProposalWithSpotPool(config: FinalizeProposalConfig, clock: string = "0x6"): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.governancePackageId,
+            "proposal_lifecycle",
+            "finalize_proposal_with_spot_pool"
+        );
+
+        tx.moveCall({
+            target,
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.daoId), // account (DAO)
+                tx.object(this.packageRegistryId), // registry
+                tx.object(config.proposalId), // proposal
+                tx.object(config.escrowId), // escrow
+                tx.object(config.spotPoolId), // spot_pool
+                tx.sharedObjectRef({
+                    objectId: clock,
+                    initialSharedVersion: 1,
+                    mutable: false,
+                }),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Execute proposal actions after approval
+     *
+     * After a proposal is finalized and the Accept/Yes outcome won,
+     * this executes the staged InitActionSpecs.
+     *
+     * Requirements:
+     * - Proposal must be in FINALIZED state
+     * - Market must show outcome 0 (Accept/Yes) as winner
+     * - Caller must be authorized
+     *
+     * @param config - Execute configuration
+     * @param clock - Clock object ID
+     * @returns Transaction for executing proposal actions
+     */
+    executeProposalActions(config: ExecuteProposalActionsConfig, clock: string = "0x6"): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.governancePackageId,
+            "proposal_lifecycle",
+            "execute_proposal_actions"
+        );
+
+        tx.moveCall({
+            target,
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.daoId), // account (DAO)
+                tx.object(this.packageRegistryId), // registry
+                tx.object(config.proposalId), // proposal
+                tx.object(config.marketStateId), // market_state
+                tx.sharedObjectRef({
+                    objectId: clock,
+                    initialSharedVersion: 1,
+                    mutable: false,
+                }),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Check if a proposal can be executed
+     *
+     * View function to validate if proposal actions can be executed.
+     * Returns true if:
+     * - Market is finalized
+     * - Outcome 0 (Accept/Yes) won
+     *
+     * @param proposalId - Proposal object ID
+     * @param marketStateId - Market state object ID
+     * @param assetType - DAO asset type
+     * @param stableType - DAO stable type
+     * @returns Promise<boolean> - True if executable
+     */
+    async canExecuteProposal(
+        proposalId: string,
+        marketStateId: string,
+        assetType: string,
+        stableType: string
+    ): Promise<boolean> {
+        const result = await this.client.devInspectTransactionBlock({
+            sender: "0x0000000000000000000000000000000000000000000000000000000000000000",
+            transactionBlock: (() => {
+                const tx = new Transaction();
+                tx.moveCall({
+                    target: TransactionUtils.buildTarget(
+                        this.governancePackageId,
+                        "proposal_lifecycle",
+                        "can_execute_proposal"
+                    ),
+                    typeArguments: [assetType, stableType],
+                    arguments: [tx.object(proposalId), tx.object(marketStateId)],
+                });
+                return tx;
+            })(),
+        });
+
+        if (result.results && result.results[0]?.returnValues) {
+            const value = result.results[0].returnValues[0];
+            return value[0][0] === 1; // BCS bool: 1 = true, 0 = false
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a proposal has passed
+     *
+     * View function to check if proposal is finalized and outcome 0 won.
+     *
+     * @param proposalId - Proposal object ID
+     * @param assetType - DAO asset type
+     * @param stableType - DAO stable type
+     * @returns Promise<boolean> - True if proposal passed
+     */
+    async isPassed(proposalId: string, assetType: string, stableType: string): Promise<boolean> {
+        const result = await this.client.devInspectTransactionBlock({
+            sender: "0x0000000000000000000000000000000000000000000000000000000000000000",
+            transactionBlock: (() => {
+                const tx = new Transaction();
+                tx.moveCall({
+                    target: TransactionUtils.buildTarget(
+                        this.governancePackageId,
+                        "proposal_lifecycle",
+                        "is_passed"
+                    ),
+                    typeArguments: [assetType, stableType],
+                    arguments: [tx.object(proposalId)],
+                });
+                return tx;
+            })(),
+        });
+
+        if (result.results && result.results[0]?.returnValues) {
+            const value = result.results[0].returnValues[0];
+            return value[0][0] === 1;
+        }
+
+        return false;
     }
 }

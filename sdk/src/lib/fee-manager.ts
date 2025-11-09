@@ -10,7 +10,6 @@
 
 import { Transaction } from '@mysten/sui/transactions';
 import type { SuiClient } from '@mysten/sui/client';
-import { bcs } from '@mysten/sui/bcs';
 import { TransactionUtils } from './transaction';
 
 /**
@@ -413,14 +412,5 @@ export class FeeManagerOperations {
 
         const fields = feeManager.data.content.fields as any;
         return BigInt(fields.sui_balance);
-    }
-
-    /**
-     * Helper: Convert coin type to TypeName format
-     * @private
-     */
-    private getCoinTypeName(coinType: string): string {
-        // TypeName format: "address::module::type"
-        return coinType;
     }
 }

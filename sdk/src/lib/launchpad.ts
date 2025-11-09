@@ -1,7 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { TransactionBuilder, TransactionUtils } from "./transaction";
-import { InitActionSpec } from "../types/init-actions";
 
 /**
  * Configuration for creating a launchpad raise
@@ -724,88 +723,6 @@ export class LaunchpadOperations {
      */
 
     /**
-     * @deprecated Use the two-outcome pattern instead (see documentation above)
-     *
-     * This method is deprecated in favor of the new two-outcome pattern where
-     * you stage specs manually using stage_success_intent() or stage_failure_intent().
-     *
-     * Old pattern (deprecated):
-     * - stageLaunchpadInitIntent() - single set of intents
-     *
-     * New pattern (recommended):
-     * - Manually build PTB with action_spec_builder::new()
-     * - Add actions with action-specific builders
-     * - Stage with launchpad::stage_success_intent() or stage_failure_intent()
-     *
-     * See TWO-OUTCOME PATTERN documentation above for examples.
-     *
-     * @param raiseId - Raise object ID
-     * @param creatorCapId - CreatorCap object ID
-     * @param initSpec - Init action specification
-     * @param clock - Clock object ID
-     * @returns Transaction for staging intent
-     */
-    stageLaunchpadInitIntent(
-        raiseId: string,
-        creatorCapId: string,
-        initSpec: InitActionSpec,
-        clock: string = "0x6"
-    ): Transaction {
-        const builder = new TransactionBuilder(this.client);
-        const tx = builder.getTransaction();
-
-        const target = TransactionUtils.buildTarget(
-            this.launchpadPackageId,
-            "launchpad",
-            "stage_launchpad_init_intent"
-        );
-
-        tx.moveCall({
-            target,
-            arguments: [
-                tx.object(raiseId), // raise
-                tx.object(this.packageRegistryId), // registry
-                tx.object(creatorCapId), // creator_cap
-                tx.pure(initSpec as any), // spec
-                tx.object(clock), // clock
-            ],
-        });
-
-        return tx;
-    }
-
-    /**
-     * Remove the most recently staged init intent
-     *
-     * @param raiseId - Raise object ID
-     * @param creatorCapId - CreatorCap object ID
-     * @returns Transaction for unstaging intent
-     */
-    unstageLastLaunchpadInitIntent(
-        raiseId: string,
-        creatorCapId: string
-    ): Transaction {
-        const builder = new TransactionBuilder(this.client);
-        const tx = builder.getTransaction();
-
-        const target = TransactionUtils.buildTarget(
-            this.launchpadPackageId,
-            "launchpad",
-            "unstage_last_launchpad_init_intent"
-        );
-
-        tx.moveCall({
-            target,
-            arguments: [
-                tx.object(raiseId), // raise
-                tx.object(creatorCapId), // creator_cap
-            ],
-        });
-
-        return tx;
-    }
-
-    /**
      * Sweep remaining dust tokens/coins after claim period ends
      * Returns remaining balances to the DAO
      *
@@ -924,44 +841,277 @@ export class LaunchpadOperations {
     }
 
     /**
-     * Cleanup initialization intents (remove all staged intents)
-     * Used to abort the initialization workflow
-     *
-     * @param accountId - Account/DAO object ID
-     * @param ownerId - Owner ID (typically CreatorCap ID)
-     * @param initSpecs - Array of init specs to cleanup
-     * @returns Transaction for cleanup
-     *
-     * @example
-     * ```typescript
-     * const tx = sdk.launchpad.cleanupInitIntents(
-     *   accountId,
-     *   ownerCapId,
-     *   [spec1, spec2, spec3]
-     * );
-     * ```
+     * View: Get total amount raised
      */
-    cleanupInitIntents(
-        accountId: string,
-        ownerId: string,
-        initSpecs: InitActionSpec[]
+    async getTotalRaised(raiseId: string): Promise<bigint> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return BigInt(fields.total_raised || 0);
+    }
+
+    /**
+     * View: Get raise state
+     * States: 0 = PRE_RAISE, 1 = RAISING, 2 = SETTLED, 3 = SUCCESSFUL, 4 = FAILED
+     */
+    async getState(raiseId: string): Promise<number> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return Number(fields.state || 0);
+    }
+
+    /**
+     * View: Get raise start time (Unix timestamp in ms)
+     */
+    async getStartTime(raiseId: string): Promise<number> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return Number(fields.start_time || 0);
+    }
+
+    /**
+     * View: Get raise deadline (Unix timestamp in ms)
+     */
+    async getDeadline(raiseId: string): Promise<number> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return Number(fields.deadline || 0);
+    }
+
+    /**
+     * View: Get raise description
+     */
+    async getDescription(raiseId: string): Promise<string> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return fields.description || '';
+    }
+
+    /**
+     * View: Get contribution amount for a specific address
+     */
+    async getContributionOf(raiseId: string, address: string): Promise<bigint> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        const contributions = fields.contributions?.fields?.contents || [];
+
+        // Find contribution for this address
+        const contribution = contributions.find((entry: any) => {
+            return entry.fields?.key === address;
+        });
+
+        return BigInt(contribution?.fields?.value || 0);
+    }
+
+    /**
+     * View: Check if settlement is done
+     */
+    async isSettlementDone(raiseId: string): Promise<boolean> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return fields.settlement_done === true;
+    }
+
+    /**
+     * View: Get final raise amount (after settlement)
+     */
+    async getFinalRaiseAmount(raiseId: string): Promise<bigint> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return BigInt(fields.final_raise_amount || 0);
+    }
+
+    /**
+     * View: Get allowed caps (contribution tier limits)
+     */
+    async getAllowedCaps(raiseId: string): Promise<bigint[]> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        const caps = fields.allowed_caps || [];
+        return caps.map((cap: any) => BigInt(cap));
+    }
+
+    /**
+     * View: Get cap sums (total contributed per tier)
+     */
+    async getCapSums(raiseId: string): Promise<bigint[]> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        const sums = fields.cap_sums || [];
+        return sums.map((sum: any) => BigInt(sum));
+    }
+
+    /**
+     * View: Get verification level
+     */
+    async getVerificationLevel(raiseId: string): Promise<number> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return Number(fields.verification_level || 0);
+    }
+
+    /**
+     * View: Get attestation URL
+     */
+    async getAttestationUrl(raiseId: string): Promise<string> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return fields.attestation_url || '';
+    }
+
+    /**
+     * View: Get admin review text
+     */
+    async getAdminReviewText(raiseId: string): Promise<string> {
+        const raise = await this.client.getObject({
+            id: raiseId,
+            options: { showContent: true },
+        });
+
+        if (!raise.data?.content || raise.data.content.dataType !== 'moveObject') {
+            throw new Error('Raise not found');
+        }
+
+        const fields = raise.data.content.fields as any;
+        return fields.admin_review_text || '';
+    }
+
+    /**
+     * Helper: Check if outcome is approved for raise
+     * Used internally by intent executor
+     */
+    isOutcomeApproved(
+        raiseId: string,
+        outcome: number
     ): Transaction {
         const builder = new TransactionBuilder(this.client);
         const tx = builder.getTransaction();
 
-        const target = TransactionUtils.buildTarget(
-            this.launchpadPackageId,
-            "init_actions",
-            "cleanup_init_intents"
-        );
+        tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                this.launchpadPackageId,
+                'launchpad',
+                'is_outcome_approved'
+            ),
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.pure.u8(outcome), // outcome
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Get LaunchpadIntent witness for PTB execution
+     * Used in intent executor pattern
+     */
+    getLaunchpadIntentWitness(): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
 
         tx.moveCall({
-            target,
-            arguments: [
-                tx.object(accountId), // account
-                tx.pure.id(ownerId), // owner_id
-                tx.pure(initSpecs as any), // specs
-            ],
+            target: TransactionUtils.buildTarget(
+                this.launchpadPackageId,
+                'launchpad',
+                'launchpad_intent_witness'
+            ),
+            arguments: [],
         });
 
         return tx;

@@ -45,12 +45,47 @@ src/
 - ✅ BCS serialization matching Move struct layouts
 - ✅ Type-safe action builders with full parameter validation
 
+**Phase 4: Futarchy Markets Core** 🆕
+- ✅ Complete TypeScript SDK for futarchy_markets_core (226 functions)
+- ✅ Liquidity initialization with TreasuryCap-based conditional coins
+- ✅ Unified arbitrage for N-outcome markets
+- ✅ Swap core primitives with hot potato session management
+- ✅ Quantum LP manager with automatic participation
+- ✅ Conditional coin utilities and validation
+- ✅ Arbitrage core primitives and math (B-parameterization, ternary search)
+- ✅ Protocol fee management and withdrawal
+- ✅ Unified spot pool with bucket-based LP management
+- ✅ Proposal lifecycle management (PREMARKET → REVIEW → LIVE → FINALIZED)
+
+**Phase 5: Futarchy Core Configuration** 🆕
+- ✅ Complete TypeScript SDK for futarchy_core (229 functions)
+- ✅ FutarchyConfig - Main DAO configuration with state management (108 functions)
+- ✅ DaoConfig - Centralized configuration with validation (82 functions)
+- ✅ ProposalQuotaRegistry - Recurring quotas with sponsorship (20 functions)
+- ✅ ResourceRequests - Hot potato pattern for type-safe resources (12 functions)
+- ✅ ExecutableResources - Resource bag management (4 functions)
+- ✅ Version - Protocol version tracking (2 functions)
+- ✅ ActionValidation - Type validation for action specs (1 function)
+
+**Phase 6: Move Framework - Account Protocol & Actions** 🆕
+- ✅ Complete TypeScript SDK for account_protocol (122 functions)
+  - ✅ Account - Account creation, ownership, managed data/assets (39 functions)
+  - ✅ Intents - Intent lifecycle with action specs and expiration (47 functions)
+  - ✅ PackageRegistry - Package management with pause control (36 functions)
+- ✅ Complete TypeScript SDK for account_actions (157 functions)
+  - ✅ Memo - Transaction memo emissions (4 functions)
+  - ✅ Transfer - Object transfer operations (9 functions)
+  - ✅ AccessControl - Capability borrow/return pattern (11 functions)
+  - ✅ PackageUpgradeAuditable - Auditable upgrade proposals (4 functions)
+  - ✅ Currency - Minting, burning, metadata updates (37 functions)
+  - ✅ Vault - Multi-coin storage with vesting streams (47 functions)
+  - ✅ PackageUpgrade - Timelock-based upgrade governance (50 functions)
+
 ### Roadmap
 
 - [ ] Auto-generated Move bindings (.gen layer)
-- [ ] Governance proposal operations
-- [ ] Market operations (create, trade, resolve)
-- [ ] Proposal voting and execution
+- [x] Market operations (create, trade, resolve) - **Completed via markets_core**
+- [x] Proposal voting and execution - **Completed via markets_core**
 - [ ] Event subscriptions and listeners
 - [ ] Caching layer for on-chain data
 - [ ] Batch transaction builders
@@ -372,6 +407,218 @@ Configure governance and voting parameters.
 - `updateVotingPeriod(periodMs: number)` - Set voting period duration
 - `setDelegationEnabled(enabled: boolean)` - Enable/disable vote delegation
 - `updateProposalDeposit(amount: bigint)` - Set proposal deposit requirement
+
+### Markets Core Modules 🆕
+
+Complete TypeScript SDK for futarchy_markets_core package with 226 public functions across 10 modules.
+
+#### Proposal
+
+Core proposal lifecycle management (92 functions).
+
+**Key Methods:**
+- `newPremarket(tx, config)` - Create a new proposal in PREMARKET state
+- `createEscrowForMarket(tx, config)` - Initialize conditional token escrow
+- `registerOutcomeCapsWithEscrow(tx, config)` - Register TreasuryCaps for outcome tokens
+- `createConditionalAmmPools(tx, config)` - Create AMM pools for each outcome
+- `getTwapsForProposal(tx, config)` - Fetch TWAP prices for all outcomes
+- `finalizeProposal(tx, config)` - Determine winner and finalize proposal
+- `getIntentSpecForOutcome(tx, config)` - Get executable actions for winning outcome
+- `setSponsorship(tx, config)` - Reduce TWAP threshold via sponsorship
+
+**Lifecycle:** PREMARKET → REVIEW → LIVE → FINALIZED
+
+#### UnifiedSpotPool
+
+Unified AMM pool with bucket-based LP management (52 functions).
+
+**Key Methods:**
+- `new(tx, config)` - Create new pool with TWAP oracle and escrow tracking
+- `addLiquidity(tx, config)` - Add liquidity (routes to LIVE or PENDING bucket)
+- `markLpForWithdrawal(tx, config)` - Mark LP for withdrawal (LIVE → TRANSITIONING)
+- `swapStableForAsset(tx, config)` - Swap using constant product formula
+- `swapAssetForStable(tx, config)` - Swap in reverse direction
+- `getTwapWithConditional(tx, config)` - Get TWAP from conditional or spot markets
+
+**Buckets:** LIVE, TRANSITIONING, WITHDRAW_ONLY, PENDING
+
+#### Fee
+
+Protocol fee management and withdrawal (30 functions).
+
+**Key Methods:**
+- `depositDaoCreationPayment(tx, config)` - Collect SUI for DAO creation
+- `depositStableFees(tx, config)` - Collect AMM trading fees
+- `updateCoinCreationFee(tx, config)` - Update fees (6-month delay + 10x cap)
+- `applyPendingCoinFees(tx, config)` - Activate pending fee changes
+- `withdrawFeesSui(tx, config)` - Withdraw collected SUI fees
+- `withdrawFeesStable(tx, config)` - Withdraw collected stable fees
+
+#### ArbitrageMath
+
+N-outcome arbitrage optimization (13 functions).
+
+**Key Methods:**
+- `computeOptimalArbitrageForNOutcomes(tx, config)` - Ternary search for optimal arb
+- `computeSpotDeltaForBuyB(tx, config)` - Calculate spot impact for B amount
+- `computeProfitForBuyB(tx, config)` - Calculate profit for given B parameter
+
+**Features:** B-parameterization (eliminates square roots), smart bounding (95%+ gas reduction)
+
+#### ArbitrageCore
+
+Low-level arbitrage primitives (10 functions).
+
+**Key Methods:**
+- `validateProfitable(tx, config)` - Validate minimum profit before execution
+- `depositAssetForQuantumMint(tx, config)` - Mint complete set of conditional tokens
+- `findMinValue(tx, config)` - Determine complete set size from balances
+- `burnAndWithdrawConditionalAsset(tx, config)` - Convert conditional → spot tokens
+
+#### ConditionalCoinUtils
+
+Validation and metadata for conditional tokens (9 functions).
+
+**Key Methods:**
+- `validateConditionalCoinForMarket(tx, config)` - Validate coin belongs to market
+- `getConditionalCoinMetadata(tx, config)` - Get metadata for conditional token
+- `formatConditionalCoinName(tx, config)` - Generate name: `c_<outcome_index>_<SYMBOL>`
+
+#### QuantumLPManager
+
+Simplified quantum LP management (8 functions).
+
+**Key Methods:**
+- `autoQuantumSplitOnProposalStart(tx, config)` - Auto-split spot LP to conditional AMMs
+- `autoRedeemOnProposalEnd(tx, config)` - Recombine winning conditional LP to spot
+- `withdrawWithLockCheck(tx, config)` - Auto-lock if withdrawal violates min liquidity
+
+**Quantum Liquidity:** LP splits to ALL outcomes simultaneously, automatically recombines after resolution
+
+#### SwapCore
+
+Core swap primitives with hot potato pattern (8 functions).
+
+**Key Methods:**
+- `beginSwapSession(tx, config)` - Create SwapSession hot potato
+- `finalizeSwapSession(tx, config)` - Consume hot potato and complete swap
+- `swapBalanceAssetToStable(tx, config)` - Swap for ANY outcome count
+- `swapBalanceStableToAsset(tx, config)` - Reverse swap for ANY outcome count
+
+**Hot Potato:** Ensures proper session lifecycle management within single transaction
+
+#### Arbitrage
+
+Unified arbitrage execution (3 functions).
+
+**Key Methods:**
+- `executeOptimalSpotArbitrage(tx, config)` - Execute optimal arb with auto-merge support
+- `executeTargetedArbitrage(tx, config)` - Execute with specific target amount
+- `estimateArbitragePotential(tx, config)` - Calculate potential profit
+
+**Features:** Works for ANY outcome count, DCA bot support via dust accumulation
+
+#### LiquidityInitialize
+
+Initialize AMM liquidity using TreasuryCap (1 function).
+
+**Key Methods:**
+- `createOutcomeMarkets(tx, config)` - Create all outcome markets with initial liquidity
+
+**Requirements:** TreasuryCaps must be registered with escrow before calling
+
+### Futarchy Core Modules 🆕
+
+Complete TypeScript SDK for futarchy_core package with 229 public functions across 7 modules.
+
+#### FutarchyConfig
+
+Main futarchy configuration with DAO state management (108 functions).
+
+**Key Methods:**
+- `new(tx, config)` - Create FutarchyConfig with asset/stable types
+- `newDaoState(tx, config)` - Create DaoState
+- `newEarlyResolveConfig(tx, config)` - Configure early resolution
+- `setVerificationLevel(tx, config)` - Set DAO verification level
+- `setDaoScore(tx, config)` - Update DAO score
+- `incrementActiveProposals(tx, config)` - Track active proposals
+- `assertNotTerminated(tx, config)` - Validate DAO is operational
+- `newWithPackageRegistry(tx, config)` - Create Account with FutarchyConfig
+
+**Features:** Complete DAO state machine, early resolve support, verification system, launchpad integration
+
+#### DaoConfig
+
+Centralized DAO configuration with validation (82 functions).
+
+**Key Methods:**
+- `newDaoConfig(tx, config)` - Create complete DAO configuration
+- `newTradingParams(tx, config)` - Configure trading parameters
+- `newTwapConfig(tx, config)` - Configure TWAP oracle
+- `newGovernanceConfig(tx, config)` - Configure governance rules
+- `newMetadataConfig(tx, config)` - Configure DAO metadata
+- `validateConfigUpdate(tx, config)` - Validate configuration changes
+- `defaultTradingParams(tx, config)` - Get sensible defaults
+
+**Configuration Domains:** Trading, TWAP, Governance, Metadata, Conditional Coins, Quotas, Sponsorship
+
+#### ProposalQuotaRegistry
+
+Recurring proposal quotas with sponsorship support (20 functions).
+
+**Key Methods:**
+- `new(tx, config)` - Create quota registry for DAO
+- `setQuotas(tx, config)` - Set quotas for multiple users (batch)
+- `checkQuotaAvailable(tx, config)` - Check quota availability (read-only)
+- `useQuota(tx, config)` - Use quota slot after proposal succeeds
+- `refundQuota(tx, config)` - Refund quota when proposal evicted
+- `setSponsorQuotas(tx, config)` - Set sponsorship quotas
+- `useSponsorQuota(tx, config)` - Use sponsorship slot
+- `getQuotaStatus(tx, config)` - Get quota info with remaining count
+
+**Features:** Period alignment (no drift), batch operations, sponsorship support, reduced fees
+
+#### ResourceRequests
+
+Hot potato pattern for type-safe resource requests (12 functions).
+
+**Key Methods:**
+- `newRequest(tx, config)` - Create ResourceRequest<T> hot potato
+- `addContext(tx, config)` - Add context data to request
+- `getContext(tx, config)` - Read context data
+- `fulfill(tx, config)` - Consume request and return receipt
+- `extractAction(tx, config)` - Extract action from request
+
+**Pattern:** Request → Add Context → Fulfill → Receipt ensures type-safe resource provision
+
+#### ExecutableResources
+
+Resource bag management for intent execution (4 functions).
+
+**Key Methods:**
+- `provideCoin(tx, config)` - Provision coin into executable's bag
+- `takeCoin(tx, config)` - Take coin from bag during execution
+- `hasCoin(tx, config)` - Check if coin resource exists
+- `destroyResources(tx, config)` - Destroy bag (must be empty)
+
+**Pattern:** Attach Bag → Actions take resources → Bag must be empty when complete
+
+#### Version
+
+Protocol version tracking (2 functions).
+
+**Key Methods:**
+- `current(tx, config)` - Get current version witness
+- `get(tx, config)` - Get version number
+
+#### ActionValidation
+
+Type validation for action specs (1 function).
+
+**Key Methods:**
+- `assertActionType(tx, config)` - Validate action spec matches expected type
+
+**Purpose:** Runtime type safety for action specifications in intents
 
 ## Examples
 

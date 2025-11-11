@@ -54,9 +54,9 @@ public fun compute_noarb_band<AssetType, StableType>(
     let one_minus_fs = bps - f_s; // (1 - f_s)*bps
 
     // floor = (1 - f_s) * min_i [ (1 - f_i) * p_i ]
-    // ceiling = (1 / (1 - f_s)) * sum_i [ p_i / (1 - f_i) ]
+    // ceiling = (1 / (1 - f_s)) * max_i [ p_i / (1 - f_i) ]
     let mut min_term: u128 = std::u128::max_value!();
-    let mut sum_term: u128 = 0;
+    let mut max_term: u128 = 0;
 
     let mut i = 0;
     while (i < n) {
@@ -86,7 +86,9 @@ public fun compute_noarb_band<AssetType, StableType>(
         } else {
             std::u128::max_value!()
         };
-        sum_term = sum_term + term_ceil;
+        if (term_ceil > max_term) {
+            max_term = term_ceil;
+        };
 
         i = i + 1;
     };
@@ -96,7 +98,7 @@ public fun compute_noarb_band<AssetType, StableType>(
 
     // ceiling: divide by (1 - f_s) == multiply by bps / (bps - f_s)
     let ceiling = if (one_minus_fs > 0) {
-        (sum_term * (bps as u128)) / (one_minus_fs as u128)
+        (max_term * (bps as u128)) / (one_minus_fs as u128)
     } else {
         std::u128::max_value!()
     };

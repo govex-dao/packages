@@ -1,15 +1,15 @@
 {
   "packageName": "futarchy_markets_primitives",
-  "transactionDigest": "2uxYHkb3HjGaY4WMCD82RE2JWvw64VCYXEXEmetJFpYR",
-  "packageId": "0x5d2f30aa5c62f3c10f433d7859d9ca7e2683505fc93b9600e9c5d7bd68217a54",
+  "transactionDigest": "6GMaKLUYSuwPd8dWqigvRfrFJygEXfU88fPM6fAShfTP",
+  "packageId": "0x8627076c53d010c940ce550d602b5179e3ddd893ac8a8d57b2930926500e981f",
+  "adminCaps": [],
+  "sharedObjects": [],
+  "ownedObjects": [],
   "upgradeCap": {
-    "objectId": "0x8528df9730ad12889e4cc55bded407fccb1e926cb9d578fdf80b2ffb35a6902b",
+    "objectId": "0x6ff3e6188ee0a96613f09b5e1c975fb5bcf174c6d3965a5e1fedddd58ec7139c",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
     }
-  },
-  "adminCaps": [],
-  "sharedObjects": [],
-  "ownedObjects": []
+  }
 }

@@ -304,7 +304,7 @@ async function main() {
 
     tokensForSale: 1_000_000n,
     minRaiseAmount: TransactionUtils.suiToMist(1),
-    maxRaiseAmount: TransactionUtils.suiToMist(100),
+    maxRaiseAmount: TransactionUtils.suiToMist(1500), // Increased to fund 1000-token pool + stream
 
     allowedCaps: [
       TransactionUtils.suiToMist(1),
@@ -413,7 +413,7 @@ async function main() {
 
   // Step 2.5: Add pool creation action to builder
   const poolAssetAmount = TransactionUtils.suiToMist(1000); // Mint 1000 asset tokens
-  const poolStableAmount = TransactionUtils.suiToMist(1); // Use 1 stable from vault
+  const poolStableAmount = TransactionUtils.suiToMist(1000); // Use 1000 stable from vault (balanced 1:1 pool)
   const poolFeeBps = 30; // 0.3% fee
 
   console.log("\n📋 Staging AMM pool creation for SUCCESS outcome...");
@@ -554,10 +554,11 @@ async function main() {
   console.log("=".repeat(80));
 
   // Minimum is 1 TSTABLE (1_000_000_000 MIST)
-  // Success: contribute 2 TSTABLE to exceed minimum
+  // Max raise is 1500 TSTABLE (to fund 1000-token pool + 0.5 stream)
+  // Success: contribute 1500 TSTABLE to reach max
   // Failure: contribute 0.5 TSTABLE to stay below minimum
   const amountToContribute = shouldRaiseSucceed
-    ? TransactionUtils.suiToMist(2) // 2 TSTABLE > 1 TSTABLE minimum ✅
+    ? TransactionUtils.suiToMist(1500) // 1500 TSTABLE = maxRaiseAmount ✅
     : TransactionUtils.suiToMist(0.5); // 0.5 TSTABLE < 1 TSTABLE minimum ❌
 
   console.log(

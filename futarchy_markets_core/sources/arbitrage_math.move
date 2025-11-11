@@ -1143,6 +1143,326 @@ fun calculate_conditional_cost(conditionals: &vector<LiquidityPool>, b: u64): u1
 }
 
 // ============================================================================
+// ROUTING OPTIMIZATION - MAXIMIZE USER OUTPUT
+// ============================================================================
+
+/// Find optimal routing for stable→asset swap to maximize asset output
+///
+/// Compares:
+/// - Direct: X stable → asset via spot
+/// - Routed: X stable → asset via spot, mint conditionals, swap in conditionals, burn, swap back
+/// - Split: Some direct, some routed
+///
+/// Uses ternary search to find optimal split that maximizes total asset output
+///
+/// Returns: (optimal_amount_to_route, max_asset_output)
+public fun compute_optimal_route_stable_to_asset<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    stable_input: u64,
+): (u64, u64) {
+    let outcome_count = vector::length(conditionals);
+    if (outcome_count == 0) {
+        // No conditionals - must go direct
+        let asset_out = unified_spot_pool::simulate_swap_stable_to_asset(spot, stable_input);
+        return (0, asset_out)
+    };
+
+    // Try full direct route
+    let direct_output = unified_spot_pool::simulate_swap_stable_to_asset(spot, stable_input);
+
+    // Try full routed (through conditionals)
+    let routed_output = simulate_full_route_stable_to_asset(spot, conditionals, stable_input);
+
+    // If routing through conditionals is worse, go direct
+    if (routed_output <= direct_output) {
+        return (0, direct_output)
+    };
+
+    // Routing helps! Use ternary search to find optimal split
+    let (optimal_routed_amount, max_output) = ternary_search_optimal_routing_stable_to_asset(
+        spot,
+        conditionals,
+        stable_input,
+    );
+
+    (optimal_routed_amount, max_output)
+}
+
+/// Simulate full routing: stable → asset → conditionals → stable → asset
+fun simulate_full_route_stable_to_asset<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    stable_input: u64,
+): u64 {
+    let outcome_count = vector::length(conditionals);
+
+    // Step 1: Swap stable → asset on spot
+    let asset_from_spot = unified_spot_pool::simulate_swap_stable_to_asset(spot, stable_input);
+    if (asset_from_spot == 0) return 0;
+
+    // Step 2: Simulate swapping asset→stable in each conditional pool
+    let mut min_stable = std::u64::max_value!();
+    let mut i = 0;
+    while (i < outcome_count) {
+        let pool = &conditionals[i];
+        let stable_out = conditional_amm::quote_swap_asset_to_stable(pool, asset_from_spot);
+        if (stable_out < min_stable) {
+            min_stable = stable_out;
+        };
+        i = i + 1;
+    };
+
+    // Step 3: Burn complete set (limited by min) → get stable back
+    if (min_stable == 0) return 0;
+
+    // Step 4: Swap stable → asset on spot again
+    let final_asset = unified_spot_pool::simulate_swap_stable_to_asset(spot, min_stable);
+    final_asset
+}
+
+/// Ternary search to find optimal split between direct and routed
+fun ternary_search_optimal_routing_stable_to_asset<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    stable_input: u64,
+): (u64, u64) {
+    let mut left = 0u64;
+    let mut right = stable_input;
+    let threshold_calc = stable_input / 100;
+    let threshold = if (threshold_calc > 3u64) { threshold_calc } else { 3u64 }; // 1% or minimum 3 for safety
+
+    let mut best_routed_amount = 0u64;
+    let mut best_output = 0u64;
+
+    while (right - left > threshold) {
+        let range = right - left;
+        let third = range / 3;
+        if (third == 0) break; // Safety: prevent infinite loop
+
+        let m1 = left + third;
+        let m2 = right - third;
+
+        let output1 = evaluate_split_routing_stable_to_asset(spot, conditionals, stable_input, m1);
+        let output2 = evaluate_split_routing_stable_to_asset(spot, conditionals, stable_input, m2);
+
+        if (output1 > best_output) {
+            best_output = output1;
+            best_routed_amount = m1;
+        };
+        if (output2 > best_output) {
+            best_output = output2;
+            best_routed_amount = m2;
+        };
+
+        // Ternary search: move toward better output
+        if (output1 >= output2) {
+            right = m2;
+        } else {
+            left = m1;
+        };
+    };
+
+    // Check endpoints
+    let output_left = evaluate_split_routing_stable_to_asset(spot, conditionals, stable_input, left);
+    let output_right = evaluate_split_routing_stable_to_asset(spot, conditionals, stable_input, right);
+
+    if (output_left > best_output) {
+        best_output = output_left;
+        best_routed_amount = left;
+    };
+    if (output_right > best_output) {
+        best_output = output_right;
+        best_routed_amount = right;
+    };
+
+    (best_routed_amount, best_output)
+}
+
+/// Evaluate output for a given split: route `routed_amount` through conditionals, rest direct
+fun evaluate_split_routing_stable_to_asset<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    total_stable_input: u64,
+    routed_amount: u64,
+): u64 {
+    if (routed_amount > total_stable_input) return 0;
+
+    let direct_amount = total_stable_input - routed_amount;
+
+    // Direct path output
+    let direct_output = if (direct_amount > 0) {
+        unified_spot_pool::simulate_swap_stable_to_asset(spot, direct_amount)
+    } else {
+        0
+    };
+
+    // Routed path output
+    let routed_output = if (routed_amount > 0) {
+        simulate_full_route_stable_to_asset(spot, conditionals, routed_amount)
+    } else {
+        0
+    };
+
+    direct_output + routed_output
+}
+
+/// Find optimal routing for asset→stable swap to maximize stable output
+///
+/// Analogous to stable→asset routing but in reverse direction
+///
+/// Returns: (optimal_amount_to_route, max_stable_output)
+public fun compute_optimal_route_asset_to_stable<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    asset_input: u64,
+): (u64, u64) {
+    let outcome_count = vector::length(conditionals);
+    if (outcome_count == 0) {
+        // No conditionals - must go direct
+        let stable_out = unified_spot_pool::simulate_swap_asset_to_stable(spot, asset_input);
+        return (0, stable_out)
+    };
+
+    // Try full direct route
+    let direct_output = unified_spot_pool::simulate_swap_asset_to_stable(spot, asset_input);
+
+    // Try full routed (through conditionals)
+    let routed_output = simulate_full_route_asset_to_stable(spot, conditionals, asset_input);
+
+    // If routing through conditionals is worse, go direct
+    if (routed_output <= direct_output) {
+        return (0, direct_output)
+    };
+
+    // Routing helps! Use ternary search to find optimal split
+    let (optimal_routed_amount, max_output) = ternary_search_optimal_routing_asset_to_stable(
+        spot,
+        conditionals,
+        asset_input,
+    );
+
+    (optimal_routed_amount, max_output)
+}
+
+/// Simulate full routing: asset → stable → conditionals → asset → stable
+fun simulate_full_route_asset_to_stable<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    asset_input: u64,
+): u64 {
+    let outcome_count = vector::length(conditionals);
+
+    // Step 1: Swap asset → stable on spot
+    let stable_from_spot = unified_spot_pool::simulate_swap_asset_to_stable(spot, asset_input);
+    if (stable_from_spot == 0) return 0;
+
+    // Step 2: Simulate swapping stable→asset in each conditional pool
+    let mut min_asset = std::u64::max_value!();
+    let mut i = 0;
+    while (i < outcome_count) {
+        let pool = &conditionals[i];
+        let asset_out = conditional_amm::quote_swap_stable_to_asset(pool, stable_from_spot);
+        if (asset_out < min_asset) {
+            min_asset = asset_out;
+        };
+        i = i + 1;
+    };
+
+    // Step 3: Burn complete set (limited by min) → get asset back
+    if (min_asset == 0) return 0;
+
+    // Step 4: Swap asset → stable on spot again
+    let final_stable = unified_spot_pool::simulate_swap_asset_to_stable(spot, min_asset);
+    final_stable
+}
+
+/// Ternary search to find optimal split for asset→stable routing
+fun ternary_search_optimal_routing_asset_to_stable<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    asset_input: u64,
+): (u64, u64) {
+    let mut left = 0u64;
+    let mut right = asset_input;
+    let threshold_calc = asset_input / 100;
+    let threshold = if (threshold_calc > 3u64) { threshold_calc } else { 3u64 }; // 1% or minimum 3
+
+    let mut best_routed_amount = 0u64;
+    let mut best_output = 0u64;
+
+    while (right - left > threshold) {
+        let range = right - left;
+        let third = range / 3;
+        if (third == 0) break; // Safety
+
+        let m1 = left + third;
+        let m2 = right - third;
+
+        let output1 = evaluate_split_routing_asset_to_stable(spot, conditionals, asset_input, m1);
+        let output2 = evaluate_split_routing_asset_to_stable(spot, conditionals, asset_input, m2);
+
+        if (output1 > best_output) {
+            best_output = output1;
+            best_routed_amount = m1;
+        };
+        if (output2 > best_output) {
+            best_output = output2;
+            best_routed_amount = m2;
+        };
+
+        if (output1 >= output2) {
+            right = m2;
+        } else {
+            left = m1;
+        };
+    };
+
+    // Check endpoints
+    let output_left = evaluate_split_routing_asset_to_stable(spot, conditionals, asset_input, left);
+    let output_right = evaluate_split_routing_asset_to_stable(spot, conditionals, asset_input, right);
+
+    if (output_left > best_output) {
+        best_output = output_left;
+        best_routed_amount = left;
+    };
+    if (output_right > best_output) {
+        best_output = output_right;
+        best_routed_amount = right;
+    };
+
+    (best_routed_amount, best_output)
+}
+
+/// Evaluate output for asset→stable split routing
+fun evaluate_split_routing_asset_to_stable<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    total_asset_input: u64,
+    routed_amount: u64,
+): u64 {
+    if (routed_amount > total_asset_input) return 0;
+
+    let direct_amount = total_asset_input - routed_amount;
+
+    // Direct path output
+    let direct_output = if (direct_amount > 0) {
+        unified_spot_pool::simulate_swap_asset_to_stable(spot, direct_amount)
+    } else {
+        0
+    };
+
+    // Routed path output
+    let routed_output = if (routed_amount > 0) {
+        simulate_full_route_asset_to_stable(spot, conditionals, routed_amount)
+    } else {
+        0
+    };
+
+    direct_output + routed_output
+}
+
+// ============================================================================
 // TEST-ONLY WRAPPERS
 // ============================================================================
 // These wrappers expose internal functions for white-box testing.

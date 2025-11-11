@@ -11,9 +11,11 @@
 
 module futarchy_markets_core::arbitrage;
 
+use futarchy_markets_core::arbitrage_math;
 use futarchy_markets_core::swap_core::{Self, SwapSession};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
+use futarchy_markets_primitives::conditional_amm;
 use futarchy_markets_primitives::conditional_balance::{Self, ConditionalMarketBalance};
 use futarchy_markets_primitives::market_state;
 use std::option;
@@ -268,19 +270,29 @@ fun execute_spot_arb_stable_to_asset_direction<AssetType, StableType>(
         0 // Loss case - report as 0 profit
     };
 
+    // 8. CRITICAL FIX: Swap profit stable back to asset on spot to rebalance price
+    // This completes the arbitrage loop and brings spot price back toward equilibrium
+    let profit_asset = unified_spot_pool::swap_stable_for_asset(
+        spot_pool,
+        profit_stable,
+        0,
+        clock,
+        ctx,
+    );
+
     // Emit event
     event::emit(SpotArbitrageExecuted {
         proposal_id: market_id,
         outcome_count,
         input_asset: 0,
         input_stable: stable_amt,
-        output_asset: 0,
-        output_stable: profit_stable.value(),
-        profit_asset: 0,
-        profit_stable: net_profit_stable,
+        output_asset: profit_asset.value(),
+        output_stable: 0,
+        profit_asset: if (profit_asset.value() >= asset_amt) { profit_asset.value() - asset_amt } else { 0 },
+        profit_stable: 0,
     });
 
-    // 8. Merge dust into existing balance OR return new balance
+    // 9. Merge dust into existing balance OR return new balance
     let final_balance = if (option::is_some(&existing_balance_opt)) {
         let mut existing = option::extract(&mut existing_balance_opt);
         conditional_balance::merge(&mut existing, arb_balance); // Merge new dust into existing
@@ -290,7 +302,7 @@ fun execute_spot_arb_stable_to_asset_direction<AssetType, StableType>(
     };
     option::destroy_none(existing_balance_opt);
 
-    (profit_stable, coin::zero<AssetType>(ctx), final_balance)
+    (coin::zero<StableType>(ctx), profit_asset, final_balance)
 }
 
 /// Execute: Asset → Spot Stable → Conditional Stables → Conditional Assets → Spot Asset (profit)
@@ -381,19 +393,29 @@ fun execute_spot_arb_asset_to_stable_direction<AssetType, StableType>(
         0 // Loss case - report as 0 profit
     };
 
+    // 8. CRITICAL FIX: Swap profit asset back to stable on spot to rebalance price
+    // This completes the arbitrage loop and brings spot price back toward equilibrium
+    let profit_stable = unified_spot_pool::swap_asset_for_stable(
+        spot_pool,
+        profit_asset,
+        0,
+        clock,
+        ctx,
+    );
+
     // Emit event
     event::emit(SpotArbitrageExecuted {
         proposal_id: market_id,
         outcome_count,
         input_asset: asset_amt,
         input_stable: 0,
-        output_asset: profit_asset.value(),
-        output_stable: 0,
-        profit_asset: net_profit_asset,
-        profit_stable: 0,
+        output_asset: 0,
+        output_stable: profit_stable.value(),
+        profit_asset: 0,
+        profit_stable: if (profit_stable.value() >= stable_amt) { profit_stable.value() - stable_amt } else { 0 },
     });
 
-    // 8. Merge dust into existing balance OR return new balance
+    // 9. Merge dust into existing balance OR return new balance
     let final_balance = if (option::is_some(&existing_balance_opt)) {
         let mut existing = option::extract(&mut existing_balance_opt);
         conditional_balance::merge(&mut existing, arb_balance); // Merge new dust into existing
@@ -403,7 +425,116 @@ fun execute_spot_arb_asset_to_stable_direction<AssetType, StableType>(
     };
     option::destroy_none(existing_balance_opt);
 
-    (coin::zero<StableType>(ctx), profit_asset, final_balance)
+    (profit_stable, coin::zero<AssetType>(ctx), final_balance)
+}
+
+/// Automatic arbitrage after conditional swaps to bring spot price back into safe range
+///
+/// After users swap in conditional pools, spot price can drift outside the conditional price range.
+/// This function atomically arbitrages using pool liquidity (no user coins required) to bring
+/// spot price back into equilibrium.
+///
+/// The function iterates, executing small arb operations until spot price is within the
+/// conditional price range (min_cond_price ≤ spot_price ≤ max_cond_price).
+public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Note: We limit iterations to prevent infinite loops
+    let mut iterations = 0;
+    let max_iterations = 20; // Safety guard - increased for better convergence with large price gaps
+
+    while (iterations < max_iterations) {
+        // Use proper arbitrage math with ternary search to find optimal amount
+        // It will return 0 if no profitable arbitrage exists (price close enough)
+        let market_state = coin_escrow::get_market_state(escrow);
+        let pools = market_state::borrow_amm_pools(market_state);
+
+        let (arb_amount, expected_profit, is_spot_to_cond) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+            spot_pool,
+            pools,
+            0, // No user swap hint - we want global optimal
+            0, // No min profit requirement for rebalancing
+        );
+
+        // If no profitable arbitrage found, we're done
+        if (arb_amount == 0) {
+            break
+        };
+
+        // Safety check: make sure escrow has enough balance
+        let (escrow_asset, escrow_stable) = coin_escrow::get_spot_balances(escrow);
+        if (escrow_asset < arb_amount && escrow_stable < arb_amount) {
+            // Not enough liquidity to continue, exit
+            break
+        };
+
+        let session = swap_core::begin_swap_session(escrow);
+
+        // Execute arbitrage in the direction suggested by arbitrage math
+        if (is_spot_to_cond) {
+            // Spot → Conditional (buy from spot, pushes spot price UP)
+            // This is optimal when spot price is too LOW
+            if (escrow_stable < arb_amount) {
+                swap_core::finalize_swap_session(session, escrow);
+                break
+            };
+
+            let stable_coin = coin_escrow::withdraw_stable_balance(escrow, arb_amount, ctx);
+            let (stable_out, asset_out, balance) = execute_spot_arb_stable_to_asset_direction(
+                spot_pool,
+                escrow,
+                &session,
+                stable_coin,
+                0, // min_profit
+                @0x0, // dummy recipient
+                option::none(),
+                clock,
+                ctx,
+            );
+            // Destroy returned coins and balance
+            coin::destroy_zero(stable_out);
+            if (asset_out.value() > 0) {
+                coin_escrow::deposit_spot_coins(escrow, asset_out, coin::zero<StableType>(ctx));
+            } else {
+                coin::destroy_zero(asset_out);
+            };
+            conditional_balance::destroy_empty(balance);
+        } else {
+            // Conditional → Spot (sell to spot, pushes spot price DOWN)
+            // This is optimal when spot price is too HIGH
+            if (escrow_asset < arb_amount) {
+                swap_core::finalize_swap_session(session, escrow);
+                break
+            };
+
+            let asset_coin = coin_escrow::withdraw_asset_balance(escrow, arb_amount, ctx);
+            let (stable_out, asset_out, balance) = execute_spot_arb_asset_to_stable_direction(
+                spot_pool,
+                escrow,
+                &session,
+                asset_coin,
+                0, // min_profit
+                @0x0, // dummy recipient
+                option::none(),
+                clock,
+                ctx,
+            );
+            // Destroy returned coins and balance
+            coin::destroy_zero(asset_out);
+            if (stable_out.value() > 0) {
+                coin_escrow::deposit_spot_coins(escrow, coin::zero<AssetType>(ctx), stable_out);
+            } else {
+                coin::destroy_zero(stable_out);
+            };
+            conditional_balance::destroy_empty(balance);
+        };
+
+        swap_core::finalize_swap_session(session, escrow);
+        iterations = iterations + 1;
+    };
 }
 
 // === Helper Functions ===

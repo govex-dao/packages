@@ -442,9 +442,9 @@ fun test_execute_optimal_arbitrage_stable_to_asset_direction_2_outcomes() {
         ctx,
     );
 
-    // Should get stable profit back (may be less due to fees/slippage)
-    assert!(stable_profit.value() > 0 || stable_profit.value() == 0, 0);
-    assert!(asset_profit.value() == 0, 1);
+    // After rebalancing, profit is swapped back to asset to push price down
+    assert!(stable_profit.value() == 0, 0);
+    assert!(asset_profit.value() >= 0, 1); // May have asset profit from rebalancing swap
 
     // Cleanup
     coin::burn_for_testing(stable_profit);
@@ -498,9 +498,9 @@ fun test_execute_optimal_arbitrage_asset_to_stable_direction_2_outcomes() {
         ctx,
     );
 
-    // Should get asset profit back
-    assert!(stable_profit.value() == 0, 0);
-    assert!(asset_profit.value() > 0 || asset_profit.value() == 0, 1);
+    // After rebalancing, profit is swapped back to stable to push price up
+    assert!(stable_profit.value() >= 0, 0); // May have stable profit from rebalancing swap
+    assert!(asset_profit.value() == 0, 1);
 
     // Cleanup
     coin::burn_for_testing(stable_profit);
@@ -717,9 +717,9 @@ fun test_arbitrage_with_5_outcomes() {
         ctx,
     );
 
-    // Should complete successfully
-    assert!(stable_profit.value() >= 0, 0);
-    assert!(asset_profit.value() == 0, 1);
+    // Should complete successfully - after rebalancing returns asset
+    assert!(stable_profit.value() == 0, 0);
+    assert!(asset_profit.value() >= 0, 1);
 
     // Cleanup
     coin::burn_for_testing(stable_profit);

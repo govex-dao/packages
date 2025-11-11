@@ -6,6 +6,7 @@ module futarchy_markets_core::proposal;
 use futarchy_markets_primitives::conditional_amm::{Self, LiquidityPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_core::liquidity_initialize;
+use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::market_state;
 // Removed: use futarchy_one_shot_utils::coin_validation - module was deleted, validation inlined
 use std::ascii::String as AsciiString;
@@ -46,6 +47,7 @@ const ENotLiquidityProvider: u64 = 17;
 const EAlreadySponsored: u64 = 18;
 const ESupplyNotZero: u64 = 19;
 const EInsufficientBalance: u64 = 20;
+const EPriceVerificationFailed: u64 = 21;
 
 // === Constants ===
 
@@ -369,6 +371,7 @@ public fun register_outcome_caps_with_escrow<AssetType, StableType, AssetConditi
 public fun create_conditional_amm_pools<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
+    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -378,20 +381,37 @@ public fun create_conditional_amm_pools<AssetType, StableType>(
     let market_state = coin_escrow::get_market_state_mut(escrow);
     let outcome_count = market_state::outcome_count(market_state);
 
-    // CRITICAL: Pools need minimal reserves to satisfy AMM constraints (MINIMUM_LIQUIDITY = 1000)
-    // These minimal reserves must have matching escrow backing for recombination to work
-    // Quantum split will ADD bulk liquidity on top of these minimal reserves
+    // Bootstrap conditional pools at SAME price as spot pool
+    // Each conditional pool should have identical ratio to spot pool
+    // k = asset * stable >= 1000 (MINIMUM_LIQUIDITY)
 
-    // Use absolute minimum per pool (sqrt(1000*1000) = 1000 satisfies k >= MINIMUM_LIQUIDITY)
-    let min_reserve_per_pool = 1000u64;
+    let (spot_asset, spot_stable) = unified_spot_pool::get_reserves(spot_pool);
+
+    let min_k = 1000u128;
+    let precision = 1_000_000_000_000u128;
+
+    // Each pool should match spot ratio
+    let spot_ratio = ((spot_asset as u128) * precision) / (spot_stable as u128);
+
+    // Calculate k so both reserves >= 1000 while maintaining ratio
+    let min_k_for_asset = (1_000_000u128 * precision) / spot_ratio;
+    let min_k_for_stable = (1_000_000u128 * spot_ratio) / precision;
+
+    let required_k = min_k_for_asset.max(min_k_for_stable).max(min_k);
+
+    let asset_squared = (required_k * spot_ratio) / precision;
+    let stable_squared = (required_k * precision) / spot_ratio;
+
+    let min_asset_per_pool = (asset_squared.sqrt() as u64);
+    let min_stable_per_pool = (stable_squared.sqrt() as u64);
 
     // Create vectors for pool initialization
     let mut asset_amounts = vector::empty<u64>();
     let mut stable_amounts = vector::empty<u64>();
     let mut i = 0;
     while (i < outcome_count) {
-        asset_amounts.push_back(min_reserve_per_pool);
-        stable_amounts.push_back(min_reserve_per_pool);
+        asset_amounts.push_back(min_asset_per_pool);
+        stable_amounts.push_back(min_stable_per_pool);
         i = i + 1;
     };
 
@@ -416,6 +436,24 @@ public fun create_conditional_amm_pools<AssetType, StableType>(
     // Store the pools in MarketState (CRITICAL - this is the missing piece!)
     let market_state = coin_escrow::get_market_state_mut(escrow);
     market_state::set_amm_pools(market_state, amm_pools);
+
+    // VERIFICATION: Each conditional pool matches spot price within 1/10000
+    let pools = market_state::borrow_amm_pools(market_state);
+    let (spot_asset, spot_stable) = unified_spot_pool::get_reserves(spot_pool);
+
+    let mut i = 0;
+    while (i < outcome_count) {
+        let (pool_asset, pool_stable) = conditional_amm::get_reserves(&pools[i]);
+
+        // Compare ratios: pool_stable/pool_asset vs spot_stable/spot_asset
+        // Cross multiply: pool_stable * spot_asset vs spot_stable * pool_asset
+        let left = (pool_stable as u128) * (spot_asset as u128);
+        let right = (spot_stable as u128) * (pool_asset as u128);
+        let diff = if (left > right) { left - right } else { right - left };
+
+        assert!(diff * 10000 <= right, EPriceVerificationFailed);
+        i = i + 1;
+    };
 }
 
 /// Step 3: Initialize market with pre-configured escrow
@@ -1374,6 +1412,33 @@ public fun new_for_testing<AssetType, StableType>(
         fee_escrow: balance::zero(), // No fees for test proposals
         treasury_address,
     }
+}
+
+#[test_only]
+/// Set the state of a proposal for testing
+public fun set_state_for_testing<AssetType, StableType>(
+    proposal: &mut Proposal<AssetType, StableType>,
+    new_state: u8
+) {
+    proposal.state = new_state;
+}
+
+#[test_only]
+/// Set the escrow_id of a proposal for testing
+public fun set_escrow_id_for_testing<AssetType, StableType>(
+    proposal: &mut Proposal<AssetType, StableType>,
+    escrow_id: ID
+) {
+    proposal.escrow_id = option::some(escrow_id);
+}
+
+#[test_only]
+/// Set the market_state_id of a proposal for testing
+public fun set_market_state_id_for_testing<AssetType, StableType>(
+    proposal: &mut Proposal<AssetType, StableType>,
+    market_state_id: ID
+) {
+    proposal.market_state_id = option::some(market_state_id);
 }
 
 #[test_only]

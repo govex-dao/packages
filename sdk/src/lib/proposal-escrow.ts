@@ -28,11 +28,11 @@ import { TransactionUtils } from './transaction';
  * ```typescript
  * const tx = new Transaction();
  *
- * // Create escrow for outcome 0 (Accept/Yes)
+ * // Create escrow for outcome 1 (Accept/Yes) - Note: outcome 0 = Reject/No
  * const [escrow, receipt] = ProposalEscrowOperations.createForOutcomeWithCoin(tx, {
  *   governancePackageId,
  *   proposalId,
- *   outcomeIndex: 0,
+ *   outcomeIndex: 1,
  *   depositAmount: 1000000n,
  *   assetType: "0x2::sui::SUI",
  *   stableType,
@@ -42,7 +42,7 @@ import { TransactionUtils } from './transaction';
  * ProposalEscrowOperations.storeReceiptInProposal(tx, {
  *   governancePackageId,
  *   proposalId,
- *   outcomeIndex: 0,
+ *   outcomeIndex: 1,
  *   assetType: "0x2::sui::SUI",
  *   stableType,
  * }, receipt);
@@ -50,12 +50,12 @@ import { TransactionUtils } from './transaction';
  * // Transfer escrow to shared object
  * tx.transferObjects([escrow], tx.pure.address("0x..."));
  *
- * // Later, after proposal finalized and outcome 0 won:
+ * // Later, after proposal finalized and outcome 1 won:
  * const coins = ProposalEscrowOperations.withdrawAllCoins(tx, {
  *   governancePackageId,
  *   escrowId: "0xescrow...",
  *   proposalId,
- *   outcomeIndex: 0,
+ *   outcomeIndex: 1,
  *   assetType: "0x2::sui::SUI",
  *   stableType,
  * });
@@ -89,7 +89,7 @@ export class ProposalEscrowOperations {
    * const [escrow, receipt] = ProposalEscrowOperations.createForOutcomeWithCoin(tx, {
    *   governancePackageId,
    *   proposalId: "0x123...",
-   *   outcomeIndex: 0, // Accept/Yes
+   *   outcomeIndex: 1, // Accept/Yes (0 = Reject/No)
    *   assetType: "0x2::sui::SUI",
    *   stableType,
    * }, depositCoin);

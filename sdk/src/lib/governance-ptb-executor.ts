@@ -55,7 +55,7 @@ export class GovernancePTBExecutor {
    *
    * Requirements:
    * - Proposal must be finalized
-   * - Outcome 0 (Accept/Yes) must have won
+   * - Outcome 1 (Accept/Yes) must have won (Outcome 0 = Reject/No)
    *
    * @param tx - Transaction to add the call to
    * @param config - Execution configuration

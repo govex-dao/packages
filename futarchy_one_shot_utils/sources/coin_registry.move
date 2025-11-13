@@ -247,6 +247,55 @@ public fun take_coin_set<T>(
     fee_payment
 }
 
+/// Take a coin set from registry and RETURN caps for use in same PTB
+/// Unlike take_coin_set(), this returns the caps instead of transferring them
+/// This allows the caps to be used immediately in the same transaction
+/// (e.g., to register with escrow)
+public fun take_coin_set_for_ptb<T>(
+    registry: &mut CoinRegistry,
+    cap_id: ID,
+    mut fee_payment: Coin<SUI>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (TreasuryCap<T>, CoinMetadata<T>, Coin<SUI>) {
+    // Check exists
+    assert!(
+        dynamic_field::exists_with_type<ID, CoinSet<T>>(&registry.id, cap_id),
+        ENoCoinSetsAvailable,
+    );
+
+    // Remove from registry
+    let coin_set: CoinSet<T> = dynamic_field::remove(&mut registry.id, cap_id);
+
+    // Validate fee
+    assert!(fee_payment.value() >= coin_set.fee, EInsufficientFee);
+
+    // Split exact payment
+    let payment = fee_payment.split(coin_set.fee, ctx);
+
+    // Pay owner
+    transfer::public_transfer(payment, coin_set.owner);
+
+    // Update total count
+    registry.total_sets = registry.total_sets - 1;
+
+    // Emit event
+    event::emit(CoinSetTaken {
+        registry_id: object::id(registry),
+        cap_id,
+        taker: ctx.sender(),
+        fee_paid: coin_set.fee,
+        owner_paid: coin_set.owner,
+        timestamp: clock.timestamp_ms(),
+    });
+
+    // RETURN caps instead of transferring (key difference!)
+    let CoinSet { treasury_cap, metadata, owner: _, fee: _ } = coin_set;
+
+    // Return (cap, metadata, remaining_payment) for use in same PTB
+    (treasury_cap, metadata, fee_payment)
+}
+
 // === View Functions ===
 
 /// Get total number of coin sets in registry

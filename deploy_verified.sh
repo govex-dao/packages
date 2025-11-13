@@ -191,6 +191,7 @@ deploy_and_verify() {
 }
 
 # Package list in deployment order (13 packages total)
+# NOTE: conditional_coins is deployed separately via deploy-conditional-coins.ts
 declare -a PACKAGES=(
     # Move Framework packages (2)
     "AccountProtocol:/Users/admin/govex/packages/move-framework/packages/protocol:account_protocol"

@@ -47,7 +47,7 @@ public fun witness(): GovernanceWitness {
 /// Execute a governance intent from an approved proposal
 /// This creates an Intent just-in-time from the stored IntentSpec blueprint
 /// and immediately converts it to an executable for execution
-/// Returns both the executable and the intent key for cleanup
+/// Returns the executable hot potato for action execution
 public fun execute_proposal_intent<AssetType, StableType, Outcome: store + drop + copy>(
     account: &mut Account,
     registry: &PackageRegistry,
@@ -57,7 +57,7 @@ public fun execute_proposal_intent<AssetType, StableType, Outcome: store + drop 
     outcome: Outcome,
     clock: &Clock,
     ctx: &mut TxContext
-): (Executable<Outcome>, String) {
+): Executable<Outcome> {
     // Get the intent spec from the proposal for the specified outcome
     let mut intent_spec_opt = proposal::take_intent_spec_for_outcome(proposal, outcome_index);
 
@@ -77,17 +77,19 @@ public fun execute_proposal_intent<AssetType, StableType, Outcome: store + drop 
     );
 
     // Now create the executable from the stored intent
-    let (_outcome, executable) = account::create_executable<FutarchyConfig, Outcome, GovernanceWitness>(
+    // IMPORTANT: Must use futarchy_config::witness() (ConfigWitness) to match the Config module
+    // The witness module must match the Config module for the security check in account::create_executable
+    let (_outcome, executable) = account::create_executable<FutarchyConfig, Outcome, _>(
         account,
         registry,
         intent_key,
         clock,
         version::current(),
-        GovernanceWitness{},
+        futarchy_config::witness(),
         ctx,
     );
 
-    (executable, intent_key)
+    executable
 }
 
 // === Helper Functions ===
@@ -134,8 +136,8 @@ public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
     let len = vector::length(&specs);
     while (i < len) {
         let action_spec = vector::borrow(&specs, i);
-        // Extract fields and add to intent
-        intents::add_action_spec(
+        // Extract fields and add to intent, preserving the original TypeName
+        intents::add_action_spec_with_typename(
             &mut intent,
             intents::action_spec_type(action_spec),
             *intents::action_spec_data(action_spec),

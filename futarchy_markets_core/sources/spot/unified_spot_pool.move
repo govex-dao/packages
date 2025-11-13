@@ -46,10 +46,13 @@ const EAggregatorNotEnabled: u64 = 11;
 const EPoolMismatch: u64 = 12;
 const ELpStateMismatch: u64 = 13;
 const EInvalidSplitAmount: u64 = 14;
+const EProposalActive: u64 = 15; // LP operations blocked during active proposal
+const EInsufficientGapBetweenProposals: u64 = 16; // Must wait 6hrs between proposals
 
 // === Constants ===
 const MINIMUM_LIQUIDITY: u64 = 1000;
 const PRECISION: u128 = 1_000_000_000_000; // 1e12 for price calculations
+const SIX_HOURS_MS: u64 = 21_600_000; // 6 hours in milliseconds
 
 // === Structs ===
 
@@ -65,38 +68,9 @@ public struct UnifiedSpotPool<phantom AssetType, phantom StableType> has key, st
     // Dynamic fee scheduling (optional, for launchpad anti-snipe)
     fee_schedule: Option<FeeSchedule>,
     fee_schedule_activation_time: u64, // When fee decay starts (usually pool creation)
-    // Bucket tracking for LP withdrawal system - HYPER EXPLICIT NAMES
-    //
-    // spot_active_quantum_lp:
-    //   - Normal active LP that quantum-splits when proposals start
-    //   - Can be removed anytime (if no proposal active)
-    //
-    // spot_leave_lp_when_proposal_ends:
-    //   - User marked for exit during active proposal
-    //   - Gets one final quantum-split to conditionals
-    //   - Becomes spot_frozen_claimable_lp when proposal ends
-    //
-    // spot_frozen_claimable_lp:
-    //   - Fully withdrawn, ready for user to claim
-    //   - Does NOT quantum-split (stays in spot)
-    //   - Final destination before burning LP token
-    //
-    // spot_join_quantum_lp_when_proposal_ends:
-    //   - New LP added during active proposal
-    //   - Does NOT quantum-split to current proposal (isolated from outcome)
-    //   - Becomes spot_active_quantum_lp when proposal ends
-    asset_spot_active_quantum_lp: u64,
-    asset_spot_leave_lp_when_proposal_ends: u64,
-    asset_spot_frozen_claimable_lp: u64,
-    asset_spot_join_quantum_lp_when_proposal_ends: u64,
-    stable_spot_active_quantum_lp: u64,
-    stable_spot_leave_lp_when_proposal_ends: u64,
-    stable_spot_frozen_claimable_lp: u64,
-    stable_spot_join_quantum_lp_when_proposal_ends: u64,
-    lp_spot_active_quantum_lp: u64,
-    lp_spot_leave_lp_when_proposal_ends: u64,
-    lp_spot_frozen_claimable_lp: u64,
-    lp_spot_join_quantum_lp_when_proposal_ends: u64,
+    // Proposal tracking - blocks LP operations during proposals, enforces 6hr gap
+    active_proposal_id: Option<ID>,      // Currently active proposal (Some = LP ops blocked)
+    last_proposal_end_time: Option<u64>, // When last proposal ended (for 6hr gap check)
     // Optional aggregator configuration
     aggregator_config: Option<AggregatorConfig<AssetType, StableType>>,
 }
@@ -239,19 +213,9 @@ public fun new<AssetType, StableType>(
         minimum_liquidity: MINIMUM_LIQUIDITY,
         fee_schedule,
         fee_schedule_activation_time: clock.timestamp_ms(),
-        // Initialize all bucket system to zero
-        asset_spot_active_quantum_lp: 0,
-        asset_spot_leave_lp_when_proposal_ends: 0,
-        asset_spot_frozen_claimable_lp: 0,
-        asset_spot_join_quantum_lp_when_proposal_ends: 0,
-        stable_spot_active_quantum_lp: 0,
-        stable_spot_leave_lp_when_proposal_ends: 0,
-        stable_spot_frozen_claimable_lp: 0,
-        stable_spot_join_quantum_lp_when_proposal_ends: 0,
-        lp_spot_active_quantum_lp: 0,
-        lp_spot_leave_lp_when_proposal_ends: 0,
-        lp_spot_frozen_claimable_lp: 0,
-        lp_spot_join_quantum_lp_when_proposal_ends: 0,
+        // Proposal tracking
+        active_proposal_id: option::none(),
+        last_proposal_end_time: option::none(),
         aggregator_config: option::some(aggregator_config), // ALWAYS enabled
     }
 }
@@ -355,6 +319,9 @@ public fun add_liquidity_and_return<AssetType, StableType>(
 
     assert!(asset_amount > 0 && stable_amount > 0, EZeroAmount);
 
+    // GUARD: Block LP operations during active proposals
+    assert!(pool.active_proposal_id.is_none(), EProposalActive);
+
     // Calculate LP tokens to mint and optimal amounts to deposit
     let (lp_amount, optimal_asset_amount, optimal_stable_amount) = if (pool.lp_supply == 0) {
         // Initial liquidity - use all coins provided (no pool ratio to match)
@@ -412,19 +379,7 @@ public fun add_liquidity_and_return<AssetType, StableType>(
 
     pool.lp_supply = pool.lp_supply + lp_amount;
 
-    // Route to appropriate bucket based on proposal status
-    if (is_locked_for_proposal(pool)) {
-        // Proposal is active - add to PENDING bucket
-        // This LP will merge into LIVE when proposal ends
-        pool.asset_spot_join_quantum_lp_when_proposal_ends = pool.asset_spot_join_quantum_lp_when_proposal_ends + optimal_asset_amount;
-        pool.stable_spot_join_quantum_lp_when_proposal_ends = pool.stable_spot_join_quantum_lp_when_proposal_ends + optimal_stable_amount;
-        pool.lp_spot_join_quantum_lp_when_proposal_ends = pool.lp_spot_join_quantum_lp_when_proposal_ends + lp_amount;
-    } else {
-        // No active proposal - add to LIVE bucket
-        pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp + optimal_asset_amount;
-        pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp + optimal_stable_amount;
-        pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp + lp_amount;
-    };
+    // No bucket tracking needed - LP operations blocked during proposals
 
     // Create and return LP token (unlocked, normal mode by default) + excess coins
     let lp_token = LPToken<AssetType, StableType> {
@@ -436,21 +391,6 @@ public fun add_liquidity_and_return<AssetType, StableType>(
     };
 
     (lp_token, excess_asset, excess_stable)
-}
-
-/// Merge PENDING bucket into LIVE bucket
-/// Called after proposal ends to activate LP that was added during the proposal
-public(package) fun merge_joining_to_active_quantum_lp<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-) {
-    pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp + pool.asset_spot_join_quantum_lp_when_proposal_ends;
-    pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp + pool.stable_spot_join_quantum_lp_when_proposal_ends;
-    pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp + pool.lp_spot_join_quantum_lp_when_proposal_ends;
-
-    // Reset pending buckets to zero
-    pool.asset_spot_join_quantum_lp_when_proposal_ends = 0;
-    pool.stable_spot_join_quantum_lp_when_proposal_ends = 0;
-    pool.lp_spot_join_quantum_lp_when_proposal_ends = 0;
 }
 
 /// Remove liquidity from the pool
@@ -467,9 +407,8 @@ public fun remove_liquidity<AssetType, StableType>(
     assert!(lp_amount > 0, EZeroAmount);
     assert!(pool.lp_supply >= lp_amount, EInsufficientLPSupply);
 
-    // CRITICAL: Check LP token state - can only remove from LIVE bucket
-    assert!(!lp_token.withdraw_mode, EInsufficientLiquidity); // Use mark_lp_for_withdrawal() + withdraw_lp() instead
-    assert!(lp_token.locked_in_proposal.is_none(), ENoActiveProposal); // Can't remove while locked
+    // GUARD: Block LP operations during active proposals
+    assert!(pool.active_proposal_id.is_none(), EProposalActive);
 
     // Calculate proportional amounts from total reserves
     let asset_reserve = balance::value(&pool.asset_reserve);
@@ -487,16 +426,6 @@ public fun remove_liquidity<AssetType, StableType>(
 
     // Update total supply
     pool.lp_supply = pool.lp_supply - lp_amount;
-
-    // CRITICAL FIX: Update bucket tracking (remove from LIVE bucket)
-    // Calculate proportional amounts from LIVE bucket
-    let asset_from_live = (lp_amount as u128) * (pool.asset_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-    let stable_from_live =
-        (lp_amount as u128) * (pool.stable_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-
-    pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp - lp_amount;
-    pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp - (asset_from_live as u64);
-    pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp - (stable_from_live as u64);
 
     // Return assets
     let asset_coin = coin::from_balance(
@@ -542,142 +471,9 @@ public fun remove_liquidity<AssetType, StableType>(
     (asset_coin, stable_coin)
 }
 
-// === LP Withdrawal System ===
+// Bucket-specific LP withdrawal functions removed - LP operations now blocked during proposals
 
-/// Mark LP for withdrawal - user triggers this to exit
-/// If proposal is active: moves LIVE → TRANSITIONING (still trades)
-/// If no proposal: moves LIVE → WITHDRAW_ONLY (immediate)
-public entry fun mark_lp_for_withdrawal<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    lp_token: &mut LPToken<AssetType, StableType>,
-) {
-    // Can't mark for withdrawal if already locked in a proposal
-    assert!(lp_token.locked_in_proposal.is_none(), ENoActiveProposal);
 
-    // Can't mark twice
-    assert!(!lp_token.withdraw_mode, EInsufficientLiquidity);
-
-    let lp_amount = lp_token.amount;
-    assert!(lp_amount > 0, EZeroAmount);
-
-    // Check if there's an active proposal
-    let proposal_active = is_locked_for_proposal(pool);
-
-    if (proposal_active) {
-        // Move from LIVE → TRANSITIONING
-        // Calculate proportional share of LIVE bucket
-        assert!(pool.lp_spot_active_quantum_lp >= lp_amount, EInsufficientLPSupply);
-
-        let asset_to_move =
-            (lp_amount as u128) * (pool.asset_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-        let stable_to_move =
-            (lp_amount as u128) * (pool.stable_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-
-        // Update buckets
-        pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp - lp_amount;
-        pool.lp_spot_leave_lp_when_proposal_ends = pool.lp_spot_leave_lp_when_proposal_ends + lp_amount;
-
-        pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp - (asset_to_move as u64);
-        pool.asset_spot_leave_lp_when_proposal_ends = pool.asset_spot_leave_lp_when_proposal_ends + (asset_to_move as u64);
-
-        pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp - (stable_to_move as u64);
-        pool.stable_spot_leave_lp_when_proposal_ends = pool.stable_spot_leave_lp_when_proposal_ends + (stable_to_move as u64);
-    } else {
-        // Move from LIVE → WITHDRAW_ONLY (immediate)
-        assert!(pool.lp_spot_active_quantum_lp >= lp_amount, EInsufficientLPSupply);
-
-        let asset_to_move =
-            (lp_amount as u128) * (pool.asset_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-        let stable_to_move =
-            (lp_amount as u128) * (pool.stable_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-
-        // Update buckets
-        pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp - lp_amount;
-        pool.lp_spot_frozen_claimable_lp = pool.lp_spot_frozen_claimable_lp + lp_amount;
-
-        pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp - (asset_to_move as u64);
-        pool.asset_spot_frozen_claimable_lp = pool.asset_spot_frozen_claimable_lp + (asset_to_move as u64);
-
-        pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp - (stable_to_move as u64);
-        pool.stable_spot_frozen_claimable_lp = pool.stable_spot_frozen_claimable_lp + (stable_to_move as u64);
-    };
-
-    // Mark token as in withdraw mode
-    lp_token.withdraw_mode = true;
-}
-
-/// Withdraw LP after it's been marked and crank has run
-/// Burns the LP token and returns coins from WITHDRAW_ONLY bucket
-public fun withdraw_lp<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    lp_token: LPToken<AssetType, StableType>,
-    ctx: &mut TxContext,
-): (Coin<AssetType>, Coin<StableType>) {
-    // Must be marked for withdrawal
-    assert!(lp_token.withdraw_mode, EInsufficientLiquidity);
-
-    // Must not be locked in a proposal
-    assert!(lp_token.locked_in_proposal.is_none(), ENoActiveProposal);
-
-    let lp_amount = lp_token.amount;
-    assert!(lp_amount > 0, EZeroAmount);
-    assert!(pool.lp_spot_frozen_claimable_lp >= lp_amount, EInsufficientLPSupply);
-
-    // Calculate proportional share of WITHDRAW_ONLY bucket
-    let asset_out =
-        (lp_amount as u128) * (pool.asset_spot_frozen_claimable_lp as u128) / (pool.lp_spot_frozen_claimable_lp as u128);
-    let stable_out =
-        (lp_amount as u128) * (pool.stable_spot_frozen_claimable_lp as u128) / (pool.lp_spot_frozen_claimable_lp as u128);
-
-    // Update buckets
-    pool.lp_spot_frozen_claimable_lp = pool.lp_spot_frozen_claimable_lp - lp_amount;
-    pool.asset_spot_frozen_claimable_lp = pool.asset_spot_frozen_claimable_lp - (asset_out as u64);
-    pool.stable_spot_frozen_claimable_lp = pool.stable_spot_frozen_claimable_lp - (stable_out as u64);
-
-    // Update total supply
-    pool.lp_supply = pool.lp_supply - lp_amount;
-
-    // Burn LP token
-    let LPToken { id, amount: _, pool_id: _, locked_in_proposal: _, withdraw_mode: _ } = lp_token;
-    object::delete(id);
-
-    // Extract coins from reserves
-    let asset_coin = coin::from_balance(
-        balance::split(&mut pool.asset_reserve, (asset_out as u64)),
-        ctx,
-    );
-    let stable_coin = coin::from_balance(
-        balance::split(&mut pool.stable_reserve, (stable_out as u64)),
-        ctx,
-    );
-
-    (asset_coin, stable_coin)
-}
-
-/// Transition all TRANSITIONING bucket amounts to WITHDRAW_ONLY
-/// Called by crank when proposal finalizes
-/// This is an atomic batch operation that makes all marked LPs claimable
-public(package) fun transition_leaving_to_claimable<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-) {
-    // Move all TRANSITIONING amounts to WITHDRAW_ONLY
-    pool.asset_spot_frozen_claimable_lp = pool.asset_spot_frozen_claimable_lp + pool.asset_spot_leave_lp_when_proposal_ends;
-    pool.stable_spot_frozen_claimable_lp = pool.stable_spot_frozen_claimable_lp + pool.stable_spot_leave_lp_when_proposal_ends;
-    pool.lp_spot_frozen_claimable_lp = pool.lp_spot_frozen_claimable_lp + pool.lp_spot_leave_lp_when_proposal_ends;
-
-    // Reset TRANSITIONING buckets to zero
-    pool.asset_spot_leave_lp_when_proposal_ends = 0;
-    pool.stable_spot_leave_lp_when_proposal_ends = 0;
-    pool.lp_spot_leave_lp_when_proposal_ends = 0;
-}
-
-/// Alias for transition_leaving_to_claimable (for backward compatibility)
-/// Public visibility for cross-package calls
-public fun transition_leaving_to_frozen_claimable<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-) {
-    transition_leaving_to_claimable(pool)
-}
 
 // === Fee Calculation ===
 
@@ -881,33 +677,7 @@ public fun lp_supply<AssetType, StableType>(pool: &UnifiedSpotPool<AssetType, St
     pool.lp_supply
 }
 
-/// Get LIVE bucket reserves (will quantum-split for next proposal)
-public fun get_active_quantum_lp_reserves<AssetType, StableType>(
-    pool: &UnifiedSpotPool<AssetType, StableType>,
-): (u64, u64) {
-    (pool.asset_spot_active_quantum_lp, pool.stable_spot_active_quantum_lp)
-}
-
-/// Get LIVE bucket LP supply
-public fun get_active_quantum_lp_supply<AssetType, StableType>(
-    pool: &UnifiedSpotPool<AssetType, StableType>,
-): u64 {
-    pool.lp_spot_active_quantum_lp
-}
-
-/// Get TRANSITIONING bucket reserves (will move to WITHDRAW_ONLY when proposal ends)
-public fun get_leaving_on_proposal_end_reserves<AssetType, StableType>(
-    pool: &UnifiedSpotPool<AssetType, StableType>,
-): (u64, u64, u64) {
-    (pool.asset_spot_leave_lp_when_proposal_ends, pool.stable_spot_leave_lp_when_proposal_ends, pool.lp_spot_leave_lp_when_proposal_ends)
-}
-
-/// Get WITHDRAW_ONLY bucket reserves (frozen, ready for claiming)
-public fun get_frozen_claimable_lp_reserves<AssetType, StableType>(
-    pool: &UnifiedSpotPool<AssetType, StableType>,
-): (u64, u64, u64) {
-    (pool.asset_spot_frozen_claimable_lp, pool.stable_spot_frozen_claimable_lp, pool.lp_spot_frozen_claimable_lp)
-}
+// Bucket-related getter functions removed - no longer tracking bucket state
 
 /// Get spot price (asset per stable)
 public fun get_spot_price<AssetType, StableType>(
@@ -982,122 +752,110 @@ public fun get_oracle_conditional_threshold_bps<AssetType, StableType>(
 
 // === Quantum Liquidity Functions ===
 
-/// Remove liquidity for quantum split with bucket tracking (doesn't burn LP tokens)
-/// Used when proposal starts - liquidity moves to conditional markets
-/// Removes from BOTH LIVE and TRANSITIONING buckets with explicit amounts for each
-/// WITHDRAW_ONLY bucket stays in spot (frozen, ready for claiming)
-public(package) fun remove_liquidity_for_quantum_split_with_buckets<AssetType, StableType>(
+/// Remove ALL liquidity for quantum split (no bucket tracking)
+/// Called when proposal starts - moves all spot liquidity to conditional markets
+/// Doesn't burn LP tokens - they still represent value in conditional markets
+public(package) fun remove_liquidity_for_quantum_split<AssetType, StableType>(
     pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    asset_live_amount: u64,
-    asset_trans_amount: u64,
-    stable_live_amount: u64,
-    stable_trans_amount: u64,
-): (Balance<AssetType>, Balance<StableType>) {
-    let total_asset = asset_live_amount + asset_trans_amount;
-    let total_stable = stable_live_amount + stable_trans_amount;
+    ctx: &mut TxContext,
+): (Balance<AssetType>, Balance<StableType>, u64) {
+    // Get all reserves - we remove EVERYTHING during quantum split
+    let asset_amount = balance::value(&pool.asset_reserve);
+    let stable_amount = balance::value(&pool.stable_reserve);
 
-    assert!(total_asset > 0 && total_stable > 0, EZeroAmount);
-    assert!(total_asset <= balance::value(&pool.asset_reserve), EInsufficientLiquidity);
-    assert!(total_stable <= balance::value(&pool.stable_reserve), EInsufficientLiquidity);
-
-    // Ensure we have enough in each bucket
-    assert!(asset_live_amount <= pool.asset_spot_active_quantum_lp, EInsufficientLiquidity);
-    assert!(asset_trans_amount <= pool.asset_spot_leave_lp_when_proposal_ends, EInsufficientLiquidity);
-    assert!(stable_live_amount <= pool.stable_spot_active_quantum_lp, EInsufficientLiquidity);
-    assert!(stable_trans_amount <= pool.stable_spot_leave_lp_when_proposal_ends, EInsufficientLiquidity);
+    assert!(asset_amount > 0 && stable_amount > 0, EZeroAmount);
 
     // Remove from reserves but DON'T burn LP tokens
     // LP tokens still represent value - the liquidity exists quantum-mechanically in conditional markets
-    let asset_balance = balance::split(&mut pool.asset_reserve, total_asset);
-    let stable_balance = balance::split(&mut pool.stable_reserve, total_stable);
+    let asset_balance = balance::split(&mut pool.asset_reserve, asset_amount);
+    let stable_balance = balance::split(&mut pool.stable_reserve, stable_amount);
 
-    // Update bucket tracking
-    pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp - asset_live_amount;
-    pool.asset_spot_leave_lp_when_proposal_ends = pool.asset_spot_leave_lp_when_proposal_ends - asset_trans_amount;
-    pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp - stable_live_amount;
-    pool.stable_spot_leave_lp_when_proposal_ends = pool.stable_spot_leave_lp_when_proposal_ends - stable_trans_amount;
-    // Note: lp_live and lp_transitioning stay same - LP tokens still exist, just liquidity is in conditionals
+    // Return the LP supply so quantum manager knows how much conditional LP to issue
+    let lp_supply = pool.lp_supply;
 
-    // CRITICAL: Ensure remaining spot pool meets minimum liquidity requirement (k >= 1000)
-    let remaining_asset = balance::value(&pool.asset_reserve);
-    let remaining_stable = balance::value(&pool.stable_reserve);
-    let remaining_k = (remaining_asset as u128) * (remaining_stable as u128);
-    assert!(remaining_k >= (MINIMUM_LIQUIDITY as u128), EMinimumLiquidityNotMet);
-
-    (asset_balance, stable_balance)
+    (asset_balance, stable_balance, lp_supply)
 }
 
-public(package) fun remove_liquidity_for_quantum_split<AssetType, StableType>(
+/// Split specified amounts from reserves for partial quantum split
+/// Used when x% stays in spot and (100-x)% quantum splits
+public(package) fun split_reserves_for_quantum<AssetType, StableType>(
     pool: &mut UnifiedSpotPool<AssetType, StableType>,
     asset_amount: u64,
     stable_amount: u64,
 ): (Balance<AssetType>, Balance<StableType>) {
-    // Default behavior: remove from LIVE bucket only
-    remove_liquidity_for_quantum_split_with_buckets(
-        pool,
-        asset_amount,
-        0, // no TRANSITIONING
-        stable_amount,
-        0, // no TRANSITIONING
-    )
+    assert!(asset_amount > 0 && stable_amount > 0, EZeroAmount);
+
+    // Ensure we have enough reserves
+    let current_asset = balance::value(&pool.asset_reserve);
+    let current_stable = balance::value(&pool.stable_reserve);
+    assert!(asset_amount <= current_asset, EZeroAmount);
+    assert!(stable_amount <= current_stable, EZeroAmount);
+
+    // Split from reserves (rest stays for spot trading)
+    let asset_balance = balance::split(&mut pool.asset_reserve, asset_amount);
+    let stable_balance = balance::split(&mut pool.stable_reserve, stable_amount);
+
+    (asset_balance, stable_balance)
 }
 
-/// Add liquidity back from quantum redeem with bucket awareness (when proposal ends)
-/// Returns liquidity from conditional markets back to spot pool
-/// LIVE bucket → spot.LIVE (will quantum-split for next proposal)
-/// TRANSITIONING bucket → spot.WITHDRAW_ONLY (frozen for claiming)
-public(package) fun add_liquidity_from_quantum_redeem_with_buckets<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    asset: Balance<AssetType>,
-    stable: Balance<StableType>,
-    asset_live: u64,
-    asset_transitioning: u64,
-    stable_live: u64,
-    stable_transitioning: u64,
-) {
-    let asset_amount = balance::value(&asset);
-    let stable_amount = balance::value(&stable);
-
-    // Verify bucket amounts sum to total
-    assert!(asset_live + asset_transitioning == asset_amount, EInsufficientLiquidity);
-    assert!(stable_live + stable_transitioning == stable_amount, EInsufficientLiquidity);
-
-    // Add to reserves
-    balance::join(&mut pool.asset_reserve, asset);
-    balance::join(&mut pool.stable_reserve, stable);
-
-    // Add LIVE bucket → spot.LIVE (will quantum-split for next proposal)
-    pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp + asset_live;
-    pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp + stable_live;
-
-    // Add TRANSITIONING bucket → spot.WITHDRAW_ONLY (frozen for claiming!)
-    // This skips spot.TRANSITIONING and goes directly to WITHDRAW_ONLY
-    pool.asset_spot_frozen_claimable_lp = pool.asset_spot_frozen_claimable_lp + asset_transitioning;
-    pool.stable_spot_frozen_claimable_lp = pool.stable_spot_frozen_claimable_lp + stable_transitioning;
-
-    // Note: LP buckets (lp_live, lp_withdraw_only) don't change here
-    // LP tokens existed throughout the quantum split, only reserves moved
-    // The crank's transition_to_withdraw_only() handles moving lp_transitioning → lp_withdraw_only
-}
-
+/// Add ALL liquidity back from quantum redeem (no bucket tracking)
+/// Called when proposal ends - returns all liquidity from conditional markets to spot pool
+/// LP tokens remain valid - no burning or minting needed
 public(package) fun add_liquidity_from_quantum_redeem<AssetType, StableType>(
     pool: &mut UnifiedSpotPool<AssetType, StableType>,
     asset: Balance<AssetType>,
     stable: Balance<StableType>,
 ) {
-    let asset_amount = balance::value(&asset);
-    let stable_amount = balance::value(&stable);
+    // Simply add all liquidity back to reserves
+    // No bucket tracking needed - all liquidity returns to active spot pool
+    balance::join(&mut pool.asset_reserve, asset);
+    balance::join(&mut pool.stable_reserve, stable);
 
-    // Default behavior: add everything to LIVE bucket (old behavior)
-    add_liquidity_from_quantum_redeem_with_buckets(
-        pool,
-        asset,
-        stable,
-        asset_amount,
-        0, // no transitioning
-        stable_amount,
-        0, // no transitioning
-    )
+    // LP tokens already exist and represent the correct proportional ownership
+    // No need to update lp_supply or burn/mint tokens
+}
+
+// === Proposal State Management ===
+
+/// Set active proposal ID when quantum split starts
+/// Blocks LP operations until proposal ends
+public(package) fun set_active_proposal<AssetType, StableType>(
+    pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    proposal_id: ID,
+) {
+    pool.active_proposal_id = option::some(proposal_id);
+}
+
+/// Clear active proposal ID and record end time when proposal completes
+/// Allows LP operations to resume
+public(package) fun clear_active_proposal<AssetType, StableType>(
+    pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    clock: &Clock,
+) {
+    use sui::clock;
+    pool.active_proposal_id = option::none();
+    pool.last_proposal_end_time = option::some(clock.timestamp_ms());
+}
+
+/// Check if enough time has passed since last proposal (6 hours minimum)
+public(package) fun check_proposal_gap<AssetType, StableType>(
+    pool: &UnifiedSpotPool<AssetType, StableType>,
+    clock: &Clock,
+) {
+    use sui::clock;
+    if (pool.last_proposal_end_time.is_some()) {
+        let last_end = *option::borrow(&pool.last_proposal_end_time);
+        let current_time = clock.timestamp_ms();
+        assert!(current_time >= last_end + SIX_HOURS_MS, EInsufficientGapBetweenProposals);
+    }
+}
+
+/// Test-only: Reset proposal gap timer (allows immediate next proposal)
+#[test_only]
+public fun reset_proposal_gap_for_testing<AssetType, StableType>(
+    pool: &mut UnifiedSpotPool<AssetType, StableType>,
+) {
+    pool.last_proposal_end_time = option::none();
 }
 
 // === Aggregator-Specific Functions ===
@@ -1319,14 +1077,7 @@ public fun remove_liquidity_for_dissolution<AssetType, StableType>(
     // Update total supply
     pool.lp_supply = pool.lp_supply - lp_amount;
 
-    // Update bucket tracking (remove from LIVE bucket)
-    let asset_from_live = (lp_amount as u128) * (pool.asset_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-    let stable_from_live =
-        (lp_amount as u128) * (pool.stable_spot_active_quantum_lp as u128) / (pool.lp_spot_active_quantum_lp as u128);
-
-    pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp - lp_amount;
-    pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp - (asset_from_live as u64);
-    pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp - (stable_from_live as u64);
+    // No bucket tracking needed
 
     // Extract coins from reserves
     let asset_coin = coin::from_balance(
@@ -1473,19 +1224,9 @@ public fun create_pool_for_testing<AssetType, StableType>(
         minimum_liquidity: 1000, // Standard minimum
         fee_schedule: option::none(), // No fee schedule for testing
         fee_schedule_activation_time: 0,
-        // Initialize all liquidity in active quantum LP bucket for testing
-        asset_spot_active_quantum_lp: asset_amount,
-        asset_spot_leave_lp_when_proposal_ends: 0,
-        asset_spot_frozen_claimable_lp: 0,
-        asset_spot_join_quantum_lp_when_proposal_ends: 0,
-        stable_spot_active_quantum_lp: stable_amount,
-        stable_spot_leave_lp_when_proposal_ends: 0,
-        stable_spot_frozen_claimable_lp: 0,
-        stable_spot_join_quantum_lp_when_proposal_ends: 0,
-        lp_spot_active_quantum_lp: 1000,
-        lp_spot_leave_lp_when_proposal_ends: 0,
-        lp_spot_frozen_claimable_lp: 0,
-        lp_spot_join_quantum_lp_when_proposal_ends: 0,
+        // Proposal tracking (no active proposal in test setup)
+        active_proposal_id: option::none(),
+        last_proposal_end_time: option::none(),
         aggregator_config: option::none(), // No aggregator for simple testing
     }
 }
@@ -1507,18 +1248,8 @@ public fun destroy_for_testing<AssetType, StableType>(
         minimum_liquidity: _,
         fee_schedule: _,
         fee_schedule_activation_time: _,
-        asset_spot_active_quantum_lp: _,
-        asset_spot_leave_lp_when_proposal_ends: _,
-        asset_spot_frozen_claimable_lp: _,
-        asset_spot_join_quantum_lp_when_proposal_ends: _,
-        stable_spot_active_quantum_lp: _,
-        stable_spot_leave_lp_when_proposal_ends: _,
-        stable_spot_frozen_claimable_lp: _,
-        stable_spot_join_quantum_lp_when_proposal_ends: _,
-        lp_spot_active_quantum_lp: _,
-        lp_spot_leave_lp_when_proposal_ends: _,
-        lp_spot_frozen_claimable_lp: _,
-        lp_spot_join_quantum_lp_when_proposal_ends: _,
+        active_proposal_id: _,
+        last_proposal_end_time: _,
         aggregator_config,
     } = pool;
 
@@ -1598,26 +1329,33 @@ public fun unlock_from_proposal_for_testing<AssetType, StableType>(
 }
 
 #[test_only]
-/// Test helper to directly mark amounts for withdrawal
-/// Moves specified amounts from LIVE to TRANSITIONING bucket
-public fun mark_for_withdrawal_for_testing<AssetType, StableType>(
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    asset_amount: u64,
-    stable_amount: u64,
-    lp_amount: u64,
-) {
-    // Ensure we have enough in LIVE bucket
-    assert!(pool.asset_spot_active_quantum_lp >= asset_amount, EInsufficientLiquidity);
-    assert!(pool.stable_spot_active_quantum_lp >= stable_amount, EInsufficientLiquidity);
-    assert!(pool.lp_spot_active_quantum_lp >= lp_amount, EInsufficientLPSupply);
+/// Create pool with initial balances for testing
+public fun create_for_testing<AssetType, StableType>(
+    asset_balance: Balance<AssetType>,
+    stable_balance: Balance<StableType>,
+    fee_bps: u64,
+    ctx: &mut TxContext,
+): UnifiedSpotPool<AssetType, StableType> {
+    let asset_amount = balance::value(&asset_balance);
+    let stable_amount = balance::value(&stable_balance);
 
-    // Move from LIVE to TRANSITIONING
-    pool.asset_spot_active_quantum_lp = pool.asset_spot_active_quantum_lp - asset_amount;
-    pool.asset_spot_leave_lp_when_proposal_ends = pool.asset_spot_leave_lp_when_proposal_ends + asset_amount;
+    // Calculate initial LP tokens (geometric mean)
+    let product = (asset_amount as u128) * (stable_amount as u128);
+    let lp_amount = (product.sqrt() as u64);
 
-    pool.stable_spot_active_quantum_lp = pool.stable_spot_active_quantum_lp - stable_amount;
-    pool.stable_spot_leave_lp_when_proposal_ends = pool.stable_spot_leave_lp_when_proposal_ends + stable_amount;
-
-    pool.lp_spot_active_quantum_lp = pool.lp_spot_active_quantum_lp - lp_amount;
-    pool.lp_spot_leave_lp_when_proposal_ends = pool.lp_spot_leave_lp_when_proposal_ends + lp_amount;
+    UnifiedSpotPool {
+        id: object::new(ctx),
+        asset_reserve: asset_balance,
+        stable_reserve: stable_balance,
+        lp_supply: lp_amount,
+        fee_bps,
+        minimum_liquidity: 1000,
+        fee_schedule: option::none(),
+        fee_schedule_activation_time: 0,
+        active_proposal_id: option::none(),
+        last_proposal_end_time: option::none(),
+        aggregator_config: option::none(),
+    }
 }
+
+// Bucket test helper functions removed - no longer tracking buckets

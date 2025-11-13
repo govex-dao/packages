@@ -876,6 +876,17 @@ public fun create_test_escrow<AssetType, StableType>(
 }
 
 #[test_only]
+/// Create a test escrow with outcome_count and fee_bps parameters
+/// Alias for compatibility with test code that passes (num_outcomes, fee_bps, ctx)
+public fun create_for_testing<AssetType, StableType>(
+    outcome_count: u64,
+    _fee_bps: u64, // Fee is configured in individual AMM pools, not escrow level
+    ctx: &mut TxContext,
+): TokenEscrow<AssetType, StableType> {
+    create_test_escrow<AssetType, StableType>(outcome_count, ctx)
+}
+
+#[test_only]
 /// Create a test escrow with a provided MarketState
 /// Useful when you need to customize the market state before creating the escrow
 public fun create_test_escrow_with_market_state<AssetType, StableType>(

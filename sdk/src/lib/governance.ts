@@ -43,7 +43,7 @@ export interface CreateProposalConfig {
     twapThreshold: bigint; // Signed threshold for determining winner
 
     // Actions for YES/Accept outcome (optional)
-    intentSpecForYes?: any; // Optional vector<ActionSpec> for outcome 0 (YES/Accept)
+    intentSpecForYes?: any; // Optional vector<ActionSpec> for outcome 1 (YES/Accept) - outcome 0 = Reject/No
 
     // Reference ID (vestigial field, can be any ID - no queue system exists)
     referenceProposalId: string; // Optional reference ID for tracking purposes
@@ -316,7 +316,7 @@ export class GovernanceOperations {
      *
      * Requirements:
      * - Proposal must be in FINALIZED state
-     * - Market must show outcome 0 (Accept/Yes) as winner
+     * - Market must show outcome 1 (Accept/Yes) as winner (outcome 0 = Reject/No)
      * - Caller must be authorized
      *
      * @param config - Execute configuration
@@ -358,7 +358,7 @@ export class GovernanceOperations {
      * View function to validate if proposal actions can be executed.
      * Returns true if:
      * - Market is finalized
-     * - Outcome 0 (Accept/Yes) won
+     * - Outcome 1 (Accept/Yes) won (outcome 0 = Reject/No)
      *
      * @param proposalId - Proposal object ID
      * @param marketStateId - Market state object ID

@@ -157,8 +157,9 @@ XXXXXX
 - [x] add extra flag to streams so that can't claim stuff not claimed at end of period
 - [nah] cap transfers to 1/3rd treasury
 - [X] Linting and test script pipeline and E2E test pipeline / stop commiting to main / coverage
-- [ ] update all actions to use new format streams use. get LLMs to check streams patterm
+- [x] update all actions to use new format streams use. get LLMs to check streams patterm
 - [x] tightly couple intent / action registry with init actions??? (registry action tpye marker and package id)
+- [ ] remove conditional coin thing???????? 
 
 
 > so this makes me think\

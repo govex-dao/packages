@@ -55,8 +55,9 @@ const STATE_TRADING: u8 = 2;
 const STATE_FINALIZED: u8 = 3;
 
 // Outcome constants
-const OUTCOME_ACCEPTED: u64 = 0;
-const OUTCOME_REJECTED: u64 = 1;
+// NOTE: These must match the constants in proposal.move and proposal_lifecycle.move
+const OUTCOME_REJECTED: u64 = 0;  // Reject is ALWAYS outcome 0 (baseline/status quo)
+const OUTCOME_ACCEPTED: u64 = 1;  // Accept is ALWAYS outcome 1+ (proposed actions)
 
 // === Test Helpers ===
 

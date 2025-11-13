@@ -1,5 +1,7 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { initSDK, executeTransaction, getActiveAddress } from './execute-tx';
+import * as path from 'path';
+import * as fs from 'fs';
 
 async function main() {
     const sdk = await initSDK();
@@ -7,8 +9,19 @@ async function main() {
 
     console.log('Updating package versions in PackageRegistry...\n');
 
-    const REGISTRY = '0xb51525d234f807e2fde1605959bb28df084bf7b5bdb7948549fe3898808fc9d4';
-    const ACCOUNT_PROTOCOL_PKG = '0xd4c65da22562605271e1bb253f491986d0a3ac1e217a35fc1148f32222174bbf';
+    // Load PackageRegistry and AccountProtocol addresses from deployment files
+    const accountProtocolPath = path.join(__dirname, '../../deployments-processed/AccountProtocol.json');
+    const accountProtocolDeployment = JSON.parse(fs.readFileSync(accountProtocolPath, 'utf8'));
+
+    const REGISTRY = accountProtocolDeployment.sharedObjects.find((obj: any) => obj.name === 'PackageRegistry')?.objectId;
+    const ACCOUNT_PROTOCOL_PKG = accountProtocolDeployment.packageId;
+
+    if (!REGISTRY || !ACCOUNT_PROTOCOL_PKG) {
+        throw new Error('Failed to load PackageRegistry or AccountProtocol package ID from deployment files');
+    }
+
+    console.log(`Using PackageRegistry: ${REGISTRY}`);
+    console.log(`Using AccountProtocol: ${ACCOUNT_PROTOCOL_PKG}\n`);
 
     // Load the latest deployment data from _all-packages.json
     const allPackagesData = require('../../deployments-processed/_all-packages.json');

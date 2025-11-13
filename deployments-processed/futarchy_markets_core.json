@@ -1,12 +1,12 @@
 {
   "packageName": "futarchy_markets_core",
-  "transactionDigest": "5tnMopsBAZDKL5Z5gZWMmt5FTjxXpYFHbUMHBbjidamu",
-  "packageId": "0x549766068b12305e23b08df5d0a3215b838d389d265869cf8209b5b9a899decd",
+  "transactionDigest": "6t5A419YJ4kJSRTbWYQg9x8fVxUC1223VoTn1A5kTSQL",
+  "packageId": "0xbb8383b418ab6910d6a4a5b4411e96dcae593ee85f40a8809eb1997822a27ec8",
   "adminCaps": [
     {
       "name": "FeeAdminCap",
-      "objectId": "0xcbb00a3c24a92111fc6f18b14781af53189267cd5b01255c7114eb557625f5ac",
-      "objectType": "0x549766068b12305e23b08df5d0a3215b838d389d265869cf8209b5b9a899decd::fee::FeeAdminCap",
+      "objectId": "0xdc6005234405a167ff1b80d6f656fbf587fb4402454566eb8488e0856ae6a011",
+      "objectType": "0xbb8383b418ab6910d6a4a5b4411e96dcae593ee85f40a8809eb1997822a27ec8::fee::FeeAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -15,19 +15,19 @@
   "sharedObjects": [
     {
       "name": "FeeManager",
-      "objectId": "0xd1a930174d3988a6abe6905001fb7def32b3f43bf6a05544d8bad437d2737636",
-      "objectType": "0x549766068b12305e23b08df5d0a3215b838d389d265869cf8209b5b9a899decd::fee::FeeManager",
+      "objectId": "0x38b7c42be5d0f05f3ecdbad73418034917b41fa6c1b0afa9bf515b4a174d1909",
+      "objectType": "0xbb8383b418ab6910d6a4a5b4411e96dcae593ee85f40a8809eb1997822a27ec8::fee::FeeManager",
       "owner": {
         "Shared": {
-          "initial_shared_version": 429351
+          "initial_shared_version": 4887349
         }
       },
-      "initialSharedVersion": 429351
+      "initialSharedVersion": 4887349
     }
   ],
   "ownedObjects": [],
   "upgradeCap": {
-    "objectId": "0x69a676d17393ae3d561a49d2cce233f3eae919c3dfb67617241277b1deebe179",
+    "objectId": "0x9a63bd0ad08c88bc93873c7a82411f7538d3b4d2becce6ced98eacd908ed7370",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

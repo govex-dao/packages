@@ -29,6 +29,7 @@ use futarchy_governance::proposal_lifecycle;
 use futarchy_governance_actions::governance_intents;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_primitives::market_state::{Self, MarketState};
+use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use std::option;
 use std::string::String;
 use sui::{clock::Clock, coin::Coin, event, object::ID, tx_context::TxContext};
@@ -39,7 +40,8 @@ const EProposalNotApproved: u64 = 1;
 const EIntentMissing: u64 = 2;
 
 // YES/ACCEPTED outcome index used across governance flow.
-const OUTCOME_ACCEPTED: u64 = 0;
+// NOTE: Reject is ALWAYS outcome 0, Accept is ALWAYS outcome 1+
+const OUTCOME_ACCEPTED: u64 = 1;
 
 // === Events ===
 /// Event emitted when a proposal intent is executed
@@ -53,7 +55,7 @@ public struct ProposalIntentExecuted has copy, drop {
 /// Begin execution for an approved proposal by creating the governance executable.
 /// - Verifies market finalization and approval.
 /// - Synthesizes the intent from the stored InitActionSpecs.
-/// Returns the executable hot potato and intent key for cleanup.
+/// Returns the executable hot potato for action execution.
 public fun begin_execution<AssetType, StableType>(
     account: &mut Account,
     registry: &PackageRegistry,
@@ -61,7 +63,7 @@ public fun begin_execution<AssetType, StableType>(
     market: &MarketState,
     clock: &Clock,
     ctx: &mut TxContext,
-): (Executable<FutarchyOutcome>, String) {
+): Executable<FutarchyOutcome> {
     assert!(market_state::is_finalized(market), EMarketNotFinalized);
 
     let winning_outcome = market_state::get_winning_outcome(market);
@@ -89,6 +91,20 @@ public fun begin_execution<AssetType, StableType>(
         clock,
         ctx,
     )
+}
+
+/// Wrapper for begin_execution that takes TokenEscrow instead of MarketState.
+/// This allows PTB usage since we can't pass references between PTB commands.
+public fun begin_execution_with_escrow<AssetType, StableType>(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    proposal: &mut Proposal<AssetType, StableType>,
+    escrow: &TokenEscrow<AssetType, StableType>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Executable<FutarchyOutcome> {
+    let market = coin_escrow::get_market_state(escrow);
+    begin_execution(account, registry, proposal, market, clock, ctx)
 }
 
 /// Finalize execution after all actions have been processed.

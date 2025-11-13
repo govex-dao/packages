@@ -15,13 +15,13 @@ futarchy_markets_operations = { local = "../futarchy_markets_operations" }
 # futarchy_lifecycle = { local = "../futarchy_dissolution_actions" } # Circular dependency removed
 futarchy_factory = { local = "../futarchy_factory" }
 [addresses]
-futarchy_governance_actions = "0x351b7b8d7040df49cd5e46483ea231037deebec0ca02b9f2f10dbd85897aaf97"
-futarchy_one_shot_utils = "0xad0563997fe9aa2092ccea8fdb8765588040faff912f1e0a3a1df7f9b728c263"
-futarchy_types = "0x1d4d1616b1f71cfad98651322ad8c71882dcabbab70f7c2946838c7a51a222dc"
-futarchy_core = "0xcac9f0b7febc2dd004c976c193c88dc3f895a1c5517fe4ffc1e845f01fdb05b2"
-futarchy_markets_primitives = "0x8627076c53d010c940ce550d602b5179e3ddd893ac8a8d57b2930926500e981f"
-futarchy_markets_core = "0x549766068b12305e23b08df5d0a3215b838d389d265869cf8209b5b9a899decd"
-futarchy_markets_operations = "0x78ecb6899ed126e03cc3b70e0470d85ab44bb873984738abdff35f488c2cc648"
+futarchy_governance_actions = "0x269178a42819c55c430419abc4a20053e393d1562f62054e8a08b3a7af769b3e"
+futarchy_one_shot_utils = "0x0585e06d92f1ace5b9e4baa739c8b64ceee2dc2d7f74c803e75be36e3fedf425"
+futarchy_types = "0xccbc82c28b3c3983626ff7b6eb069786112678707b73fe03237ab6b199aeac06"
+futarchy_core = "0xa518a2d2a63b13e9dd0332f2132731e7c048e307098d201a5848c83a30bfd7ed"
+futarchy_markets_primitives = "0xbfadaae35597daa6d4fc8f09016d923fa04ba1073f562ed1d82a051e30759252"
+futarchy_markets_core = "0xbb8383b418ab6910d6a4a5b4411e96dcae593ee85f40a8809eb1997822a27ec8"
+futarchy_markets_operations = "0x5c2a9f75571735a38855c72ff82cc9cb7705e5daf5adc581e52b0e03af9b2c35"
 # futarchy_lifecycle  = "0x0" # Circular dependency removed
-futarchy_factory = "0xcd44b689a1dbeb88f34883cdb9449425b2eeac381c07d9b1127257b9c4cda481"
-account_protocol = "0x21a723ea40eccdb1aace5b9bb2e58c30cb6043bad7457791b267e6bcd125edc3"
+futarchy_factory = "0xc89711732953730a980ea83f4ec71338b1777d542c264bc5b6f5b15db9377fb1"
+account_protocol = "0x06504431bd079892e60655c8a4561f390d86648a5554969e03df58c985b9c5d6"

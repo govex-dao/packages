@@ -27,8 +27,9 @@ const STATE_TRADING: u8 = 2;
 const STATE_FINALIZED: u8 = 3;
 
 // Outcome constants
-const OUTCOME_ACCEPTED: u64 = 0;
-const OUTCOME_REJECTED: u64 = 1;
+// NOTE: These must match the constants in proposal.move and proposal_lifecycle.move
+const OUTCOME_REJECTED: u64 = 0;  // Reject is ALWAYS outcome 0 (baseline/status quo)
+const OUTCOME_ACCEPTED: u64 = 1;  // Accept is ALWAYS outcome 1+ (proposed actions)
 
 // === Test Helpers ===
 
@@ -51,7 +52,7 @@ fun create_test_proposal_with_outcomes(
 }
 
 fun create_finalized_market_state(
-    _winning_outcome: u64,
+    winning_outcome: u64,
     clock: &Clock,
     ctx: &mut TxContext
 ): MarketState {
@@ -64,8 +65,13 @@ fun create_finalized_market_state(
         ctx
     );
 
-    // Use test helper to finalize - always sets winner to outcome 0
+    // Finalize the market (sets winner to 0 by default)
     market_state::finalize_for_testing(&mut market);
+
+    // Then set the actual winning outcome if it's not 0
+    if (winning_outcome != 0) {
+        market_state::test_set_winning_outcome(&mut market, winning_outcome);
+    };
     market
 }
 

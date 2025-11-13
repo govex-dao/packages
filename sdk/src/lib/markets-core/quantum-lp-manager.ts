@@ -110,6 +110,7 @@ export class QuantumLPManager {
       stableType: string;
       spotPool: ReturnType<Transaction['moveCall']>;
       escrow: ReturnType<Transaction['moveCall']>;
+      proposalId: string;
       conditionalLiquidityRatioPercent: bigint; // Base 100: 1-99
       clock?: string;
     }
@@ -120,6 +121,7 @@ export class QuantumLPManager {
       arguments: [
         config.spotPool,
         config.escrow,
+        tx.object(config.proposalId),
         tx.pure.u64(config.conditionalLiquidityRatioPercent),
         tx.object(config.clock || '0x6'),
       ],

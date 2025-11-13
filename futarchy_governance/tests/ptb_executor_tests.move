@@ -26,7 +26,9 @@ const RECIPIENT_ADDR: address = @0xBEEF;
 const STATE_FINALIZED: u8 = 3;
 
 // Outcome constants
-const OUTCOME_ACCEPTED: u64 = 0;
+// NOTE: These must match the constants in proposal.move and proposal_lifecycle.move
+const OUTCOME_REJECTED: u64 = 0;  // Reject is ALWAYS outcome 0 (baseline/status quo)
+const OUTCOME_ACCEPTED: u64 = 1;  // Accept is ALWAYS outcome 1+ (proposed actions)
 
 // Error codes
 const EMarketNotFinalized: u64 = 0;
@@ -67,7 +69,7 @@ fun test_build_proposal_intent_with_multiple_actions() {
     let ctx = scenario.ctx();
 
     // Create action spec builder
-    let mut builder = action_spec_builder::new(ctx);
+    let mut builder = action_spec_builder::new();
 
     // === Add Stream Action ===
     // Create a vesting stream for 100,000 tokens over 1 year
@@ -75,19 +77,23 @@ fun test_build_proposal_intent_with_multiple_actions() {
     let stream_recipient = RECIPIENT_ADDR;
     let stream_amount = 100_000_000_000; // 100k tokens with 6 decimals
     let start_time_ms = 1000; // Start immediately
-    let duration_ms = 31_536_000_000; // 1 year in milliseconds
-    let cancelable = true;
-    let stream_label = string::utf8(b"Team vesting - Year 1");
+    let iterations_total = 12; // 12 monthly iterations
+    let iteration_period_ms = 2_628_000_000; // ~1 month in ms
+    let amount_per_iteration = stream_amount / iterations_total; // ~8.33k per month
 
     stream_init_actions::add_create_stream_spec(
         &mut builder,
         vault_name,
         stream_recipient,
-        stream_amount,
+        amount_per_iteration,
         start_time_ms,
-        duration_ms,
-        cancelable,
-        stream_label,
+        iterations_total,
+        iteration_period_ms,
+        option::none(), // cliff_time
+        option::none(), // claim_window_ms
+        0, // max_per_withdrawal (0 = unlimited)
+        false, // is_transferable
+        true, // is_cancellable
     );
 
     // === Add Memo Action ===
@@ -112,7 +118,7 @@ fun test_build_proposal_intent_with_multiple_actions() {
     );
 
     // Build the action specs
-    let action_specs = action_spec_builder::build(builder);
+    let action_specs = action_spec_builder::into_vector(builder);
 
     // Verify we have 3 actions
     assert!(vector::length(&action_specs) == 3, 0);
@@ -144,7 +150,7 @@ fun test_build_proposal_intent_memo_and_transfer_only() {
     let ctx = scenario.ctx();
 
     // Create action spec builder
-    let mut builder = action_spec_builder::new(ctx);
+    let mut builder = action_spec_builder::new();
 
     // Add memo
     memo_init_actions::add_emit_memo_spec(
@@ -160,7 +166,7 @@ fun test_build_proposal_intent_memo_and_transfer_only() {
         RECIPIENT_ADDR,
     );
 
-    let action_specs = action_spec_builder::build(builder);
+    let action_specs = action_spec_builder::into_vector(builder);
 
     // Verify we have exactly 2 actions
     assert!(vector::length(&action_specs) == 2, 0);
@@ -175,7 +181,7 @@ fun test_build_proposal_with_multiple_streams() {
     let mut scenario = ts::begin(USER_ADDR);
     let ctx = scenario.ctx();
 
-    let mut builder = action_spec_builder::new(ctx);
+    let mut builder = action_spec_builder::new();
     let vault_name = string::utf8(b"treasury");
 
     // Add 3 vesting streams for different team members
@@ -185,17 +191,26 @@ fun test_build_proposal_with_multiple_streams() {
         @0x3333,
     ];
 
+    let stream_total = 100_000_000_000; // 100k each
+    let iterations = 12; // 12 monthly payments
+    let period_ms = 2_628_000_000; // ~1 month
+    let per_iteration = stream_total / iterations;
+
     let mut i = 0;
     while (i < 3) {
         stream_init_actions::add_create_stream_spec(
             &mut builder,
             vault_name,
             *vector::borrow(&recipients, i),
-            100_000_000_000, // 100k each
-            1000,
-            31_536_000_000, // 1 year
-            true,
-            string::utf8(b"Team vesting"),
+            per_iteration,
+            1000, // start_time
+            iterations,
+            period_ms,
+            option::none(), // cliff_time
+            option::none(), // claim_window_ms
+            0, // max_per_withdrawal
+            false, // is_transferable
+            true, // is_cancellable
         );
         i = i + 1;
     };
@@ -206,7 +221,7 @@ fun test_build_proposal_with_multiple_streams() {
         string::utf8(b"Batch vesting: 3 team members, 100k each, 1 year"),
     );
 
-    let action_specs = action_spec_builder::build(builder);
+    let action_specs = action_spec_builder::into_vector(builder);
 
     // Verify we have 4 actions total (3 streams + 1 memo)
     assert!(vector::length(&action_specs) == 4, 0);
@@ -230,18 +245,22 @@ fun test_action_spec_builder_pattern_documentation() {
     // ============================================
     // PHASE 1: BUILD ACTION SPECS (Layer 2)
     // ============================================
-    let mut builder = action_spec_builder::new(ctx);
+    let mut builder = action_spec_builder::new();
 
     // Add actions using the init_actions modules (Layer 2)
     stream_init_actions::add_create_stream_spec(
         &mut builder,
         string::utf8(b"treasury"),
         RECIPIENT_ADDR,
-        1_000_000,
-        0,
-        1000,
-        true,
-        string::utf8(b"test"),
+        100_000, // amount_per_iteration
+        0, // start_time
+        10, // iterations_total
+        100_000, // iteration_period_ms
+        option::none(), // cliff_time
+        option::none(), // claim_window_ms
+        0, // max_per_withdrawal
+        false, // is_transferable
+        true, // is_cancellable
     );
 
     memo_init_actions::add_emit_memo_spec(
@@ -256,7 +275,7 @@ fun test_action_spec_builder_pattern_documentation() {
         RECIPIENT_ADDR,
     );
 
-    let action_specs = action_spec_builder::build(builder);
+    let action_specs = action_spec_builder::into_vector(builder);
 
     // ============================================
     // PHASE 2: CREATE INTENT (would happen in proposal creation)

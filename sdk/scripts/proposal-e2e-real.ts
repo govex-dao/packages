@@ -360,14 +360,15 @@ async function main() {
     arguments: [builder],
   });
 
-  // Now set the actions for outcome 0 (Accept)
+  // Now set the actions for outcome 1 (Accept)
+  // NOTE: Outcome 0 = Reject (cannot have actions), Outcome 1 = Accept
   const setIntentTarget = `${marketsPackageId}::proposal::set_intent_spec_for_outcome`;
   addActionsTx.moveCall({
     target: setIntentTarget,
     typeArguments: [assetType, stableType],
     arguments: [
       addActionsTx.object(proposalId), // proposal
-      addActionsTx.pure.u64(0), // outcome_index (0 = Accept)
+      addActionsTx.pure.u64(1), // outcome_index (1 = Accept, 0 = Reject)
       specs, // vector<ActionSpec>
       addActionsTx.pure.u64(10), // max_actions_per_outcome
     ],
@@ -379,7 +380,7 @@ async function main() {
     description: "Add actions to Accept outcome",
   });
 
-  console.log(`✅ Actions added to Accept outcome!`);
+  console.log(`✅ Actions added to Accept outcome (outcome 1)!`);
   console.log(`   5 actions staged: 2 streams + 1 transfer + 1 memo + 1 governance update`);
   console.log();
 

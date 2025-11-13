@@ -40,8 +40,10 @@ const EIntentExpiryTooLong: u64 = 6;
 const EProposalCreationBlocked: u64 = 7; // Pool launch fee decay in progress
 
 // === Constants ===
-const OUTCOME_ACCEPTED: u64 = 0;
-const OUTCOME_REJECTED: u64 = 1;
+// NOTE: Reject is ALWAYS outcome 0 (baseline/status quo)
+// Accept is ALWAYS outcome 1+ (proposed actions)
+const OUTCOME_REJECTED: u64 = 0;
+const OUTCOME_ACCEPTED: u64 = 1;
 
 // === Events ===
 
@@ -149,11 +151,10 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
     market_state::finalize(market_state, winning_outcome, clock);
 
     // Return quantum-split liquidity back to the spot pool
-    quantum_lp_manager::auto_redeem_on_proposal_end(
+    quantum_lp_manager::auto_redeem_on_proposal_end_from_escrow(
         winning_outcome,
         spot_pool,
         escrow,
-        market_state,
         clock,
         ctx,
     );
@@ -165,12 +166,7 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
     // Spot TWAP continues running throughout proposal (no backfill needed)
     // Auto-arbitrage keeps spot and conditional prices synced
 
-    // Crank: Transition TRANSITIONING bucket to WITHDRAW_ONLY
-    // This allows LPs who marked for withdrawal to claim their coins
-    futarchy_markets_operations::liquidity_interact::crank_recombine_and_transition<
-        AssetType,
-        StableType,
-    >(spot_pool);
+    // Crank removed - no bucket transitions needed with simplified model
 
     // NEW: Cancel losing outcome intents in the hot path using a scoped witness.
     // This ensures per-proposal isolation and prevents cross-proposal cancellation
@@ -368,6 +364,7 @@ public entry fun advance_proposal_state<AssetType, StableType>(
             quantum_lp_manager::auto_quantum_split_on_proposal_start(
                 spot_pool,
                 escrow,
+                object::id(proposal), // proposal_id parameter
                 conditional_liquidity_ratio_percent,
                 clock,
                 ctx,
@@ -426,11 +423,7 @@ public entry fun finalize_proposal_with_spot_pool<AssetType, StableType>(
     // All futarchy pools have full features, so this always succeeds
     let _escrow_id = unified_spot_pool::extract_active_escrow(spot_pool);
 
-    // Crank: Transition TRANSITIONING bucket to WITHDRAW_ONLY
-    futarchy_markets_operations::liquidity_interact::crank_recombine_and_transition<
-        AssetType,
-        StableType,
-    >(spot_pool);
+    // Crank removed - no bucket transitions needed with simplified model
 
     // Cancel losing outcome intents
     let num_outcomes = proposal::get_num_outcomes(proposal);
@@ -484,12 +477,12 @@ public entry fun execute_proposal_actions<AssetType, StableType>(
     key.append(clock.timestamp_ms().to_string());
 
     // Begin execution - creates Executable hot potato
-    let (executable, intent_key) = governance_intents::execute_proposal_intent(
+    let executable = governance_intents::execute_proposal_intent(
         account,
         registry,
         proposal,
         market_state,
-        OUTCOME_ACCEPTED, // 0 = Accept
+        OUTCOME_ACCEPTED, // 1 = Accept (0 = Reject)
         futarchy_config::new_futarchy_outcome_full(
             key,
             option::some(proposal_id),
@@ -500,6 +493,9 @@ public entry fun execute_proposal_actions<AssetType, StableType>(
         clock,
         ctx,
     );
+
+    // Extract intent key from executable for event emission
+    let intent_key = intents::key(executable::intent(&executable));
 
     // Confirm execution (finalize)
     account::confirm_execution(account, executable);

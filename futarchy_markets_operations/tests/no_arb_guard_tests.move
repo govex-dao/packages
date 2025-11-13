@@ -798,8 +798,8 @@ fun test_correct_bootstrap_ratio() {
 }
 
 /// Test using ACTUAL swap_entry function like E2E test does
+/// Verifies that auto-arb keeps spot price within no-arb band
 #[test]
-#[expected_failure(abort_code = 0, location = futarchy_markets_operations::no_arb_guard)]
 fun test_swap_with_auto_arb_using_entry_function() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
@@ -1013,6 +1013,13 @@ fun test_swap_with_auto_arb_using_entry_function() {
     std::debug::print(&(c1_asset_after != c1_asset_before || c1_stable_after != c1_stable_before));
 
     std::debug::print(&b"\n✓ Test complete - checking no-arb guard...");
+
+    // Assert that auto-arb successfully kept spot price within the no-arb band
+    assert!(in_band_after, 0);
+
+    // Verify conditional pools were updated by auto-arb
+    assert!(c0_asset_after != c0_asset_before || c0_stable_after != c0_stable_before, 1);
+    assert!(c1_asset_after != c1_asset_before || c1_stable_after != c1_stable_before, 2);
 
     // Cleanup
     proposal::destroy_for_testing(proposal);

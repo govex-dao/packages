@@ -210,9 +210,9 @@ async function main() {
   console.log("STEP 1: REGISTER TEST STABLE COIN FOR FEE PAYMENTS");
   console.log("=".repeat(80));
 
-  const feeManagerDeployment = require("../../deployments/futarchy_markets_core.json");
-  const feeAdminCapId = feeManagerDeployment.objectChanges?.find((obj: any) =>
-    obj.objectType?.includes("::fee::FeeAdminCap"),
+  const feeManagerDeployment = sdk.deployments.getPackage("futarchy_markets_core");
+  const feeAdminCapId = feeManagerDeployment?.adminCaps?.find((obj: any) =>
+    obj.name === "FeeAdminCap"
   )?.objectId;
 
   if (!feeAdminCapId) {
@@ -252,19 +252,16 @@ async function main() {
   console.log("STEP 2: REGISTER TEST STABLE COIN IN FACTORY ALLOWLIST");
   console.log("=".repeat(80));
 
-  const factoryDeployment = require("../../deployments/futarchy_factory.json");
-  const factoryOwnerCapId = factoryDeployment.objectChanges?.find((obj: any) =>
-    obj.objectType?.includes("::factory::FactoryOwnerCap"),
+  const factoryDeployment = sdk.deployments.getPackage("futarchy_factory");
+  const factoryOwnerCapId = factoryDeployment?.adminCaps?.find((obj: any) =>
+    obj.name === "FactoryOwnerCap"
   )?.objectId;
 
   if (!factoryOwnerCapId) {
     throw new Error("FactoryOwnerCap not found in futarchy_factory deployment");
   }
 
-  const registryDeployment = require("../../deployments/AccountProtocol.json");
-  const registryId = registryDeployment.objectChanges?.find((obj: any) =>
-    obj.objectType?.includes("::package_registry::PackageRegistry"),
-  )?.objectId;
+  const registryId = sdk.deployments.getPackageRegistry()?.objectId;
 
   if (!registryId) {
     throw new Error("PackageRegistry not found in AccountProtocol deployment");
@@ -430,6 +427,52 @@ async function main() {
       stageTx.pure.u64(poolAssetAmount),
       stageTx.pure.u64(poolStableAmount),
       stageTx.pure.u64(poolFeeBps),
+    ],
+  });
+
+  // Step 2.75: Add config update actions to override defaults for testing
+  console.log("\n📋 Staging config updates for testing...");
+  console.log("   Trading period: 60000ms (1 minute)");
+  console.log("   TWAP start delay: 0ms");
+  console.log("   TWAP threshold: 0");
+
+  const typesPackageId = sdk.getPackageId("futarchy_types")!;
+
+  // Create SignedU128 for twap_threshold = 0
+  const zeroThresholdSigned = stageTx.moveCall({
+    target: `${typesPackageId}::signed::from_u128`,
+    arguments: [stageTx.pure.u128(0n)], // Zero threshold
+  });
+
+  // Wrap SignedU128 in Option::some
+  const someZeroThreshold = stageTx.moveCall({
+    target: `0x1::option::some`,
+    typeArguments: [`${typesPackageId}::signed::SignedU128`],
+    arguments: [zeroThresholdSigned],
+  });
+
+  // Add trading params update action
+  stageTx.moveCall({
+    target: `${sdk.getPackageId("futarchy_actions")}::config_init_actions::add_update_trading_params_spec`,
+    arguments: [
+      builder, // &mut Builder
+      stageTx.pure.option("u64", null), // min_asset_amount (keep default)
+      stageTx.pure.option("u64", null), // min_stable_amount (keep default)
+      stageTx.pure.option("u64", null), // review_period_ms (keep default)
+      stageTx.pure.option("u64", 60_000), // trading_period_ms = 1 minute
+      stageTx.pure.option("u64", null), // amm_total_fee_bps (keep default)
+    ],
+  });
+
+  // Add TWAP config update action
+  stageTx.moveCall({
+    target: `${sdk.getPackageId("futarchy_actions")}::config_init_actions::add_update_twap_config_spec`,
+    arguments: [
+      builder, // &mut Builder
+      stageTx.pure.option("u64", 0), // start_delay = 0
+      stageTx.pure.option("u64", null), // step_max (keep default)
+      stageTx.pure.option("u128", null), // initial_observation (keep default)
+      someZeroThreshold, // threshold = Some(0)
     ],
   });
 
@@ -665,10 +708,7 @@ async function main() {
   console.log("   3. JIT convert success_specs → Intent");
   console.log("   4. Share DAO with Intent locked in");
 
-  const factoryId = factoryDeployment.objectChanges?.find(
-    (obj: any) =>
-      obj.objectType?.includes("::factory::Factory") && obj.owner?.Shared,
-  )?.objectId;
+  const factoryId = sdk.deployments.getFactory()?.objectId;
 
   if (!factoryId) {
     throw new Error("Factory object not found");
@@ -842,6 +882,42 @@ async function main() {
         executeTx.object("0x6"), // Clock
         versionWitness, // VersionWitness
         launchpadIntentWitness, // LaunchpadIntent witness
+      ],
+    });
+
+    // Execute trading params update action (Action #3)
+    console.log("   → Pool created, now updating trading params...");
+    executeTx.moveCall({
+      target: `${futarchyActionsPkg}::config_actions::do_update_trading_params`,
+      typeArguments: [
+        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
+        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        executable, // Executable hot potato
+        executeTx.object(accountId), // Account
+        executeTx.object(registryId), // PackageRegistry
+        versionWitness, // VersionWitness
+        launchpadIntentWitness, // LaunchpadIntent witness
+        executeTx.object("0x6"), // Clock
+      ],
+    });
+
+    // Execute TWAP config update action (Action #4)
+    console.log("   → Trading params updated, now updating TWAP config...");
+    executeTx.moveCall({
+      target: `${futarchyActionsPkg}::config_actions::do_update_twap_config`,
+      typeArguments: [
+        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
+        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        executable, // Executable hot potato
+        executeTx.object(accountId), // Account
+        executeTx.object(registryId), // PackageRegistry
+        versionWitness, // VersionWitness
+        launchpadIntentWitness, // LaunchpadIntent witness
+        executeTx.object("0x6"), // Clock
       ],
     });
   } else {
@@ -1020,6 +1096,8 @@ async function main() {
     console.log(`   ✅ DAO shared with Intent`);
     console.log(`   ✅ Executed Intent → Created stream`);
     console.log(`   ✅ Created AMM pool (minted + liquidity)`);
+    console.log(`   ✅ Updated trading params (trading_period = 1 min)`);
+    console.log(`   ✅ Updated TWAP config (start_delay = 0, threshold = 0)`);
     console.log(`   ✅ LP token auto-saved to account custody`);
     console.log(`   ✅ Claimed tokens`);
   } else {

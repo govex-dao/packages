@@ -78,6 +78,13 @@ public fun unpause_account_creation_marker(): UnpauseAccountCreation { UnpauseAc
 const EUnsupportedActionVersion: u64 = 1;
 const EUnauthorized: u64 = 2;
 
+fun assert_account_authority<Outcome: store>(
+    executable: &Executable<Outcome>,
+    account: &Account,
+) {
+    executable::intent(executable).assert_is_account(account.addr());
+}
+
 // === Public Constructors ===
 
 public fun new_add_package(
@@ -140,6 +147,7 @@ public fun do_add_package<Outcome: store, IW: drop>(
     witness: IW,
     registry: &mut PackageRegistry,
 ) {
+    assert_account_authority(executable, account);
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<AddPackage>(spec);
@@ -195,6 +203,7 @@ public fun do_remove_package<Outcome: store, IW: drop>(
     witness: IW,
     registry: &mut PackageRegistry,
 ) {
+    assert_account_authority(executable, account);
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<RemovePackage>(spec);
@@ -224,6 +233,7 @@ public fun do_update_package_version<Outcome: store, IW: drop>(
     witness: IW,
     registry: &mut PackageRegistry,
 ) {
+    assert_account_authority(executable, account);
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UpdatePackageVersion>(spec);
@@ -256,6 +266,7 @@ public fun do_update_package_metadata<Outcome: store, IW: drop>(
     witness: IW,
     registry: &mut PackageRegistry,
 ) {
+    assert_account_authority(executable, account);
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UpdatePackageMetadata>(spec);
@@ -305,6 +316,7 @@ public fun do_pause_account_creation<Outcome: store, IW: drop>(
     _witness: IW,
     registry: &mut PackageRegistry,
 ) {
+    assert_account_authority(executable, account);
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<PauseAccountCreation>(spec);
@@ -342,6 +354,7 @@ public fun do_unpause_account_creation<Outcome: store, IW: drop>(
     _witness: IW,
     registry: &mut PackageRegistry,
 ) {
+    assert_account_authority(executable, account);
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<UnpauseAccountCreation>(spec);

@@ -154,6 +154,7 @@ public fun do_create_pool<AssetType: drop, StableType: drop, Outcome: store, IW:
     witness: IW,
     ctx: &mut TxContext,
 ): resource_requests::ResourceRequest<CreatePoolAction<AssetType, StableType>> {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -199,6 +200,7 @@ public fun do_create_pool<AssetType: drop, StableType: drop, Outcome: store, IW:
     resource_requests::add_context(&mut request, string::utf8(b"conditional_liquidity_ratio_percent"), action.conditional_liquidity_ratio_percent);
     resource_requests::add_context(&mut request, string::utf8(b"account_id"), object::id(account));
 
+    executable::increment_action_idx(executable);
     request
 }
 
@@ -211,6 +213,7 @@ public fun do_update_pool_params<Outcome: store, IW: drop>(
     witness: IW,
     _ctx: &mut TxContext,
 ) {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -348,6 +351,7 @@ public fun do_add_liquidity<AssetType: drop, StableType: drop, Outcome: store, I
     witness: IW,
     ctx: &mut TxContext,
 ): ResourceRequest<AddLiquidityAction<AssetType, StableType>> {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -389,6 +393,7 @@ public fun do_add_liquidity<AssetType: drop, StableType: drop, Outcome: store, I
     // resource_requests::add_context(&mut request, string::utf8(b"action"), action);
     resource_requests::add_context(&mut request, string::utf8(b"account_id"), object::id(account));
 
+    executable::increment_action_idx(executable);
     request
 }
 
@@ -496,6 +501,7 @@ public fun do_withdraw_lp_token<AssetType: drop, StableType: drop, Outcome: stor
     _witness: IW,
     ctx: &mut TxContext,
 ): resource_requests::ResourceRequest<WithdrawLpTokenAction<AssetType, StableType>> {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -561,6 +567,7 @@ public fun do_remove_liquidity<AssetType: drop, StableType: drop, Outcome: store
     witness: IW,
     ctx: &mut TxContext,
 ): resource_requests::ResourceRequest<RemoveLiquidityAction<AssetType, StableType>> {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -663,11 +670,12 @@ public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, W: copy +
 /// Execute a swap action with type validation
 public fun do_swap<AssetType: drop, StableType: drop, Outcome: store, IW: copy + drop>(
     executable: &mut Executable<Outcome>,
-    _account: &mut Account,
+    account: &mut Account,
     _version: VersionWitness,
     witness: IW,
     _ctx: &mut TxContext,
 ): ResourceRequest<SwapAction<AssetType, StableType>> {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -706,6 +714,7 @@ public fun do_swap<AssetType: drop, StableType: drop, Outcome: store, IW: copy +
     resource_requests::add_context(&mut request, string::utf8(b"amount_in"), amount_in);
     resource_requests::add_context(&mut request, string::utf8(b"min_amount_out"), min_amount_out);
 
+    executable::increment_action_idx(executable);
     request
 }
 
@@ -717,6 +726,7 @@ public fun do_collect_fees<AssetType: drop, StableType: drop, Outcome: store, IW
     witness: IW,
     _ctx: &mut TxContext,
 ) {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -753,6 +763,7 @@ public fun do_withdraw_fees<AssetType: drop, StableType: drop, Outcome: store, I
     witness: IW,
     _ctx: &mut TxContext,
 ) {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));

@@ -322,6 +322,7 @@ public fun do_create_dissolution_capability<AssetType, Outcome: store, IW: drop>
     _witness: IW,
     ctx: &mut TxContext,
 ) {
+    executable::intent(executable).assert_is_account(account.addr());
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<CreateDissolutionCapability>(spec);

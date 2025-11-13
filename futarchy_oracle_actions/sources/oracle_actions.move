@@ -877,6 +877,7 @@ public fun do_create_oracle_grant<AssetType, StableType, Outcome: store, IW: dro
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    executable::intent(executable).assert_is_account(account.addr());
     // Validate DAO state and ensure storage exists
     assert_not_dissolving(account, registry, version);
     ensure_grant_storage(account, registry, version, ctx);
@@ -934,13 +935,14 @@ public fun do_create_oracle_grant<AssetType, StableType, Outcome: store, IW: dro
 
 public fun do_cancel_grant<AssetType, StableType, Outcome: store, IW: drop>(
     executable: &mut Executable<Outcome>,
-    _account: &mut Account,
+    account: &mut Account,
     _version: VersionWitness,
     _witness: IW,
     grant: &mut PriceBasedMintGrant<AssetType, StableType>,
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    executable::intent(executable).assert_is_account(account.addr());
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
     action_validation::assert_action_type<CancelGrant>(spec);

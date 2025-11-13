@@ -56,6 +56,8 @@ public struct MetadataTableUpdate has drop {}
 public struct SponsorshipConfigUpdate has drop {}
 /// Update conditional metadata
 public struct UpdateConditionalMetadata has drop {}
+/// Batch config wrapper
+public struct BatchConfig has drop {}
 
 // === Marker Functions ===
 
@@ -69,6 +71,7 @@ public fun governance_update_marker(): GovernanceUpdate { GovernanceUpdate {} }
 public fun metadata_table_update_marker(): MetadataTableUpdate { MetadataTableUpdate {} }
 public fun sponsorship_config_update_marker(): SponsorshipConfigUpdate { SponsorshipConfigUpdate {} }
 public fun update_conditional_metadata_marker(): UpdateConditionalMetadata { UpdateConditionalMetadata {} }
+public fun batch_config_marker(): BatchConfig { BatchConfig {} }
 
 // === Aliases ===
 use account_protocol::intents as protocol_intents;
@@ -83,6 +86,13 @@ const EWrongAction: u64 = 7;
 const EUnsupportedActionVersion: u64 = 8;
 const ENotActive: u64 = 9; // DAO must be in ACTIVE state for this operation
 const EInvalidRatio: u64 = 10; // Invalid ratio or empty string
+
+fun assert_account_authority<Outcome: store>(
+    executable: &Executable<Outcome>,
+    account: &Account,
+) {
+    executable::intent(executable).assert_is_account(account.addr());
+}
 
 // === Witness ===
 
@@ -273,6 +283,7 @@ public fun do_set_proposals_enabled<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -351,6 +362,7 @@ public fun do_terminate_dao<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -417,6 +429,7 @@ public fun do_update_name<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -499,6 +512,7 @@ public fun do_update_trading_params<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -578,6 +592,7 @@ public fun do_update_metadata<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -661,6 +676,7 @@ public fun do_update_twap_config<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -737,6 +753,7 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -852,6 +869,7 @@ public fun do_update_metadata_table<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -942,6 +960,7 @@ public fun do_update_conditional_metadata<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -1015,6 +1034,7 @@ public fun do_update_sponsorship_config<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -1091,14 +1111,13 @@ public fun do_batch_config<Outcome: store, IW: drop>(
     _clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
 
     // CRITICAL - Type check BEFORE deserialization
-    // Note: ConfigAction is a wrapper type that may not be in action_types
-    // Using a generic config type check here
-    // action_validation::assert_action_type<ConfigAction>(spec);
+    action_validation::assert_action_type<BatchConfig>(spec);
 
     // Get action data
     let action_data = protocol_intents::action_spec_data(spec);

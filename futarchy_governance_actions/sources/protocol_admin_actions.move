@@ -94,6 +94,13 @@ const ECapNotFound: u64 = 2;
 const EInvalidFeeAmount: u64 = 3;
 const EUnsupportedActionVersion: u64 = 4;
 
+fun assert_account_authority<Outcome: store>(
+    executable: &Executable<Outcome>,
+    account: &Account,
+) {
+    executable::intent(executable).assert_is_account(account.addr());
+}
+
 // === Events ===
 
 // === Action Structs ===
@@ -270,6 +277,7 @@ public fun do_set_factory_paused<Outcome: store, IW: drop>(
     factory: &mut Factory,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -311,6 +319,7 @@ public fun do_disable_factory_permanently<Outcome: store, IW: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -354,6 +363,7 @@ public fun do_add_stable_type<Outcome: store, IW: drop, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -395,6 +405,7 @@ public fun do_remove_stable_type<Outcome: store, IW: drop, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -436,6 +447,7 @@ public fun do_update_dao_creation_fee<Outcome: store, IW: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -475,6 +487,7 @@ public fun do_update_proposal_fee<Outcome: store, IW: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -520,6 +533,7 @@ public fun do_update_verification_fee<Outcome: store, IW: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -567,6 +581,7 @@ public fun do_add_verification_level<Outcome: store, IW: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -607,6 +622,7 @@ public fun do_remove_verification_level<Outcome: store, IW: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -646,6 +662,7 @@ public fun do_withdraw_fees_to_treasury<Outcome: store, IW: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -691,6 +708,7 @@ public fun do_add_coin_fee_config<Outcome: store, IW: drop, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -746,6 +764,7 @@ public fun do_update_coin_creation_fee<Outcome: store, IW: drop, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -792,6 +811,7 @@ public fun do_update_coin_proposal_fee<Outcome: store, IW: drop, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));
@@ -843,6 +863,7 @@ public fun do_apply_pending_coin_fees<Outcome: store, IW: drop, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert_account_authority(executable, account);
     // Get spec and validate type BEFORE deserialization
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));

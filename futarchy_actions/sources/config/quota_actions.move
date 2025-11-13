@@ -60,6 +60,7 @@ public fun do_set_quotas<Outcome: store, IW: drop>(
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
+    executable::intent(executable).assert_is_account(account.addr());
     // Get action spec
     let specs = executable::intent(executable).action_specs();
     let spec = specs.borrow(executable::action_idx(executable));

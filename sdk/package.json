@@ -22,15 +22,9 @@
     "clean": "rm -rf dist",
     "deploy-conditional-coins": "tsx scripts/deploy-conditional-coins.ts",
     "test:launchpad": "tsx scripts/launchpad-e2e.ts",
-    "test:proposal-real": "tsx scripts/proposal-e2e-real.ts",
-    "test:proposal-cycle": "tsx scripts/proposal-state-cycle.ts",
     "test:proposal-with-swaps": "tsx scripts/proposal-e2e-with-swaps.ts",
     "test:proposal-balance-swaps": "tsx scripts/proposal-e2e-balance-swaps.ts",
-    "launchpad-e2e-two-outcome": "tsx scripts/launchpad-e2e.ts",
-    "contribute": "tsx scripts/contribute-to-raise.ts",
-    "quick-raise": "tsx scripts/create-quick-raise.ts",
-    "settle": "tsx scripts/settle-raise.ts",
-    "finalize": "tsx scripts/quick-finalize.ts"
+    "launchpad-e2e-two-outcome": "tsx scripts/launchpad-e2e.ts"
   },
   "keywords": [
     "sui",

@@ -29,7 +29,9 @@ use account_protocol::{
     intents,
     package_registry::PackageRegistry,
     version_witness::VersionWitness,
+    action_validation,
 };
+use account_actions::vault;
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_factory::{
     factory::{Self, Factory, FactoryOwnerCap, ValidatorAdminCap},
@@ -38,7 +40,6 @@ use futarchy_markets_core::{
     fee::{Self, FeeManager, FeeAdminCap},
 };
 // futarchy_dao dependency removed - use ConfigWitness instead
-use account_protocol::action_validation;
 
 // === Action Type Markers ===
 
@@ -68,7 +69,7 @@ public struct UpdateDaoCreationFee has drop {}
 public struct UpdateProposalFee has drop {}
 /// Update verification fee
 public struct UpdateVerificationFee has drop {}
-/// Withdraw fees to treasury
+/// Withdraw fees to treasury (generic over coin type)
 public struct WithdrawFeesToTreasury has drop {}
 
 // === Marker Functions ===
@@ -156,8 +157,10 @@ public struct RemoveVerificationLevelAction has store, drop {
     level: u8,
 }
 
-/// Withdraw accumulated fees to treasury
+/// Withdraw accumulated fees to treasury (generic over coin type)
+/// Works for SUI, stable coins, and asset tokens
 public struct WithdrawFeesToTreasuryAction has store, drop {
+    vault_name: String,
     amount: u64,
 }
 
@@ -225,8 +228,8 @@ public fun new_remove_verification_level(level: u8): RemoveVerificationLevelActi
     RemoveVerificationLevelAction { level }
 }
 
-public fun new_withdraw_fees_to_treasury(amount: u64): WithdrawFeesToTreasuryAction {
-    WithdrawFeesToTreasuryAction { amount }
+public fun new_withdraw_fees_to_treasury(vault_name: String, amount: u64): WithdrawFeesToTreasuryAction {
+    WithdrawFeesToTreasuryAction { vault_name, amount }
 }
 
 // Coin-specific fee constructors
@@ -651,13 +654,13 @@ public fun do_remove_verification_level<Outcome: store, IW: drop>(
     fee::remove_verification_level(fee_manager, cap, action.level, clock, ctx);
 }
 
-/// Execute withdraw fees to treasury action
-public fun do_withdraw_fees_to_treasury<Outcome: store, IW: drop>(
+/// Execute withdraw fees to treasury action (UNIFIED - works for ANY coin type including SUI)
+public fun do_withdraw_fees_to_treasury<Config: store, Outcome: store, CoinType, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
     version: VersionWitness,
-    witness: IW,
+    _witness: IW,
     fee_manager: &mut FeeManager,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -675,24 +678,30 @@ public fun do_withdraw_fees_to_treasury<Outcome: store, IW: drop>(
     // Deserialize the action data
     let action_data = intents::action_spec_data(spec);
     let mut bcs = bcs::new(*action_data);
+    let vault_name = std::string::utf8(bcs::peel_vec_u8(&mut bcs));
     let amount = bcs::peel_u64(&mut bcs);
     bcs_validation::validate_all_bytes_consumed(bcs);
-    let action = WithdrawFeesToTreasuryAction { amount };
 
     // Increment action index
     executable::increment_action_idx(executable);
-    
+
     let cap = account::borrow_managed_asset<String, FeeAdminCap>(
         account,
         registry, b"protocol:fee_admin_cap".to_string(),
         version
     );
-    
-    // Withdraw all fees from the fee manager
-    fee::withdraw_all_fees(fee_manager, cap, clock, ctx);
-    // Note: The withdraw_all_fees function transfers directly to sender
-    // In a proper implementation, we would need a function that returns the coin
-    // for deposit into the DAO treasury
+
+    // Withdraw fees using UNIFIED function - works for any coin type!
+    let fees_coin = fee::withdraw_fees_as_coin<CoinType>(fee_manager, cap, amount, clock, ctx);
+
+    // Deposit into DAO treasury vault using deposit_approved
+    // Note: CoinType must be approved for deposits in the vault first via governance
+    vault::deposit_approved<Config, CoinType>(
+        account,
+        registry,
+        vault_name,
+        fees_coin,
+    );
 }
 
 // Coin-specific fee execution functions

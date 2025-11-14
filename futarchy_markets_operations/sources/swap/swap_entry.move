@@ -57,8 +57,8 @@ const STATE_TRADING: u8 = 2; // Must match proposal.move
 /// * `return_balance` - If true: return balance to caller. If false: transfer to recipient
 ///
 /// # Returns
-/// * `Coin<AssetType>` - Profit in asset
-/// * `option::Option<ConditionalMarketBalance>` - Dust balance (Some if return_balance=true, None otherwise)
+/// * `option::Option<Coin<AssetType>>` - Asset output (Some only when `return_balance=true`)
+/// * `option::Option<ConditionalMarketBalance>` - Dust balance (Some only when `return_balance=true`)
 ///
 /// # Use Cases
 ///
@@ -91,7 +91,7 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
     return_balance: bool,
     clock: &Clock,
     ctx: &mut TxContext,
-): (Coin<AssetType>, option::Option<ConditionalMarketBalance<AssetType, StableType>>) {
+): (option::Option<Coin<AssetType>>, option::Option<ConditionalMarketBalance<AssetType, StableType>>) {
     let amount_in = stable_in.value();
     assert!(amount_in > 0, EZeroAmount);
 
@@ -140,16 +140,8 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
                 ctx,
             );
             existing_balance_opt = option::some(balance);
-            coin::destroy_zero(asset_profit);
-
-            // Final swap: stable → asset (complete the routing)
-            unified_spot_pool::swap_stable_for_asset(
-                spot_pool,
-                stable_profit,
-                0,
-                clock,
-                ctx,
-            )
+            coin::destroy_zero(stable_profit); // Stable leg is always zero after arb
+            asset_profit
         } else {
             // Hybrid split: route some, direct swap rest
             let routed_coin = coin::split(&mut stable_in, routed_amount, ctx);
@@ -168,16 +160,8 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
                 ctx,
             );
             existing_balance_opt = option::some(balance);
-            coin::destroy_zero(asset_profit);
-
-            // Final swap for routed portion: stable → asset
-            let routed_asset = unified_spot_pool::swap_stable_for_asset(
-                spot_pool,
-                stable_profit,
-                0,
-                clock,
-                ctx,
-            );
+            coin::destroy_zero(stable_profit); // Stable output is zero, asset carries profit
+            let routed_asset = asset_profit;
 
             // Direct swap remainder
             let mut direct_asset = unified_spot_pool::swap_stable_for_asset(
@@ -218,14 +202,17 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
 
         // Return output
         if (return_balance) {
-            (asset_out, existing_balance_opt)
+            (option::some(asset_out), existing_balance_opt)
         } else {
             transfer::public_transfer(asset_out, recipient);
             if (option::is_some(&existing_balance_opt)) {
                 transfer::public_transfer(option::extract(&mut existing_balance_opt), recipient);
             };
             option::destroy_none(existing_balance_opt);
-            (coin::zero<AssetType>(ctx), option::none())
+            (
+                option::none<Coin<AssetType>>(),
+                option::none<ConditionalMarketBalance<AssetType, StableType>>(),
+            )
         }
     } else {
         // No arb (proposal not trading) - do manual swap
@@ -239,7 +226,7 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
 
         if (return_balance) {
             // Return coins and existing balance (if any) to caller
-            (asset_out, existing_balance_opt)
+            (option::some(asset_out), existing_balance_opt)
         } else {
             // Transfer everything to recipient
             transfer::public_transfer(asset_out, recipient);
@@ -247,7 +234,10 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
                 transfer::public_transfer(option::extract(&mut existing_balance_opt), recipient);
             };
             option::destroy_none(existing_balance_opt);
-            (coin::zero<AssetType>(ctx), option::none())
+            (
+                option::none<Coin<AssetType>>(),
+                option::none<ConditionalMarketBalance<AssetType, StableType>>(),
+            )
         }
     }
 }
@@ -261,8 +251,8 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
 /// * `return_balance` - If true: return balance to caller. If false: transfer to recipient
 ///
 /// # Returns
-/// * `Coin<StableType>` - Profit in stable
-/// * `option::Option<ConditionalMarketBalance>` - Dust balance (Some if return_balance=true, None otherwise)
+/// * `option::Option<Coin<StableType>>` - Stable output (Some only when `return_balance=true`)
+/// * `option::Option<ConditionalMarketBalance>` - Dust balance (Some only when `return_balance=true`)
 ///
 /// # Use Cases
 ///
@@ -295,7 +285,7 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
     return_balance: bool,
     clock: &Clock,
     ctx: &mut TxContext,
-): (Coin<StableType>, option::Option<ConditionalMarketBalance<AssetType, StableType>>) {
+): (option::Option<Coin<StableType>>, option::Option<ConditionalMarketBalance<AssetType, StableType>>) {
     let amount_in = asset_in.value();
     assert!(amount_in > 0, EZeroAmount);
 
@@ -344,16 +334,8 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
                 ctx,
             );
             existing_balance_opt = option::some(balance);
-            coin::destroy_zero(stable_profit);
-
-            // Final swap: asset → stable (complete the routing)
-            unified_spot_pool::swap_asset_for_stable(
-                spot_pool,
-                asset_profit,
-                0,
-                clock,
-                ctx,
-            )
+            coin::destroy_zero(asset_profit); // Asset leg is always zero after arb
+            stable_profit
         } else {
             // Hybrid split: route some, direct swap rest
             let routed_coin = coin::split(&mut asset_in, routed_amount, ctx);
@@ -372,16 +354,8 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
                 ctx,
             );
             existing_balance_opt = option::some(balance);
-            coin::destroy_zero(stable_profit);
-
-            // Final swap for routed portion: asset → stable
-            let routed_stable = unified_spot_pool::swap_asset_for_stable(
-                spot_pool,
-                asset_profit,
-                0,
-                clock,
-                ctx,
-            );
+            coin::destroy_zero(asset_profit); // Asset output is zero, stable carries profit
+            let routed_stable = stable_profit;
 
             // Direct swap remainder
             let mut direct_stable = unified_spot_pool::swap_asset_for_stable(
@@ -422,14 +396,17 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
 
         // Return output
         if (return_balance) {
-            (stable_out, existing_balance_opt)
+            (option::some(stable_out), existing_balance_opt)
         } else {
             transfer::public_transfer(stable_out, recipient);
             if (option::is_some(&existing_balance_opt)) {
                 transfer::public_transfer(option::extract(&mut existing_balance_opt), recipient);
             };
             option::destroy_none(existing_balance_opt);
-            (coin::zero<StableType>(ctx), option::none())
+            (
+                option::none<Coin<StableType>>(),
+                option::none<ConditionalMarketBalance<AssetType, StableType>>(),
+            )
         }
     } else {
         // No arb (proposal not trading) - do manual swap
@@ -443,7 +420,7 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
 
         if (return_balance) {
             // Return coins and existing balance (if any) to caller
-            (stable_out, existing_balance_opt)
+            (option::some(stable_out), existing_balance_opt)
         } else {
             // Transfer everything to recipient
             transfer::public_transfer(stable_out, recipient);
@@ -451,7 +428,10 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
                 transfer::public_transfer(option::extract(&mut existing_balance_opt), recipient);
             };
             option::destroy_none(existing_balance_opt);
-            (coin::zero<StableType>(ctx), option::none())
+            (
+                option::none<Coin<StableType>>(),
+                option::none<ConditionalMarketBalance<AssetType, StableType>>(),
+            )
         }
     }
 }
@@ -591,7 +571,7 @@ public fun swap_in_batch<AssetType, StableType, InputCoin, OutputCoin>(
         escrow,
         coin_in,
         outcome_index,
-        !is_asset_to_stable, // is_asset = opposite of swap direction
+        is_asset_to_stable, // is_asset = matches input type (asset→stable: burn asset, stable→asset: burn stable)
     );
 
     // Swap in balance (balance-based swap works for ANY outcome count!)
@@ -624,7 +604,7 @@ public fun swap_in_batch<AssetType, StableType, InputCoin, OutputCoin>(
         &mut batch.balance,
         escrow,
         outcome_index,
-        is_asset_to_stable, // is_asset = swap direction
+        !is_asset_to_stable, // is_asset = matches output type (asset→stable: mint stable, stable→asset: mint asset)
         ctx,
     );
 

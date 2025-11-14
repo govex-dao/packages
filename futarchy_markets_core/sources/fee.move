@@ -38,14 +38,9 @@ const DEFAULT_DAO_CREATION_FEE: u64 = 10_000;
 const DEFAULT_PROPOSAL_CREATION_FEE_PER_OUTCOME: u64 = 1000;
 const DEFAULT_VERIFICATION_FEE: u64 = 10_000; // Default fee for level 1
 const DEFAULT_LAUNCHPAD_CREATION_FEE: u64 = 100; // 100 MIST for testing
-const MONTHLY_FEE_PERIOD_MS: u64 = 2_592_000_000; // 30 days
 const FEE_UPDATE_DELAY_MS: u64 = 15_552_000_000; // 6 months (180 days)
-const MAX_FEE_COLLECTION_PERIOD_MS: u64 = 7_776_000_000; // 90 days (3 months) - max retroactive collection
 const MAX_FEE_MULTIPLIER: u64 = 10; // Maximum 10x increase from baseline
 const FEE_BASELINE_RESET_PERIOD_MS: u64 = 15_552_000_000; // 6 months - baseline resets after this
-// Remove ABSOLUTE_MAX_MONTHLY_FEE in V3 this is jsut here to build up trust
-// Dont want to limit fee as platform gets more mature
-const ABSOLUTE_MAX_MONTHLY_FEE: u64 = 10_000_000_000; // 10,000 USDC (6 decimals)
 
 // === Structs ===
 
@@ -57,8 +52,8 @@ public struct FeeManager has key, store {
     dao_creation_fee: u64,
     proposal_creation_fee_per_outcome: u64,
     verification_fees: Table<u8, u64>, // Dynamic table mapping level -> fee
-    sui_balance: Balance<SUI>,
     launchpad_creation_fee: u64, // Fee for creating a launchpad
+    // All coin fees stored uniformly in dynamic fields: FeeRegistry<CoinType> → Balance<CoinType>
 }
 
 public struct FeeAdminCap has key, store {
@@ -83,11 +78,6 @@ public struct CoinFeeConfig has store {
 }
 
 // === Events ===
-public struct FeesWithdrawn has copy, drop {
-    amount: u64,
-    recipient: address,
-    timestamp: u64,
-}
 
 public struct DAOCreationFeeUpdated has copy, drop {
     old_fee: u64,
@@ -149,21 +139,29 @@ public struct VerificationFeeCollected has copy, drop {
     timestamp: u64,
 }
 
-public struct StableFeesCollected has copy, drop {
+public struct FeesCollected has copy, drop {
     amount: u64,
-    stable_type: AsciiString,
+    coin_type: AsciiString,
     proposal_id: ID,
     timestamp: u64,
 }
 
-public struct StableFeesWithdrawn has copy, drop {
+public struct FeesWithdrawn has copy, drop {
     amount: u64,
-    stable_type: AsciiString,
+    coin_type: AsciiString,
     recipient: address,
     timestamp: u64,
 }
 
 // === Public Functions ===
+/// Package initialization
+///
+/// IMPORTANT: This function creates and transfers FeeAdminCap to the package publisher.
+/// For governance actions to work, the FeeAdminCap MUST be:
+/// 1. Transferred to the protocol DAO account
+/// 2. Registered as a managed asset with key: "protocol:fee_admin_cap"
+///
+/// This is typically done in deployment scripts after package publication.
 fun init(witness: FEE, ctx: &mut TxContext) {
     // Verify that the witness is valid and one-time only.
     assert!(sui::types::is_one_time_witness(&witness), EBadWitness);
@@ -182,11 +180,11 @@ fun init(witness: FEE, ctx: &mut TxContext) {
         dao_creation_fee: DEFAULT_DAO_CREATION_FEE,
         proposal_creation_fee_per_outcome: DEFAULT_PROPOSAL_CREATION_FEE_PER_OUTCOME,
         verification_fees,
-        sui_balance: balance::zero<SUI>(),
         launchpad_creation_fee: DEFAULT_LAUNCHPAD_CREATION_FEE,
     };
 
     public_share_object(fee_manager);
+    // FeeAdminCap is transferred to publisher - must be moved to protocol DAO account
     public_transfer(fee_admin_cap, ctx.sender());
 
     // Consuming the witness ensures one-time initialization.
@@ -195,14 +193,14 @@ fun init(witness: FEE, ctx: &mut TxContext) {
 
 // === Package Functions ===
 // Generic internal fee collection function
-fun deposit_payment(fee_manager: &mut FeeManager, fee_amount: u64, payment: Coin<SUI>): u64 {
+fun deposit_payment(fee_manager: &mut FeeManager, fee_amount: u64, payment: Coin<SUI>, clock: &Clock): u64 {
     // Verify payment
     let payment_amount = payment.value();
     assert!(payment_amount == fee_amount, EInvalidPayment);
 
-    // Process payment
+    // Process payment using unified deposit
     let paid_balance = payment.into_balance();
-    fee_manager.sui_balance.join(paid_balance);
+    deposit_fees<SUI>(fee_manager, paid_balance, clock);
     return payment_amount
     // Event emission will be handled by specific wrappers
 }
@@ -216,7 +214,7 @@ public fun deposit_dao_creation_payment(
 ) {
     let fee_amount = fee_manager.dao_creation_fee;
 
-    let payment_amount = deposit_payment(fee_manager, fee_amount, payment);
+    let payment_amount = deposit_payment(fee_manager, fee_amount, payment, clock);
 
     // Emit event
     event::emit(DAOCreationFeeCollected {
@@ -235,7 +233,7 @@ public fun deposit_launchpad_creation_payment(
 ) {
     let fee_amount = fee_manager.launchpad_creation_fee;
 
-    let payment_amount = deposit_payment(fee_manager, fee_amount, payment);
+    let payment_amount = deposit_payment(fee_manager, fee_amount, payment, clock);
 
     // Emit event
     event::emit(LaunchpadCreationFeeCollected {
@@ -262,7 +260,7 @@ public fun deposit_proposal_creation_payment(
     let fee_amount = (fee_amount_u128 as u64);
 
     // deposit_payment asserts the payment amount is exactly the fee_amount
-    let payment_amount = deposit_payment(fee_manager, fee_amount, payment);
+    let payment_amount = deposit_payment(fee_manager, fee_amount, payment, clock);
 
     // Emit event
     event::emit(ProposalCreationFeeCollected {
@@ -282,7 +280,7 @@ public fun deposit_verification_payment(
 ) {
     assert!(table::contains(&fee_manager.verification_fees, verification_level), EInvalidPayment);
     let fee_amount = *table::borrow(&fee_manager.verification_fees, verification_level);
-    let payment_amount = deposit_payment(fee_manager, fee_amount, payment);
+    let payment_amount = deposit_payment(fee_manager, fee_amount, payment, clock);
 
     // Emit event
     event::emit(VerificationFeeCollected {
@@ -294,27 +292,65 @@ public fun deposit_verification_payment(
 }
 
 // === Admin Functions ===
-// Admin function to withdraw fees
-public entry fun withdraw_all_fees(
+
+/// UNIFIED withdrawal function for ANY coin type (including SUI)
+/// Used by governance actions to deposit fees into treasury vault
+/// If amount is 0, withdraws all available fees
+public fun withdraw_fees_as_coin<CoinType>(
     fee_manager: &mut FeeManager,
     admin_cap: &FeeAdminCap,
+    amount: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): Coin<CoinType> {
     // Verify the admin cap belongs to this fee manager
     assert!(object::id(admin_cap) == fee_manager.admin_cap_id, EInvalidAdminCap);
-    let amount = fee_manager.sui_balance.value();
-    let sender = ctx.sender();
 
-    let withdrawal = fee_manager.sui_balance.split(amount).into_coin(ctx);
+    // Check if this coin type exists in the fee registry
+    if (
+        !dynamic_field::exists_with_type<
+            FeeRegistry<CoinType>,
+            Balance<CoinType>,
+        >(
+            &fee_manager.id,
+            FeeRegistry<CoinType> {},
+        )
+    ) {
+        // Return empty coin if no fees of this type have been collected
+        return coin::zero<CoinType>(ctx)
+    };
+
+    let fee_balance = dynamic_field::borrow_mut<
+        FeeRegistry<CoinType>,
+        Balance<CoinType>,
+    >(&mut fee_manager.id, FeeRegistry<CoinType> {});
+
+    let withdrawal_amount = if (amount == 0) {
+        fee_balance.value()
+    } else {
+        amount
+    };
+
+    if (withdrawal_amount == 0) {
+        return coin::zero<CoinType>(ctx)
+    };
+
+    assert!(fee_balance.value() >= withdrawal_amount, EInsufficientTreasuryBalance);
+
+    let withdrawn = fee_balance.split(withdrawal_amount);
+    let coin = withdrawn.into_coin(ctx);
+
+    let type_name = type_name::with_defining_ids<CoinType>();
+    let type_str = type_name.into_string();
 
     event::emit(FeesWithdrawn {
-        amount,
-        recipient: sender,
+        amount: withdrawal_amount,
+        coin_type: type_str,
+        recipient: ctx.sender(),
         timestamp: clock.timestamp_ms(),
     });
 
-    public_transfer(withdrawal, sender);
+    coin
 }
 
 // Admin function to update DAO creation fee
@@ -437,17 +473,24 @@ public entry fun update_verification_fee(
 
 // === AMM Fees ===
 
-// Structure to store stable coin balance information
-public struct StableCoinBalance<phantom T> has store {
-    balance: Balance<T>,
+/// Unified registry type for ALL coin fee balances (including SUI)
+public struct FeeRegistry<phantom T> has copy, drop, store {}
+
+/// Generic fee deposit - works for ANY coin type including SUI
+/// Use this for SUI fees (DAO/proposal/launchpad creation)
+public fun deposit_fees<CoinType>(
+    fee_manager: &mut FeeManager,
+    fees: Balance<CoinType>,
+    clock: &Clock,
+) {
+    deposit_fees_with_proposal(fee_manager, fees, object::id_from_address(@0x0), clock);
 }
 
-public struct StableFeeRegistry<phantom T> has copy, drop, store {}
-
-// Modified stable fees storage with more structure
-public fun deposit_stable_fees<StableType>(
+/// Generic fee deposit with proposal_id - works for ANY coin type
+/// Use this for AMM swap fees that are tied to a specific proposal
+public fun deposit_fees_with_proposal<CoinType>(
     fee_manager: &mut FeeManager,
-    fees: Balance<StableType>,
+    fees: Balance<CoinType>,
     proposal_id: ID,
     clock: &Clock,
 ) {
@@ -455,169 +498,27 @@ public fun deposit_stable_fees<StableType>(
 
     if (
         dynamic_field::exists_with_type<
-            StableFeeRegistry<StableType>,
-            StableCoinBalance<StableType>,
-        >(&fee_manager.id, StableFeeRegistry<StableType> {})
+            FeeRegistry<CoinType>,
+            Balance<CoinType>,
+        >(&fee_manager.id, FeeRegistry<CoinType> {})
     ) {
-        let fee_balance_wrapper = dynamic_field::borrow_mut<
-            StableFeeRegistry<StableType>,
-            StableCoinBalance<StableType>,
-        >(&mut fee_manager.id, StableFeeRegistry<StableType> {});
-        fee_balance_wrapper.balance.join(fees);
+        let fee_balance = dynamic_field::borrow_mut<
+            FeeRegistry<CoinType>,
+            Balance<CoinType>,
+        >(&mut fee_manager.id, FeeRegistry<CoinType> {});
+        fee_balance.join(fees);
     } else {
-        let balance_wrapper = StableCoinBalance<StableType> {
-            balance: fees,
-        };
-        dynamic_field::add(&mut fee_manager.id, StableFeeRegistry<StableType> {}, balance_wrapper);
+        dynamic_field::add(&mut fee_manager.id, FeeRegistry<CoinType> {}, fees);
     };
 
-    let type_name = type_name::with_defining_ids<StableType>();
+    let type_name = type_name::with_defining_ids<CoinType>();
     let type_str = type_name.into_string();
-    // Emit collection event
-    event::emit(StableFeesCollected {
+    event::emit(FeesCollected {
         amount,
-        stable_type: type_str,
+        coin_type: type_str,
         proposal_id,
         timestamp: clock.timestamp_ms(),
     });
-}
-
-// Registry type for asset fee balances (similar to StableFeeRegistry)
-public struct AssetFeeRegistry<phantom T> has copy, drop, store {}
-
-/// Deposit asset token fees from AMM swaps
-public fun deposit_asset_fees<AssetType>(
-    fee_manager: &mut FeeManager,
-    fees: Balance<AssetType>,
-    proposal_id: ID,
-    clock: &Clock,
-) {
-    let amount = fees.value();
-
-    if (
-        dynamic_field::exists_with_type<
-            AssetFeeRegistry<AssetType>,
-            StableCoinBalance<AssetType>,
-        >(&fee_manager.id, AssetFeeRegistry<AssetType> {})
-    ) {
-        let fee_balance_wrapper = dynamic_field::borrow_mut<
-            AssetFeeRegistry<AssetType>,
-            StableCoinBalance<AssetType>,
-        >(&mut fee_manager.id, AssetFeeRegistry<AssetType> {});
-        fee_balance_wrapper.balance.join(fees);
-    } else {
-        let balance_wrapper = StableCoinBalance<AssetType> {
-            balance: fees,
-        };
-        dynamic_field::add(&mut fee_manager.id, AssetFeeRegistry<AssetType> {}, balance_wrapper);
-    };
-
-    let type_name = type_name::with_defining_ids<AssetType>();
-    let type_str = type_name.into_string();
-    // Emit collection event (reuse StableFeesCollected event for asset fees too)
-    event::emit(StableFeesCollected {
-        amount,
-        stable_type: type_str,  // Using same field name for simplicity
-        proposal_id,
-        timestamp: clock.timestamp_ms(),
-    });
-}
-
-public entry fun withdraw_stable_fees<StableType>(
-    fee_manager: &mut FeeManager,
-    admin_cap: &FeeAdminCap,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Verify the admin cap belongs to this fee manager
-    assert!(object::id(admin_cap) == fee_manager.admin_cap_id, EInvalidAdminCap);
-
-    // Check if the stable type exists in the registry
-    if (
-        !dynamic_field::exists_with_type<
-            StableFeeRegistry<StableType>,
-            StableCoinBalance<StableType>,
-        >(
-            &fee_manager.id,
-            StableFeeRegistry<StableType> {},
-        )
-    ) {
-        // No fees of this type have been collected, nothing to withdraw
-        return
-    };
-
-    let fee_balance_wrapper = dynamic_field::borrow_mut<
-        StableFeeRegistry<StableType>,
-        StableCoinBalance<StableType>,
-    >(&mut fee_manager.id, StableFeeRegistry<StableType> {});
-    let amount = fee_balance_wrapper.balance.value();
-
-    if (amount > 0) {
-        let withdrawn = fee_balance_wrapper.balance.split(amount);
-        let coin = withdrawn.into_coin(ctx);
-
-        let type_name = type_name::with_defining_ids<StableType>();
-        let type_str = type_name.into_string();
-        // Emit withdrawal event
-        event::emit(StableFeesWithdrawn {
-            amount,
-            stable_type: type_str,
-            recipient: ctx.sender(),
-            timestamp: clock.timestamp_ms(),
-        });
-
-        // Transfer to sender
-        public_transfer(coin, ctx.sender());
-    }
-}
-
-/// Withdraw asset fees collected from AMM swaps
-public entry fun withdraw_asset_fees<AssetType>(
-    fee_manager: &mut FeeManager,
-    admin_cap: &FeeAdminCap,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Verify the admin cap belongs to this fee manager
-    assert!(object::id(admin_cap) == fee_manager.admin_cap_id, EInvalidAdminCap);
-
-    // Check if the asset type exists in the registry
-    if (
-        !dynamic_field::exists_with_type<
-            AssetFeeRegistry<AssetType>,
-            StableCoinBalance<AssetType>,
-        >(
-            &fee_manager.id,
-            AssetFeeRegistry<AssetType> {},
-        )
-    ) {
-        // No fees of this type have been collected, nothing to withdraw
-        return
-    };
-
-    let fee_balance_wrapper = dynamic_field::borrow_mut<
-        AssetFeeRegistry<AssetType>,
-        StableCoinBalance<AssetType>,
-    >(&mut fee_manager.id, AssetFeeRegistry<AssetType> {});
-    let amount = fee_balance_wrapper.balance.value();
-
-    if (amount > 0) {
-        let withdrawn = fee_balance_wrapper.balance.split(amount);
-        let coin = withdrawn.into_coin(ctx);
-
-        let type_name = type_name::with_defining_ids<AssetType>();
-        let type_str = type_name.into_string();
-        // Emit withdrawal event
-        event::emit(StableFeesWithdrawn {
-            amount,
-            stable_type: type_str,  // Using same field name for simplicity
-            recipient: ctx.sender(),
-            timestamp: clock.timestamp_ms(),
-        });
-
-        // Transfer to sender
-        public_transfer(coin, ctx.sender());
-    }
 }
 
 // === View Functions ===
@@ -643,21 +544,22 @@ public fun has_verification_level(fee_manager: &FeeManager, level: u8): bool {
 }
 
 public fun get_sui_balance(fee_manager: &FeeManager): u64 {
-    fee_manager.sui_balance.value()
+    get_fee_balance<SUI>(fee_manager)
 }
 
-public fun get_stable_fee_balance<StableType>(fee_manager: &FeeManager): u64 {
+/// Generic function to get fee balance for any coin type
+public fun get_fee_balance<CoinType>(fee_manager: &FeeManager): u64 {
     if (
         dynamic_field::exists_with_type<
-            StableFeeRegistry<StableType>,
-            StableCoinBalance<StableType>,
-        >(&fee_manager.id, StableFeeRegistry<StableType> {})
+            FeeRegistry<CoinType>,
+            Balance<CoinType>,
+        >(&fee_manager.id, FeeRegistry<CoinType> {})
     ) {
-        let balance_wrapper = dynamic_field::borrow<
-            StableFeeRegistry<StableType>,
-            StableCoinBalance<StableType>,
-        >(&fee_manager.id, StableFeeRegistry<StableType> {});
-        balance_wrapper.balance.value()
+        let fee_balance = dynamic_field::borrow<
+            FeeRegistry<CoinType>,
+            Balance<CoinType>,
+        >(&fee_manager.id, FeeRegistry<CoinType> {});
+        fee_balance.value()
     } else {
         0
     }
@@ -855,7 +757,6 @@ public fun create_fee_manager_for_testing(ctx: &mut TxContext) {
         dao_creation_fee: DEFAULT_DAO_CREATION_FEE,
         proposal_creation_fee_per_outcome: DEFAULT_PROPOSAL_CREATION_FEE_PER_OUTCOME,
         verification_fees,
-        sui_balance: balance::zero<SUI>(),
         launchpad_creation_fee: DEFAULT_LAUNCHPAD_CREATION_FEE,
     };
 

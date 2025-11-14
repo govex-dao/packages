@@ -51,7 +51,7 @@ export class SwapEntry {
    *
    * @param tx - Transaction
    * @param config - Swap configuration
-   * @returns Tuple of (asset_coin, optional_balance)
+   * @returns Tuple of (option<asset_coin>, optional_balance)
    *
    * @example Regular user (one swap)
    * ```typescript
@@ -122,7 +122,7 @@ export class SwapEntry {
    *
    * @param tx - Transaction
    * @param config - Swap configuration
-   * @returns Tuple of (stable_coin, optional_balance)
+   * @returns Tuple of (option<stable_coin>, optional_balance)
    *
    * @example Regular user (one swap)
    * ```typescript

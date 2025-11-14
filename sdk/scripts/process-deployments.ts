@@ -3,7 +3,7 @@ import * as path from 'path';
 
 interface DeploymentJSON {
   digest: string;
-  objectChanges: Array<{
+  objectChanges?: Array<{
     type: string;
     packageId?: string;
     objectId?: string;
@@ -45,6 +45,7 @@ function extractTypeName(fullType: string): string {
 
 function processDeployment(packageName: string, deploymentPath: string): ProcessedDeployment {
   const rawData: DeploymentJSON = JSON.parse(fs.readFileSync(deploymentPath, 'utf8'));
+  const objectChanges = rawData.objectChanges ?? [];
 
   const processed: ProcessedDeployment = {
     packageName,
@@ -56,13 +57,13 @@ function processDeployment(packageName: string, deploymentPath: string): Process
   };
 
   // Find the published package
-  const publishedPkg = rawData.objectChanges.find((obj) => obj.type === 'published');
+  const publishedPkg = objectChanges.find((obj) => obj.type === 'published');
   if (publishedPkg?.packageId) {
     processed.packageId = publishedPkg.packageId;
   }
 
   // Process all created objects
-  const createdObjects = rawData.objectChanges.filter((obj) => obj.type === 'created');
+  const createdObjects = objectChanges.filter((obj) => obj.type === 'created');
 
   for (const obj of createdObjects) {
     if (!obj.objectType || !obj.objectId) continue;

@@ -84,6 +84,19 @@ export class DeploymentManager {
     }
 
     /**
+     * Get FeeAdminCap from futarchy_markets_core
+     *
+     * IMPORTANT: This cap must be transferred to the protocol DAO account and registered
+     * as a managed asset with key "protocol:fee_admin_cap" for governance actions to work.
+     *
+     * @returns FeeAdminCap object info or undefined if not found
+     */
+    getFeeAdminCap() {
+        const marketsCore = this.getPackage("futarchy_markets_core");
+        return marketsCore?.adminCaps.find(cap => cap.name === "FeeAdminCap");
+    }
+
+    /**
      * Get all package IDs as a map
      */
     getAllPackageIds(): Record<string, string> {

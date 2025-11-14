@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "5C53125C57358705487B2124A7C8625198C5408C18D2C6D7CB281EF0C4A5B1CB"
+manifest_digest = "6AA822F8EF8632AA2184EB53E14DEE43406BA2312B114F6720DFA1C6E593A264"
 deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
 dependencies = [
   { id = "AccountProtocol", name = "AccountProtocol" },
@@ -63,6 +63,6 @@ flavor = "sui"
 
 [env.devnet]
 chain-id = "cffbbc89"
-original-published-id = "0x32aa68269674a7cad4582dc3b83502705220ef26e67efaeff7e42741d4e2c372"
-latest-published-id = "0x32aa68269674a7cad4582dc3b83502705220ef26e67efaeff7e42741d4e2c372"
+original-published-id = "0x997052acd38e2911ac399109f5c2241a8bc7bb061897adcea87fbf98d7dad513"
+latest-published-id = "0x997052acd38e2911ac399109f5c2241a8bc7bb061897adcea87fbf98d7dad513"
 published-version = "1"

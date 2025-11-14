@@ -941,7 +941,7 @@ fun test_swap_with_auto_arb_using_entry_function() {
     let swap_amount = 1_000_000u64; // 1M units (~0.5% of spot pool)
     let stable_in = coin::mint_for_testing<TEST_COIN_B>(swap_amount, ctx);
 
-    let (asset_out, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
+    let (mut asset_out_opt, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -955,7 +955,9 @@ fun test_swap_with_auto_arb_using_entry_function() {
     );
 
     // Clean up returned values
+    let asset_out = option::extract(&mut asset_out_opt);
     coin::burn_for_testing(asset_out);
+    option::destroy_none(asset_out_opt);
     if (option::is_some(&balance_opt)) {
         let balance = option::extract(&mut balance_opt);
         conditional_balance::destroy_for_testing(balance);

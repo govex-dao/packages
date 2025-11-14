@@ -20,9 +20,11 @@ use sui::clock::Clock;
 use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 use sui::event;
 use sui::bag::{Self, Bag};
+use account_protocol::account;
 use account_protocol::intents::ActionSpec;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use futarchy_core::dao_config::{Self, ConditionalCoinConfig};
+use futarchy_core::futarchy_config;
 
 // === Introduction ===
 // This defines the core proposal logic and details
@@ -1513,6 +1515,38 @@ public fun add_conditional_coin<AssetType, StableType, ConditionalCoinType>(
     // Store in bags
     bag::add(&mut proposal.conditional_treasury_caps, key, treasury_cap);
     bag::add(&mut proposal.conditional_metadata, key, metadata);
+}
+
+/// Entry helper that derives the DAO's ConditionalCoinConfig from the account object.
+/// Removes the need for clients to manually locate the Futarchy config dynamic field.
+public entry fun add_conditional_coin_via_account<
+    AssetType,
+    StableType,
+    ConditionalCoinType,
+>(
+    proposal: &mut Proposal<AssetType, StableType>,
+    outcome_index: u64,
+    is_asset: bool,
+    treasury_cap: TreasuryCap<ConditionalCoinType>,
+    metadata: CoinMetadata<ConditionalCoinType>,
+    dao_account: &account::Account,
+    asset_type_name: String,
+    stable_type_name: String,
+) {
+    let futarchy_cfg = account::config<futarchy_config::FutarchyConfig>(dao_account);
+    let dao_cfg = futarchy_config::dao_config(futarchy_cfg);
+    let coin_cfg = dao_config::conditional_coin_config(dao_cfg);
+
+    add_conditional_coin(
+        proposal,
+        outcome_index,
+        is_asset,
+        treasury_cap,
+        metadata,
+        coin_cfg,
+        &asset_type_name,
+        &stable_type_name,
+    );
 }
 
 /// Update conditional coin metadata with DAO naming pattern

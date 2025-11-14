@@ -29,6 +29,55 @@ import * as fs from "fs";
 import * as path from "path";
 import { initSDK, executeTransaction, getActiveAddress } from "./execute-tx";
 
+const ACCEPT_OUTCOME_INDEX = 1;
+
+type RegistryCoinInfo = {
+  treasuryCapId: string;
+  metadataId: string;
+  coinType: string;
+};
+
+interface ConditionalOutcomeCoinSet {
+  index: number;
+  asset: RegistryCoinInfo;
+  stable: RegistryCoinInfo;
+}
+
+function extractConditionalOutcomes(
+  info: Record<string, any>
+): ConditionalOutcomeCoinSet[] {
+  const outcomeMap = new Map<
+    number,
+    { asset?: RegistryCoinInfo; stable?: RegistryCoinInfo }
+  >();
+
+  for (const [key, value] of Object.entries(info)) {
+    const match = key.match(/^cond(\d+)_(asset|stable)$/);
+    if (!match) continue;
+    const idx = Number(match[1]);
+    if (!outcomeMap.has(idx)) {
+      outcomeMap.set(idx, {});
+    }
+    const entry = outcomeMap.get(idx)!;
+    if (match[2] === "asset") {
+      entry.asset = value as RegistryCoinInfo;
+    } else {
+      entry.stable = value as RegistryCoinInfo;
+    }
+  }
+
+  return Array.from(outcomeMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, entry]) => {
+      if (!entry.asset || !entry.stable) {
+        throw new Error(
+          `Incomplete conditional coin info for outcome ${index}`
+        );
+      }
+      return { index, asset: entry.asset, stable: entry.stable };
+    });
+}
+
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -81,6 +130,23 @@ async function main() {
     console.log();
   }
 
+  let conditionalOutcomes: ConditionalOutcomeCoinSet[] = [];
+  if (conditionalCoinsInfo) {
+    try {
+      conditionalOutcomes = extractConditionalOutcomes(conditionalCoinsInfo);
+    } catch (error) {
+      console.log("⚠️  Failed to parse conditional coin metadata:", error);
+      conditionalCoinsInfo = null;
+    }
+
+    if (conditionalCoinsInfo && conditionalOutcomes.length === 0) {
+      console.log("⚠️  No conditional coin sets found - disabling typed coin flow");
+      conditionalCoinsInfo = null;
+    }
+  }
+
+  let cond1AssetCoinId: string | null = null;
+
   // ============================================================================
   // STEP 1: Initialize SDK
   // ============================================================================
@@ -89,6 +155,23 @@ async function main() {
   const activeAddress = getActiveAddress();
   console.log(`✅ Active address: ${activeAddress}`);
   console.log();
+
+  // Fetch DAO shared version (needed for config borrowing)
+  const daoAccountObject = await sdk.client.getObject({
+    id: daoAccountId,
+    options: { showOwner: true },
+  });
+  const daoOwner = daoAccountObject.data?.owner;
+  if (!daoOwner || typeof daoOwner !== "object" || !("Shared" in daoOwner)) {
+    throw new Error("DAO account is not shared (cannot access config)");
+  }
+  const daoAccountSharedVersion = daoOwner.Shared.initial_shared_version;
+  const getDaoAccountSharedRef = (tx: Transaction) =>
+    tx.sharedObjectRef({
+      objectId: daoAccountId,
+      initialSharedVersion: daoAccountSharedVersion,
+      mutable: true,
+    });
 
   // Get package IDs
   const actionsPkg = sdk.getPackageId("AccountActions");
@@ -261,30 +344,14 @@ async function main() {
   console.log("=".repeat(80));
   console.log();
 
-  // Get the DAO account to access coin config (before building transaction)
-  let coinConfigId = null;
-  if (conditionalCoinsInfo) {
-    const daoAccountData = await sdk.client.getObject({
-      id: daoAccountId,
-      options: { showContent: true },
-    });
-
-    // Extract coin config object ID
-    const daoFields = (daoAccountData.data!.content as any).fields;
-    coinConfigId = daoFields.conditional_coin_config?.fields?.id?.id;
-
-    console.log(`📋 DEBUG: coinConfigId = ${coinConfigId}`);
-    console.log(`📋 DEBUG: daoFields keys = ${Object.keys(daoFields).join(", ")}`);
-
-    if (!coinConfigId) {
-      console.log("⚠️  ConditionalCoinConfig not found - skipping typed conditional coins");
-      console.log("   Test will continue with balance-based swaps only");
-      // Set conditionalCoinsInfo to null so we skip the conditional coin registration
-      conditionalCoinsInfo = null;
-    }
-  }
-
   const advanceTx = new Transaction();
+  const outcomeCaps: Record<
+    number,
+    {
+      asset?: ReturnType<Transaction["moveCall"]>;
+      stable?: ReturnType<Transaction["moveCall"]>;
+    }
+  > = {};
 
   // Get oneShotUtils package for conditional coins (if available)
   const oneShotUtils = conditionalCoinsInfo
@@ -292,83 +359,52 @@ async function main() {
     : null;
 
   // Take all 4 coin sets from registry using new PTB-friendly function
-  let cond0AssetResults, cond0StableResults, cond1AssetResults, cond1StableResults;
+  if (conditionalCoinsInfo && oneShotUtils && conditionalOutcomes.length > 0) {
+    console.log("📤 Taking conditional coins from registry (PTB-friendly)...");
 
-  if (conditionalCoinsInfo && oneShotUtils) {
-    console.log("📤 Taking conditional coins from registry (paying 0 SUI fee)...");
+    let feeCoin = advanceTx.splitCoins(advanceTx.gas, [advanceTx.pure.u64(0)]);
 
-    // Create a zero SUI coin for payment (since fee is 0)
-    const zeroSui = advanceTx.splitCoins(advanceTx.gas, [advanceTx.pure.u64(0)]);
+    for (const outcome of conditionalOutcomes) {
+      const assetResults = advanceTx.moveCall({
+        target: `${oneShotUtils.packageId}::coin_registry::take_coin_set_for_ptb`,
+        typeArguments: [outcome.asset.coinType],
+        arguments: [
+          advanceTx.object(conditionalCoinsInfo.registryId),
+          advanceTx.pure.id(outcome.asset.treasuryCapId),
+          feeCoin,
+          advanceTx.sharedObjectRef({
+            objectId: "0x6",
+            initialSharedVersion: 1,
+            mutable: false,
+          }),
+        ],
+      });
 
-    // Take cond0_asset (returns [TreasuryCap, Metadata, RemainingSUI])
-    cond0AssetResults = advanceTx.moveCall({
-      target: `${oneShotUtils.packageId}::coin_registry::take_coin_set_for_ptb`,
-      typeArguments: [conditionalCoinsInfo.cond0_asset.coinType],
-      arguments: [
-        advanceTx.object(conditionalCoinsInfo.registryId),
-        advanceTx.pure.id(conditionalCoinsInfo.cond0_asset.treasuryCapId),
-        zeroSui,
-        advanceTx.sharedObjectRef({
-          objectId: "0x6",
-          initialSharedVersion: 1,
-          mutable: false,
-        }),
-      ],
-    });
+      outcomeCaps[outcome.index] = outcomeCaps[outcome.index] || {};
+      outcomeCaps[outcome.index].asset = assetResults;
+      feeCoin = assetResults[2];
 
-    // Take cond0_stable
-    cond0StableResults = advanceTx.moveCall({
-      target: `${oneShotUtils.packageId}::coin_registry::take_coin_set_for_ptb`,
-      typeArguments: [conditionalCoinsInfo.cond0_stable.coinType],
-      arguments: [
-        advanceTx.object(conditionalCoinsInfo.registryId),
-        advanceTx.pure.id(conditionalCoinsInfo.cond0_stable.treasuryCapId),
-        cond0AssetResults[2], // Use remaining SUI from previous call
-        advanceTx.sharedObjectRef({
-          objectId: "0x6",
-          initialSharedVersion: 1,
-          mutable: false,
-        }),
-      ],
-    });
+      const stableResults = advanceTx.moveCall({
+        target: `${oneShotUtils.packageId}::coin_registry::take_coin_set_for_ptb`,
+        typeArguments: [outcome.stable.coinType],
+        arguments: [
+          advanceTx.object(conditionalCoinsInfo.registryId),
+          advanceTx.pure.id(outcome.stable.treasuryCapId),
+          feeCoin,
+          advanceTx.sharedObjectRef({
+            objectId: "0x6",
+            initialSharedVersion: 1,
+            mutable: false,
+          }),
+        ],
+      });
 
-    // Take cond1_asset
-    cond1AssetResults = advanceTx.moveCall({
-      target: `${oneShotUtils.packageId}::coin_registry::take_coin_set_for_ptb`,
-      typeArguments: [conditionalCoinsInfo.cond1_asset.coinType],
-      arguments: [
-        advanceTx.object(conditionalCoinsInfo.registryId),
-        advanceTx.pure.id(conditionalCoinsInfo.cond1_asset.treasuryCapId),
-        cond0StableResults[2], // Use remaining SUI from previous call
-        advanceTx.sharedObjectRef({
-          objectId: "0x6",
-          initialSharedVersion: 1,
-          mutable: false,
-        }),
-      ],
-    });
+      outcomeCaps[outcome.index].stable = stableResults;
+      feeCoin = stableResults[2];
+    }
 
-    // Take cond1_stable
-    cond1StableResults = advanceTx.moveCall({
-      target: `${oneShotUtils.packageId}::coin_registry::take_coin_set_for_ptb`,
-      typeArguments: [conditionalCoinsInfo.cond1_stable.coinType],
-      arguments: [
-        advanceTx.object(conditionalCoinsInfo.registryId),
-        advanceTx.pure.id(conditionalCoinsInfo.cond1_stable.treasuryCapId),
-        cond1AssetResults[2], // Use remaining SUI from previous call
-        advanceTx.sharedObjectRef({
-          objectId: "0x6",
-          initialSharedVersion: 1,
-          mutable: false,
-        }),
-      ],
-    });
-
-    console.log("✅ All 4 conditional coin sets taken from CoinRegistry");
-    console.log("   - cond0_asset + metadata");
-    console.log("   - cond0_stable + metadata");
-    console.log("   - cond1_asset + metadata");
-    console.log("   - cond1_stable + metadata");
+    advanceTx.transferObjects([feeCoin], advanceTx.pure.address(activeAddress));
+    console.log(`✅ Took ${conditionalOutcomes.length * 2} conditional coin caps from registry`);
     console.log();
   }
 
@@ -388,92 +424,70 @@ async function main() {
   });
 
   // Register conditional caps with escrow using captured caps from registry
-  if (conditionalCoinsInfo && cond0AssetResults && coinConfigId) {
+  if (conditionalCoinsInfo && conditionalOutcomes.length > 0) {
     // Get asset and stable type names (simplified for test)
     const assetTypeName = "ASSET";
     const stableTypeName = "STABLE";
 
-    // Add conditional coins to proposal (4 calls - one for each cap)
-    advanceTx.moveCall({
-      target: `${marketsPackageId}::proposal::add_conditional_coin`,
-      typeArguments: [assetType, stableType, conditionalCoinsInfo.cond0_asset.coinType],
-      arguments: [
-        advanceTx.object(proposalId),
-        advanceTx.pure.u64(0), // outcome 0
-        advanceTx.pure.bool(true), // is_asset = true
-        cond0AssetResults[0], // TreasuryCap
-        cond0AssetResults[1], // Metadata
-        advanceTx.object(coinConfigId),
-        advanceTx.pure.string(assetTypeName),
-        advanceTx.pure.string(stableTypeName),
-      ],
-    });
+    for (const outcome of conditionalOutcomes) {
+      const caps = outcomeCaps[outcome.index];
+      if (!caps?.asset || !caps?.stable) {
+        throw new Error(`Missing cap data for outcome ${outcome.index}`);
+      }
 
-    advanceTx.moveCall({
-      target: `${marketsPackageId}::proposal::add_conditional_coin`,
-      typeArguments: [assetType, stableType, conditionalCoinsInfo.cond0_stable.coinType],
-      arguments: [
-        advanceTx.object(proposalId),
-        advanceTx.pure.u64(0), // outcome 0
-        advanceTx.pure.bool(false), // is_asset = false (stable)
-        cond0StableResults[0], // TreasuryCap
-        cond0StableResults[1], // Metadata
-        advanceTx.object(coinConfigId),
-        advanceTx.pure.string(assetTypeName),
-        advanceTx.pure.string(stableTypeName),
-      ],
-    });
+      advanceTx.moveCall({
+        target: `${marketsPackageId}::proposal::add_conditional_coin_via_account`,
+        typeArguments: [assetType, stableType, outcome.asset.coinType],
+        arguments: [
+          advanceTx.object(proposalId),
+          advanceTx.pure.u64(outcome.index),
+          advanceTx.pure.bool(true),
+          caps.asset[0],
+          caps.asset[1],
+          advanceTx.sharedObjectRef({
+            objectId: daoAccountId,
+            initialSharedVersion: daoAccountSharedVersion,
+            mutable: true,
+          }),
+          advanceTx.pure.string(assetTypeName),
+          advanceTx.pure.string(stableTypeName),
+        ],
+      });
 
-    advanceTx.moveCall({
-      target: `${marketsPackageId}::proposal::add_conditional_coin`,
-      typeArguments: [assetType, stableType, conditionalCoinsInfo.cond1_asset.coinType],
-      arguments: [
-        advanceTx.object(proposalId),
-        advanceTx.pure.u64(1), // outcome 1
-        advanceTx.pure.bool(true), // is_asset = true
-        cond1AssetResults[0], // TreasuryCap
-        cond1AssetResults[1], // Metadata
-        advanceTx.object(coinConfigId),
-        advanceTx.pure.string(assetTypeName),
-        advanceTx.pure.string(stableTypeName),
-      ],
-    });
+      advanceTx.moveCall({
+        target: `${marketsPackageId}::proposal::add_conditional_coin_via_account`,
+        typeArguments: [assetType, stableType, outcome.stable.coinType],
+        arguments: [
+          advanceTx.object(proposalId),
+          advanceTx.pure.u64(outcome.index),
+          advanceTx.pure.bool(false),
+          caps.stable[0],
+          caps.stable[1],
+          advanceTx.sharedObjectRef({
+            objectId: daoAccountId,
+            initialSharedVersion: daoAccountSharedVersion,
+            mutable: true,
+          }),
+          advanceTx.pure.string(assetTypeName),
+          advanceTx.pure.string(stableTypeName),
+        ],
+      });
 
-    advanceTx.moveCall({
-      target: `${marketsPackageId}::proposal::add_conditional_coin`,
-      typeArguments: [assetType, stableType, conditionalCoinsInfo.cond1_stable.coinType],
-      arguments: [
-        advanceTx.object(proposalId),
-        advanceTx.pure.u64(1), // outcome 1
-        advanceTx.pure.bool(false), // is_asset = false (stable)
-        cond1StableResults[0], // TreasuryCap
-        cond1StableResults[1], // Metadata
-        advanceTx.object(coinConfigId),
-        advanceTx.pure.string(assetTypeName),
-        advanceTx.pure.string(stableTypeName),
-      ],
-    });
-
-    // Now register caps with escrow (2 calls - one per outcome)
-    advanceTx.moveCall({
-      target: `${marketsPackageId}::proposal::register_outcome_caps_with_escrow`,
-      typeArguments: [assetType, stableType, conditionalCoinsInfo.cond0_asset.coinType, conditionalCoinsInfo.cond0_stable.coinType],
-      arguments: [
-        advanceTx.object(proposalId),
-        escrow,
-        advanceTx.pure.u64(0), // outcome 0
-      ],
-    });
-
-    advanceTx.moveCall({
-      target: `${marketsPackageId}::proposal::register_outcome_caps_with_escrow`,
-      typeArguments: [assetType, stableType, conditionalCoinsInfo.cond1_asset.coinType, conditionalCoinsInfo.cond1_stable.coinType],
-      arguments: [
-        advanceTx.object(proposalId),
-        escrow,
-        advanceTx.pure.u64(1), // outcome 1
-      ],
-    });
+      advanceTx.moveCall({
+        target: `${marketsPackageId}::proposal::register_outcome_caps_with_escrow`,
+        typeArguments: [
+          assetType,
+          stableType,
+          outcome.asset.coinType,
+          outcome.stable.coinType,
+        ],
+        arguments: [
+          advanceTx.object(proposalId),
+          escrow,
+          advanceTx.pure.u64(outcome.index),
+        ],
+      });
+    }
   }
 
   // ALWAYS create conditional AMM pools - needed for both typed and balance-based swaps
@@ -500,11 +514,6 @@ async function main() {
     arguments: [escrow],
   });
 
-  // Return remaining SUI from conditional coin takes (must be after all caps are consumed)
-  if (conditionalCoinsInfo && cond1StableResults) {
-    advanceTx.transferObjects([cond1StableResults[2]], advanceTx.pure.address(activeAddress));
-  }
-
   const advanceResult = await executeTransaction(sdk, advanceTx, {
     network: "devnet",
     description: "Take coins, create escrow and AMM pools",
@@ -527,8 +536,20 @@ async function main() {
   // Get market_state ID
   const escrowData = await sdk.client.getObject({
     id: escrowId,
-    options: { showContent: true },
+    options: { showContent: true, showOwner: true },
   });
+
+  const escrowOwner = escrowData.data?.owner;
+  if (!escrowOwner || typeof escrowOwner !== "object" || !("Shared" in escrowOwner)) {
+    throw new Error("Escrow is not shared (unexpected)");
+  }
+  const escrowSharedVersion = escrowOwner.Shared.initial_shared_version;
+  const getSharedEscrowRef = (tx: Transaction) =>
+    tx.sharedObjectRef({
+      objectId: escrowId,
+      initialSharedVersion: escrowSharedVersion,
+      mutable: true,
+    });
 
   const escrowFields = (escrowData.data!.content as any).fields;
   const marketStateId = escrowFields.market_state?.fields?.id?.id;
@@ -586,9 +607,9 @@ async function main() {
     target: `${governancePackageId}::proposal_lifecycle::advance_proposal_state`,
     typeArguments: [assetType, stableType],
     arguments: [
-      toTradingTx.object(daoAccountId),
+      getDaoAccountSharedRef(toTradingTx),
       toTradingTx.object(proposalId),
-      toTradingTx.object(escrowId),
+      getSharedEscrowRef(toTradingTx),
       toTradingTx.object(spotPoolId),
       toTradingTx.sharedObjectRef({
         objectId: "0x6",
@@ -713,14 +734,14 @@ async function main() {
     arguments: [],
   });
 
-  // Execute swap - when return_balance=false, returns (zero_coin, none_option) that must be destroyed
-  const [zeroAsset, returnedNone] = swap1Tx.moveCall({
+  // Execute swap - when return_balance=false, both return slots are Option::None that must be destroyed
+  const [assetOutOpt, returnedBalanceOpt] = swap1Tx.moveCall({
     target: `${operationsPackageId}::swap_entry::swap_spot_stable_to_asset`,
     typeArguments: [assetType, stableType],
     arguments: [
       swap1Tx.object(spotPoolId),
       swap1Tx.object(proposalId),
-      swap1Tx.object(escrowId),
+      getSharedEscrowRef(swap1Tx),
       stableCoin1,
       swap1Tx.pure.u64(0), // min_asset_out
       swap1Tx.pure.address(activeAddress), // recipient
@@ -734,12 +755,16 @@ async function main() {
     ],
   });
 
-  // Destroy the zero coin and empty option returned when return_balance=false
-  swap1Tx.transferObjects([zeroAsset], swap1Tx.pure.address(activeAddress));
+  // Destroy the empty options returned when return_balance=false
+  swap1Tx.moveCall({
+    target: "0x1::option::destroy_none",
+    typeArguments: [`0x2::coin::Coin<${assetType}>`],
+    arguments: [assetOutOpt],
+  });
   swap1Tx.moveCall({
     target: "0x1::option::destroy_none",
     typeArguments: [`${primitivesPackageId}::conditional_balance::ConditionalMarketBalance<${assetType}, ${stableType}>`],
-    arguments: [returnedNone],
+    arguments: [returnedBalanceOpt],
   });
 
   // Return unused stable change to sender
@@ -756,130 +781,274 @@ async function main() {
   console.log("   (TWAP outcome depends on auto-arb rebalancing)");
   console.log();
 
-  // SWAP 2: Balance-based conditional swap ONLY in outcome 1
-  console.log("📊 SWAP 2: Balance-based conditional swap (stable → outcome 1 asset ONLY)...");
-
   const swapAmount2 = 20_000_000_000n; // 20 stable coins (much larger to influence TWAP)
 
-  const coins2 = await sdk.client.getCoins({
-    owner: activeAddress,
-    coinType: stableType,
-  });
+  if (conditionalCoinsInfo && conditionalOutcomes.length > 0) {
+    console.log("📊 SWAP 2: Conditional coin swap (stable → outcome 1 asset ONLY)...");
 
-  const swap2Tx = new Transaction();
-  const [firstCoin2, ...restCoins2] = coins2.data.map((c) => swap2Tx.object(c.coinObjectId));
-  if (restCoins2.length > 0) {
-    swap2Tx.mergeCoins(firstCoin2, restCoins2);
+    const coins2 = await sdk.client.getCoins({
+      owner: activeAddress,
+      coinType: stableType,
+    });
+    if (!coins2.data.length) {
+      throw new Error("No stable coins available for conditional swap");
+    }
+
+    const swap2Tx = new Transaction();
+    const [firstCoin2, ...restCoins2] = coins2.data.map((c) => swap2Tx.object(c.coinObjectId));
+    if (restCoins2.length > 0) {
+      swap2Tx.mergeCoins(firstCoin2, restCoins2);
+    }
+
+    const [stableCoin2] = swap2Tx.splitCoins(firstCoin2, [swap2Tx.pure.u64(swapAmount2)]);
+
+    let splitProgress = swap2Tx.moveCall({
+      target: `${primitivesPackageId}::coin_escrow::start_split_stable_progress`,
+      typeArguments: [assetType, stableType],
+      arguments: [getSharedEscrowRef(swap2Tx), stableCoin2],
+    });
+
+    const stableCoinsByOutcome: Record<number, ReturnType<Transaction["moveCall"]>> = {};
+    for (const outcome of conditionalOutcomes) {
+      const [nextProgress, mintedStable] = swap2Tx.moveCall({
+        target: `${primitivesPackageId}::coin_escrow::split_stable_progress_step`,
+        typeArguments: [assetType, stableType, outcome.stable.coinType],
+        arguments: [
+          splitProgress,
+          getSharedEscrowRef(swap2Tx),
+          swap2Tx.pure.u8(outcome.index),
+        ],
+      }) as ReturnType<Transaction["moveCall"]>[];
+      splitProgress = nextProgress;
+      stableCoinsByOutcome[outcome.index] = mintedStable;
+    }
+
+    swap2Tx.moveCall({
+      target: `${primitivesPackageId}::coin_escrow::finish_split_stable_progress`,
+      typeArguments: [assetType, stableType],
+      arguments: [splitProgress],
+    });
+
+    const acceptOutcome = conditionalOutcomes.find((o) => o.index === ACCEPT_OUTCOME_INDEX);
+    if (!acceptOutcome) {
+      throw new Error("Conditional coin info missing for Accept outcome (index 1)");
+    }
+
+    const condStableInput = stableCoinsByOutcome[ACCEPT_OUTCOME_INDEX];
+    if (!condStableInput) {
+      throw new Error("Failed to mint conditional stable coin for Accept outcome");
+    }
+
+    for (const outcome of conditionalOutcomes) {
+      if (outcome.index === ACCEPT_OUTCOME_INDEX) continue;
+      const leftoverCoin = stableCoinsByOutcome[outcome.index];
+      if (leftoverCoin) {
+        swap2Tx.transferObjects([leftoverCoin], swap2Tx.pure.address(activeAddress));
+      }
+    }
+
+    const session = swap2Tx.moveCall({
+      target: `${marketsPackageId}::swap_core::begin_swap_session`,
+      typeArguments: [assetType, stableType],
+      arguments: [getSharedEscrowRef(swap2Tx)],
+    });
+
+    const batch = swap2Tx.moveCall({
+      target: `${operationsPackageId}::swap_entry::begin_conditional_swaps`,
+      typeArguments: [assetType, stableType],
+      arguments: [
+        getSharedEscrowRef(swap2Tx),
+      ],
+    });
+
+    const [updatedBatch, condAcceptAssetCoin] = swap2Tx.moveCall({
+      target: `${operationsPackageId}::swap_entry::swap_in_batch`,
+      typeArguments: [
+        assetType,
+        stableType,
+        acceptOutcome.stable.coinType,
+        acceptOutcome.asset.coinType,
+      ],
+      arguments: [
+        batch,
+        session,
+        getSharedEscrowRef(swap2Tx),
+        swap2Tx.pure.u8(ACCEPT_OUTCOME_INDEX),
+        condStableInput,
+        swap2Tx.pure.bool(false), // stable -> asset
+        swap2Tx.pure.u64(0),
+        swap2Tx.sharedObjectRef({
+          objectId: "0x6",
+          initialSharedVersion: 1,
+          mutable: false,
+        }),
+      ],
+    });
+
+    swap2Tx.moveCall({
+      target: `${operationsPackageId}::swap_entry::finalize_conditional_swaps`,
+      typeArguments: [assetType, stableType],
+      arguments: [
+        updatedBatch,
+        swap2Tx.object(spotPoolId),
+        swap2Tx.object(proposalId),
+        getSharedEscrowRef(swap2Tx),
+        session,
+        swap2Tx.pure.address(activeAddress),
+        swap2Tx.sharedObjectRef({
+          objectId: "0x6",
+          initialSharedVersion: 1,
+          mutable: false,
+        }),
+      ],
+    });
+
+    swap2Tx.transferObjects([condAcceptAssetCoin], swap2Tx.pure.address(activeAddress));
+    swap2Tx.transferObjects([firstCoin2], swap2Tx.pure.address(activeAddress));
+
+    const typedSwapResult = await executeTransaction(sdk, swap2Tx, {
+      network: "devnet",
+      description: "Conditional coin swap",
+      showObjectChanges: true,
+    });
+
+    const acceptAssetCoinType = `0x2::coin::Coin<${acceptOutcome.asset.coinType}>`;
+    const createdAcceptCoin = typedSwapResult.objectChanges?.find(
+      (obj: any) =>
+        obj.type === "created" &&
+        obj.objectType === acceptAssetCoinType &&
+        obj.owner?.AddressOwner?.toLowerCase() === activeAddress.toLowerCase()
+    );
+    if (createdAcceptCoin) {
+      cond1AssetCoinId = (createdAcceptCoin as any).objectId;
+      console.log(`✅ Conditional coin swap complete (coin: ${cond1AssetCoinId})`);
+    } else {
+      console.log("⚠️  Unable to locate minted conditional asset coin in object changes");
+    }
+    console.log("   Swapped ONLY in Accept market using typed conditional coins");
+    console.log("   Remaining outcome stable coins transferred back to wallet");
+    console.log();
+  } else {
+    console.log("📊 SWAP 2: Balance-based conditional swap (stable → outcome 1 asset ONLY)...");
+
+    const coins2 = await sdk.client.getCoins({
+      owner: activeAddress,
+      coinType: stableType,
+    });
+
+    const swap2Tx = new Transaction();
+    const [firstCoin2, ...restCoins2] = coins2.data.map((c) => swap2Tx.object(c.coinObjectId));
+    if (restCoins2.length > 0) {
+      swap2Tx.mergeCoins(firstCoin2, restCoins2);
+    }
+
+    const [stableCoin2] = swap2Tx.splitCoins(firstCoin2, [swap2Tx.pure.u64(swapAmount2)]);
+
+    // Step 1: Create swap session (hot potato)
+    const session = swap2Tx.moveCall({
+      target: `${marketsPackageId}::swap_core::begin_swap_session`,
+      typeArguments: [assetType, stableType],
+      arguments: [getSharedEscrowRef(swap2Tx)],
+    });
+
+    // Step 2: Get market state ID
+    const marketStateId2 = swap2Tx.moveCall({
+      target: `${primitivesPackageId}::coin_escrow::market_state_id`,
+      typeArguments: [assetType, stableType],
+      arguments: [getSharedEscrowRef(swap2Tx)],
+    });
+
+    // Step 3: Create ConditionalMarketBalance
+    const balance = swap2Tx.moveCall({
+      target: `${primitivesPackageId}::conditional_balance::new`,
+      typeArguments: [assetType, stableType],
+      arguments: [
+        marketStateId2,
+        swap2Tx.pure.u8(2), // outcome_count = 2
+      ],
+    });
+
+    // Step 4: Deposit spot stable to escrow (quantum - backs ALL outcomes)
+    const zeroAssetCoin = swap2Tx.moveCall({
+      target: "0x2::coin::zero",
+      typeArguments: [assetType],
+      arguments: [],
+    });
+
+    swap2Tx.moveCall({
+      target: `${primitivesPackageId}::coin_escrow::deposit_spot_coins`,
+      typeArguments: [assetType, stableType],
+      arguments: [
+        getSharedEscrowRef(swap2Tx),
+        zeroAssetCoin,
+        stableCoin2,
+      ],
+    });
+
+    // Step 5: Add stable to balance for BOTH outcomes (quantum - same amount in both)
+    swap2Tx.moveCall({
+      target: `${primitivesPackageId}::conditional_balance::add_to_balance`,
+      typeArguments: [assetType, stableType],
+      arguments: [
+        balance,
+        swap2Tx.pure.u8(0),
+        swap2Tx.pure.bool(false), // is_asset = false (stable)
+        swap2Tx.pure.u64(swapAmount2),
+      ],
+    });
+
+    swap2Tx.moveCall({
+      target: `${primitivesPackageId}::conditional_balance::add_to_balance`,
+      typeArguments: [assetType, stableType],
+      arguments: [
+        balance,
+        swap2Tx.pure.u8(1),
+        swap2Tx.pure.bool(false), // is_asset = false (stable)
+        swap2Tx.pure.u64(swapAmount2),
+      ],
+    });
+
+    // Step 6: Swap ONLY in outcome 1 AMM (stable → asset)
+    swap2Tx.moveCall({
+      target: `${marketsPackageId}::swap_core::swap_balance_stable_to_asset`,
+      typeArguments: [assetType, stableType],
+      arguments: [
+        session,
+        getSharedEscrowRef(swap2Tx),
+        balance,
+        swap2Tx.pure.u8(1), // outcome_index = 1 (Accept ONLY!)
+        swap2Tx.pure.u64(swapAmount2),
+        swap2Tx.pure.u64(0), // min_amount_out
+        swap2Tx.sharedObjectRef({
+          objectId: "0x6",
+          initialSharedVersion: 1,
+          mutable: false,
+        }),
+      ],
+    });
+
+    // Step 7: Finalize session (consumes hot potato)
+    swap2Tx.moveCall({
+      target: `${marketsPackageId}::swap_core::finalize_swap_session`,
+      typeArguments: [assetType, stableType],
+      arguments: [session, getSharedEscrowRef(swap2Tx)],
+    });
+
+    // Step 8: Transfer balance NFT to recipient
+    swap2Tx.transferObjects([balance], swap2Tx.pure.address(activeAddress));
+    swap2Tx.transferObjects([firstCoin2], swap2Tx.pure.address(activeAddress));
+
+    await executeTransaction(sdk, swap2Tx, {
+      network: "devnet",
+      description: "Balance-based conditional swap",
+      showObjectChanges: true,
+    });
+
+    console.log(`✅ Conditional swap complete (${Number(swapAmount2) / 1e9} stable → outcome 1 asset)`);
+    console.log("   Swapped ONLY in Accept market (outcome 1) using balance-based flow");
+    console.log("   This pushes TWAP toward Accept winning!");
+    console.log();
   }
-
-  const [stableCoin2] = swap2Tx.splitCoins(firstCoin2, [swap2Tx.pure.u64(swapAmount2)]);
-
-  // Step 1: Create swap session (hot potato)
-  const session = swap2Tx.moveCall({
-    target: `${marketsPackageId}::swap_core::begin_swap_session`,
-    typeArguments: [assetType, stableType],
-    arguments: [swap2Tx.object(escrowId)],
-  });
-
-  // Step 2: Get market state ID
-  const marketStateId2 = swap2Tx.moveCall({
-    target: `${primitivesPackageId}::coin_escrow::market_state_id`,
-    typeArguments: [assetType, stableType],
-    arguments: [swap2Tx.object(escrowId)],
-  });
-
-  // Step 3: Create ConditionalMarketBalance
-  const balance = swap2Tx.moveCall({
-    target: `${primitivesPackageId}::conditional_balance::new`,
-    typeArguments: [assetType, stableType],
-    arguments: [
-      marketStateId2,
-      swap2Tx.pure.u8(2), // outcome_count = 2
-    ],
-  });
-
-  // Step 4: Deposit spot stable to escrow (quantum - backs ALL outcomes)
-  const zeroAssetCoin = swap2Tx.moveCall({
-    target: "0x2::coin::zero",
-    typeArguments: [assetType],
-    arguments: [],
-  });
-
-  swap2Tx.moveCall({
-    target: `${primitivesPackageId}::coin_escrow::deposit_spot_coins`,
-    typeArguments: [assetType, stableType],
-    arguments: [
-      swap2Tx.object(escrowId),
-      zeroAssetCoin,
-      stableCoin2,
-    ],
-  });
-
-  // Step 5: Add stable to balance for BOTH outcomes (quantum - same 5 stable in both!)
-  // Outcome 0 (Reject)
-  swap2Tx.moveCall({
-    target: `${primitivesPackageId}::conditional_balance::add_to_balance`,
-    typeArguments: [assetType, stableType],
-    arguments: [
-      balance,
-      swap2Tx.pure.u8(0),
-      swap2Tx.pure.bool(false), // is_asset = false (stable)
-      swap2Tx.pure.u64(swapAmount2),
-    ],
-  });
-
-  // Outcome 1 (Accept)
-  swap2Tx.moveCall({
-    target: `${primitivesPackageId}::conditional_balance::add_to_balance`,
-    typeArguments: [assetType, stableType],
-    arguments: [
-      balance,
-      swap2Tx.pure.u8(1),
-      swap2Tx.pure.bool(false), // is_asset = false (stable)
-      swap2Tx.pure.u64(swapAmount2),
-    ],
-  });
-
-  // Step 6: Swap ONLY in outcome 1 AMM (stable → asset)
-  swap2Tx.moveCall({
-    target: `${marketsPackageId}::swap_core::swap_balance_stable_to_asset`,
-    typeArguments: [assetType, stableType],
-    arguments: [
-      session,
-      swap2Tx.object(escrowId),
-      balance,
-      swap2Tx.pure.u8(1), // outcome_index = 1 (Accept ONLY!)
-      swap2Tx.pure.u64(swapAmount2),
-      swap2Tx.pure.u64(0), // min_amount_out
-      swap2Tx.sharedObjectRef({
-        objectId: "0x6",
-        initialSharedVersion: 1,
-        mutable: false,
-      }),
-    ],
-  });
-
-  // Step 7: Finalize session (consumes hot potato)
-  swap2Tx.moveCall({
-    target: `${marketsPackageId}::swap_core::finalize_swap_session`,
-    typeArguments: [assetType, stableType],
-    arguments: [session, swap2Tx.object(escrowId)],
-  });
-
-  // Step 8: Transfer balance NFT to recipient
-  swap2Tx.transferObjects([balance], swap2Tx.pure.address(activeAddress));
-  swap2Tx.transferObjects([firstCoin2], swap2Tx.pure.address(activeAddress));
-
-  await executeTransaction(sdk, swap2Tx, {
-    network: "devnet",
-    description: "Balance-based conditional swap",
-    showObjectChanges: true,
-  });
-
-  console.log(`✅ Conditional swap complete (${Number(swapAmount2) / 1e9} stable → outcome 1 asset)`);
-  console.log("   Swapped ONLY in Accept market (outcome 1)");
-  console.log("   This pushes TWAP toward Accept winning!");
-  console.log();
 
   // ============================================================================
   // STEP 8: Wait for trading period and finalize
@@ -909,10 +1078,10 @@ async function main() {
     target: `${governancePackageId}::proposal_lifecycle::finalize_proposal_with_spot_pool`,
     typeArguments: [assetType, stableType],
     arguments: [
-      finalizeTx.object(daoAccountId),
+      getDaoAccountSharedRef(finalizeTx),
       finalizeTx.object(registryId),
       finalizeTx.object(proposalId),
-      finalizeTx.object(escrowId),
+      getSharedEscrowRef(finalizeTx),
       finalizeTx.object(spotPoolId),
       finalizeTx.sharedObjectRef({
         objectId: "0x6",
@@ -963,10 +1132,10 @@ async function main() {
       target: `${governancePackageId}::ptb_executor::begin_execution_with_escrow`,
       typeArguments: [assetType, stableType],
       arguments: [
-        executeTx.object(daoAccountId),
+        getDaoAccountSharedRef(executeTx),
         executeTx.object(registryId),
         executeTx.object(proposalId),
-        executeTx.object(escrowId),
+        getSharedEscrowRef(executeTx),
         executeTx.sharedObjectRef({
           objectId: "0x6",
           initialSharedVersion: 1,
@@ -995,7 +1164,7 @@ async function main() {
       ],
       arguments: [
         executable,
-        executeTx.object(daoAccountId),
+        getDaoAccountSharedRef(executeTx),
         executeTx.object(registryId),
         executeTx.sharedObjectRef({
           objectId: "0x6",
@@ -1011,7 +1180,7 @@ async function main() {
       target: `${governancePackageId}::ptb_executor::finalize_execution`,
       typeArguments: [assetType, stableType],
       arguments: [
-        executeTx.object(daoAccountId),
+        getDaoAccountSharedRef(executeTx),
         executeTx.object(registryId),
         executeTx.object(proposalId),
         executable,
@@ -1057,8 +1226,52 @@ async function main() {
 
   console.log("💰 Users can now redeem their winning conditional tokens...");
   console.log();
-  console.log("ℹ️  SKIPPED: Conditional token redemption requires conditional coins (not available in e2e test)");
-  console.log();
+  const acceptWon = winningOutcome === 1 || winningOutcome === "1";
+  if (conditionalCoinsInfo && cond1AssetCoinId && acceptWon) {
+    const acceptOutcomeInfo = conditionalOutcomes.find(
+      (o) => o.index === ACCEPT_OUTCOME_INDEX
+    );
+    if (!acceptOutcomeInfo) {
+      console.log("⚠️  SKIPPED: Missing conditional coin metadata for Accept outcome");
+      console.log();
+    } else {
+      console.log(`🪙 Redeeming conditional asset coin ${cond1AssetCoinId} for spot asset...`);
+      const redeemTx = new Transaction();
+      const redeemedAssetCoin = redeemTx.moveCall({
+        target: `${operationsPackageId}::liquidity_interact::redeem_conditional_asset`,
+        typeArguments: [assetType, stableType, acceptOutcomeInfo.asset.coinType],
+        arguments: [
+          redeemTx.object(proposalId),
+          getSharedEscrowRef(redeemTx),
+          redeemTx.object(cond1AssetCoinId),
+          redeemTx.pure.u64(ACCEPT_OUTCOME_INDEX),
+          redeemTx.sharedObjectRef({
+            objectId: "0x6",
+            initialSharedVersion: 1,
+            mutable: false,
+          }),
+        ],
+      });
+      redeemTx.transferObjects([redeemedAssetCoin], redeemTx.pure.address(activeAddress));
+
+      await executeTransaction(sdk, redeemTx, {
+        network: "devnet",
+        description: "Redeem winning conditional asset coin",
+        showObjectChanges: true,
+      });
+      console.log("✅ Redemption complete - spot asset returned to wallet");
+      console.log();
+    }
+  } else if (conditionalCoinsInfo && !cond1AssetCoinId) {
+    console.log("⚠️  SKIPPED: Could not find conditional asset coin from swap transaction");
+    console.log();
+  } else if (conditionalCoinsInfo && !acceptWon) {
+    console.log("ℹ️  SKIPPED: Reject won, so typed conditional coins cannot be redeemed");
+    console.log();
+  } else {
+    console.log("ℹ️  SKIPPED: Conditional token redemption requires conditional coins (not available in e2e test)");
+    console.log();
+  }
 
   // ============================================================================
   // DONE
@@ -1074,13 +1287,13 @@ async function main() {
   console.log("  ✅ 100% quantum split: spot pool → conditional AMMs");
   console.log("  ✅ Performed spot swap with auto-arb (swaps allowed during proposal)");
   if (conditionalCoinsInfo) {
-    console.log("  ✅ Performed conditional swap buying outcome 1 (influenced TWAP)");
+    console.log("  ✅ Performed conditional coin swap buying outcome 1 (typed coins)");
   } else {
     console.log("  ⚠️  Conditional swap skipped (no conditional coins available)");
   }
-  console.log(`  ✅ Proposal finalized - winner: ${winningOutcome === 1 || winningOutcome === "1" ? "ACCEPT" : "REJECT"} (outcome ${winningOutcome})`);
+  console.log(`  ✅ Proposal finalized - winner: ${acceptWon ? "ACCEPT" : "REJECT"} (outcome ${winningOutcome})`);
   console.log("  ✅ Auto-recombination: winning conditional liquidity → spot pool");
-  if (winningOutcome === 1 || winningOutcome === "1") {
+  if (acceptWon) {
     console.log("  ✅ Actions executed (stream created)");
   } else {
     console.log("  ℹ️  No actions executed (Reject won)");

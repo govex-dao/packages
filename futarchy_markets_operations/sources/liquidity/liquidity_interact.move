@@ -7,7 +7,6 @@ use futarchy_markets_core::fee::FeeManager;
 use futarchy_markets_core::proposal::Proposal;
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm;
-use sui::balance::Balance;
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::event;
@@ -381,7 +380,7 @@ public fun collect_protocol_fees<AssetType, StableType>(
         let fee_balance = coin::into_balance(fee_balance_coin);
 
         // Deposit to fee manager
-        fee_manager.deposit_asset_fees<AssetType>(
+        fee_manager.deposit_fees_with_proposal<AssetType>(
             fee_balance,
             proposal.get_id(),
             clock,
@@ -403,7 +402,7 @@ public fun collect_protocol_fees<AssetType, StableType>(
         let fee_balance = coin::into_balance(fee_balance_coin);
 
         // Deposit to fee manager
-        fee_manager.deposit_stable_fees<StableType>(
+        fee_manager.deposit_fees_with_proposal<StableType>(
             fee_balance,
             proposal.get_id(),
             clock,

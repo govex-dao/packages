@@ -7,7 +7,7 @@
  * 3. Saves deployment info to JSON for use in tests
  *
  * Usage:
- *   npx tsx scripts/deploy-conditional-coins.ts
+ *   npx tsx scripts/deploy-conditional-coins.ts [--registry 0x...existing] [--fee <mist>]
  */
 
 import { Transaction } from "@mysten/sui/transactions";
@@ -16,9 +16,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { initSDK, executeTransaction, getActiveAddress } from "./execute-tx";
 
-const CONDITIONAL_COINS_PATH = "/Users/admin/govex/packages/conditional_coins";
-const DEPLOYMENTS_DIR = "/Users/admin/govex/packages/deployments";
-const SDK_DIR = "/Users/admin/govex/packages/sdk";
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const CONDITIONAL_COINS_PATH = path.join(REPO_ROOT, "packages", "conditional_coins");
+const DEPLOYMENTS_DIR = path.join(REPO_ROOT, "packages", "deployments");
+const SDK_DIR = path.join(REPO_ROOT, "packages", "sdk");
 
 interface ConditionalCoinInfo {
   treasuryCapId: string;
@@ -38,6 +39,31 @@ interface ConditionalCoinsDeployment {
 }
 
 async function main() {
+  const args = process.argv.slice(2);
+  let existingRegistryId: string | null = null;
+  let feeOverride: bigint | null = null;
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--registry") {
+      const value = args[i + 1];
+      if (!value) {
+        throw new Error("--registry flag requires an object ID");
+      }
+      existingRegistryId = value;
+      i += 1;
+    } else if (arg === "--fee") {
+      const value = args[i + 1];
+      if (!value) {
+        throw new Error("--fee flag requires a number (mist)");
+      }
+      feeOverride = BigInt(value);
+      i += 1;
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+
   console.log("=".repeat(80));
   console.log("DEPLOY AND REGISTER CONDITIONAL COINS");
   console.log("=".repeat(80));
@@ -57,41 +83,51 @@ async function main() {
   }
 
   // Create CoinRegistry if it doesn't exist
-  console.log("📝 Creating CoinRegistry...");
-  const createRegistryTx = new Transaction();
+  let registryId = existingRegistryId;
+  if (!registryId) {
+    console.log("📝 Creating CoinRegistry...");
+    const createRegistryTx = new Transaction();
 
-  const registry = createRegistryTx.moveCall({
-    target: `${oneShotUtils.packageId}::coin_registry::create_registry`,
-    arguments: [],
-  });
+    const registry = createRegistryTx.moveCall({
+      target: `${oneShotUtils.packageId}::coin_registry::create_registry`,
+      arguments: [],
+    });
 
-  createRegistryTx.moveCall({
-    target: `${oneShotUtils.packageId}::coin_registry::share_registry`,
-    arguments: [registry],
-  });
+    createRegistryTx.moveCall({
+      target: `${oneShotUtils.packageId}::coin_registry::share_registry`,
+      arguments: [registry],
+    });
 
-  const registryResult = await executeTransaction(sdk, createRegistryTx, {
-    network: "devnet",
-    showObjectChanges: true,
-  });
+    const registryResult = await executeTransaction(sdk, createRegistryTx, {
+      network: "devnet",
+      showObjectChanges: true,
+    });
 
-  // Find the shared CoinRegistry object
-  const registryObject = registryResult.objectChanges?.find(
-    (obj: any) =>
-      obj.type === "created" &&
-      obj.objectType &&
-      obj.objectType.includes("::coin_registry::CoinRegistry")
-  );
+    // Find the shared CoinRegistry object
+    const registryObject = registryResult.objectChanges?.find(
+      (obj: any) =>
+        obj.type === "created" &&
+        obj.objectType &&
+        obj.objectType.includes("::coin_registry::CoinRegistry")
+    );
 
-  if (!registryObject) {
-    console.error("❌ Failed to find CoinRegistry in object changes!");
-    console.error("Object changes:", JSON.stringify(registryResult.objectChanges, null, 2));
-    process.exit(1);
+    if (!registryObject) {
+      console.error("❌ Failed to find CoinRegistry in object changes!");
+      console.error("Object changes:", JSON.stringify(registryResult.objectChanges, null, 2));
+      process.exit(1);
+    }
+
+    registryId = (registryObject as any).objectId;
+    console.log(`✅ CoinRegistry created: ${registryId}`);
+    console.log();
+  } else {
+    console.log(`ℹ️  Using existing CoinRegistry: ${registryId}`);
+    console.log();
   }
 
-  const registryId = (registryObject as any).objectId;
-  console.log(`✅ CoinRegistry created: ${registryId}`);
-  console.log();
+  if (!registryId) {
+    throw new Error("CoinRegistry ID not available");
+  }
 
   // Step 1: Deploy conditional_coins package
   console.log("📦 Deploying conditional_coins package...");
@@ -159,7 +195,7 @@ async function main() {
   console.log();
 
   const registerTx = new Transaction();
-  const fee = 0n; // Zero fee for test coins
+  const fee = feeOverride ?? 0n; // Default zero fee for test coins
 
   for (const [coinName, info] of Object.entries(caps)) {
     console.log(`   Registering ${coinName}...`);

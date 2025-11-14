@@ -5,7 +5,10 @@
 /// These can be staged in intents for proposals.
 module futarchy_governance_actions::protocol_admin_init_actions;
 
-use std::type_name::{Self, TypeName};
+use std::{
+    string::String,
+    type_name::{Self, TypeName},
+};
 use sui::bcs;
 use account_protocol::intents;
 
@@ -64,8 +67,9 @@ public struct RemoveVerificationLevelAction has store, drop {
     level: u8,
 }
 
-/// Withdraw accumulated fees to treasury
+/// Withdraw accumulated fees to treasury (generic over coin type)
 public struct WithdrawFeesToTreasuryAction has store, drop {
+    vault_name: String,
     amount: u64,
 }
 
@@ -260,11 +264,12 @@ public fun add_remove_verification_level_spec(
 /// Add withdraw fees to treasury action to the spec builder
 public fun add_withdraw_fees_to_treasury_spec(
     builder: &mut account_actions::action_spec_builder::Builder,
+    vault_name: String,
     amount: u64,
 ) {
     use account_actions::action_spec_builder as builder_mod;
 
-    let action = WithdrawFeesToTreasuryAction { amount };
+    let action = WithdrawFeesToTreasuryAction { vault_name, amount };
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_governance_actions::protocol_admin_actions::WithdrawFeesToTreasury>(),

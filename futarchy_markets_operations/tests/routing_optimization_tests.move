@@ -162,7 +162,7 @@ fun test_routing_prefers_direct_when_conditionals_tiny() {
     // Swap 10k stable → asset (should go direct) - small swap to avoid no-arb violation
     let swap_amount = 10_000u64;
     let stable_in = coin::mint_for_testing<TEST_COIN_B>(swap_amount, ctx);
-    let (asset_out, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
+    let (mut asset_out_opt, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -175,6 +175,7 @@ fun test_routing_prefers_direct_when_conditionals_tiny() {
         ctx,
     );
 
+    let asset_out = option::extract(&mut asset_out_opt);
     let output_amount = asset_out.value();
     std::debug::print(&b"\n=== AFTER SWAP ===");
     std::debug::print(&b"Asset output:");
@@ -203,6 +204,7 @@ fun test_routing_prefers_direct_when_conditionals_tiny() {
 
     // Cleanup
     coin::burn_for_testing(asset_out);
+    option::destroy_none(asset_out_opt);
     if (option::is_some(&balance_opt)) {
         let balance = option::extract(&mut balance_opt);
         conditional_balance::destroy_for_testing(balance);
@@ -281,7 +283,7 @@ fun test_routing_prefers_full_route_when_conditionals_large() {
     // Small swap to avoid violating no-arb band
     let swap_amount = 100_000u64; // 100k stable (0.05% of pool)
     let stable_in = coin::mint_for_testing<TEST_COIN_B>(swap_amount, ctx);
-    let (asset_out, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
+    let (mut asset_out_opt, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -294,6 +296,7 @@ fun test_routing_prefers_full_route_when_conditionals_large() {
         ctx,
     );
 
+    let asset_out = option::extract(&mut asset_out_opt);
     let output_amount = asset_out.value();
     std::debug::print(&b"\n=== AFTER SWAP ===");
     std::debug::print(&b"Asset output:");
@@ -321,6 +324,7 @@ fun test_routing_prefers_full_route_when_conditionals_large() {
 
     // Cleanup
     coin::burn_for_testing(asset_out);
+    option::destroy_none(asset_out_opt);
     if (option::is_some(&balance_opt)) {
         let balance = option::extract(&mut balance_opt);
         conditional_balance::destroy_for_testing(balance);
@@ -394,7 +398,7 @@ fun test_routing_asset_to_stable_direction() {
     // Swap asset → stable - small swap to avoid no-arb violation
     let swap_amount = 1_000_000u64; // 1M asset
     let asset_in = coin::mint_for_testing<TEST_COIN_A>(swap_amount, ctx);
-    let (stable_out, mut balance_opt) = swap_entry::swap_spot_asset_to_stable(
+    let (mut stable_out_opt, mut balance_opt) = swap_entry::swap_spot_asset_to_stable(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -407,6 +411,7 @@ fun test_routing_asset_to_stable_direction() {
         ctx,
     );
 
+    let stable_out = option::extract(&mut stable_out_opt);
     let output_amount = stable_out.value();
     std::debug::print(&b"\n=== AFTER SWAP ===");
     std::debug::print(&b"Stable output:");
@@ -428,6 +433,7 @@ fun test_routing_asset_to_stable_direction() {
 
     // Cleanup
     coin::burn_for_testing(stable_out);
+    option::destroy_none(stable_out_opt);
     if (option::is_some(&balance_opt)) {
         let balance = option::extract(&mut balance_opt);
         conditional_balance::destroy_for_testing(balance);
@@ -493,7 +499,7 @@ fun test_large_swap_respects_noarb_band() {
     let swap_amount = 500_000u64; // 0.25% of pool
     let stable_in = coin::mint_for_testing<TEST_COIN_B>(swap_amount, ctx);
 
-    let (asset_out, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
+    let (mut asset_out_opt, mut balance_opt) = swap_entry::swap_spot_stable_to_asset(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -508,6 +514,7 @@ fun test_large_swap_respects_noarb_band() {
 
     std::debug::print(&b"Swap completed successfully (no-arb guard passed)");
     std::debug::print(&b"Output:");
+    let asset_out = option::extract(&mut asset_out_opt);
     std::debug::print(&asset_out.value());
 
     // If we get here, no-arb guard passed
@@ -515,6 +522,7 @@ fun test_large_swap_respects_noarb_band() {
 
     // Cleanup
     coin::burn_for_testing(asset_out);
+    option::destroy_none(asset_out_opt);
     if (option::is_some(&balance_opt)) {
         let balance = option::extract(&mut balance_opt);
         conditional_balance::destroy_for_testing(balance);
@@ -581,7 +589,7 @@ fun test_multiple_swaps_with_routing() {
 
     std::debug::print(&b"=== SWAP 1 ===");
     let stable_in_1 = coin::mint_for_testing<TEST_COIN_B>(swap_amount, ctx);
-    let (asset_out_1, mut balance_opt_1) = swap_entry::swap_spot_stable_to_asset(
+    let (mut asset_opt_1, mut balance_opt_1) = swap_entry::swap_spot_stable_to_asset(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -593,11 +601,13 @@ fun test_multiple_swaps_with_routing() {
         &clock,
         ctx,
     );
+    let asset_out_1 = option::extract(&mut asset_opt_1);
     let output_1 = asset_out_1.value();
     total_output = total_output + output_1;
     std::debug::print(&b"Output 1:");
     std::debug::print(&output_1);
     coin::burn_for_testing(asset_out_1);
+    option::destroy_none(asset_opt_1);
     if (option::is_some(&balance_opt_1)) {
         let balance = option::extract(&mut balance_opt_1);
         conditional_balance::destroy_for_testing(balance);
@@ -606,7 +616,7 @@ fun test_multiple_swaps_with_routing() {
 
     std::debug::print(&b"\n=== SWAP 2 ===");
     let stable_in_2 = coin::mint_for_testing<TEST_COIN_B>(swap_amount, ctx);
-    let (asset_out_2, mut balance_opt_2) = swap_entry::swap_spot_stable_to_asset(
+    let (mut asset_opt_2, mut balance_opt_2) = swap_entry::swap_spot_stable_to_asset(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -618,11 +628,13 @@ fun test_multiple_swaps_with_routing() {
         &clock,
         ctx,
     );
+    let asset_out_2 = option::extract(&mut asset_opt_2);
     let output_2 = asset_out_2.value();
     total_output = total_output + output_2;
     std::debug::print(&b"Output 2:");
     std::debug::print(&output_2);
     coin::burn_for_testing(asset_out_2);
+    option::destroy_none(asset_opt_2);
     if (option::is_some(&balance_opt_2)) {
         let balance = option::extract(&mut balance_opt_2);
         conditional_balance::destroy_for_testing(balance);
@@ -631,7 +643,7 @@ fun test_multiple_swaps_with_routing() {
 
     std::debug::print(&b"\n=== SWAP 3 ===");
     let stable_in_3 = coin::mint_for_testing<TEST_COIN_B>(swap_amount, ctx);
-    let (asset_out_3, mut balance_opt_3) = swap_entry::swap_spot_stable_to_asset(
+    let (mut asset_opt_3, mut balance_opt_3) = swap_entry::swap_spot_stable_to_asset(
         &mut spot_pool,
         &mut proposal,
         &mut escrow,
@@ -643,11 +655,13 @@ fun test_multiple_swaps_with_routing() {
         &clock,
         ctx,
     );
+    let asset_out_3 = option::extract(&mut asset_opt_3);
     let output_3 = asset_out_3.value();
     total_output = total_output + output_3;
     std::debug::print(&b"Output 3:");
     std::debug::print(&output_3);
     coin::burn_for_testing(asset_out_3);
+    option::destroy_none(asset_opt_3);
     if (option::is_some(&balance_opt_3)) {
         let balance = option::extract(&mut balance_opt_3);
         conditional_balance::destroy_for_testing(balance);

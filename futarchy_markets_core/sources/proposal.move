@@ -149,7 +149,6 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     
     // Fee-related fields
     amm_total_fee_bps: u64,
-    conditional_liquidity_ratio_percent: u64,  // Percentage of spot liquidity to move to conditional markets (1-99%, base 100)
     fee_escrow: Balance<StableType>, // DAO-level fees held for refund to losing outcome creators
     treasury_address: address,
 }
@@ -236,7 +235,6 @@ public fun new_premarket<AssetType, StableType>(
     twap_step_max: u64,
     twap_threshold: SignedU128,
     amm_total_fee_bps: u64,
-    conditional_liquidity_ratio_percent: u64,  // Percentage of spot liquidity to move (1-99%, base 100)
     max_outcomes: u64, // DAO's configured max outcomes
     treasury_address: address,
     title: String,
@@ -306,7 +304,6 @@ public fun new_premarket<AssetType, StableType>(
             winning_outcome: option::none(),
         },
         amm_total_fee_bps,
-        conditional_liquidity_ratio_percent,
         fee_escrow: balance::zero(), // No DAO fees for premarket proposals yet
         treasury_address,
     };

@@ -240,7 +240,6 @@ async function main() {
       createTx.pure.u64(1000), // twap_step_max
       twapThresholdSigned, // twap_threshold
       createTx.pure.u64(30), // amm_fee_bps
-      createTx.pure.u64(50), // conditional_liquidity_percent (DEPRECATED - always splits 100% now)
       createTx.pure.u64(10), // max_outcomes
       createTx.pure.address(activeAddress), // treasury_address
       createTx.pure.string("Fund Team Development with Conditional Trading"),

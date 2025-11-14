@@ -35,7 +35,6 @@ export interface CreateProposalConfig {
     minAssetLiquidity: bigint | number;
     minStableLiquidity: bigint | number;
     ammFeeBps: bigint | number; // AMM fee in basis points (e.g., 30 for 0.3%)
-    conditionalLiquidityPercent: bigint | number; // 1-99, percentage of spot liquidity to move
 
     // TWAP configuration
     twapInitialObservation: bigint; // Initial TWAP observation value
@@ -144,7 +143,6 @@ export class GovernanceOperations {
                 tx.pure.u64(config.twapStepMax), // twap_step_max
                 tx.pure.u128(config.twapThreshold), // twap_threshold (SignedU128)
                 tx.pure.u64(config.ammFeeBps), // amm_total_fee_bps
-                tx.pure.u64(config.conditionalLiquidityPercent), // conditional_liquidity_ratio_percent
                 tx.pure.u64(config.maxOutcomes), // max_outcomes
                 tx.pure.address(config.treasuryAddress), // treasury_address
                 tx.pure.string(config.title), // title
@@ -176,7 +174,7 @@ export class GovernanceOperations {
      *
      * REVIEW → TRADING: Automatically performs quantum liquidity split
      * - Moves liquidity from spot pool to conditional AMMs
-     * - Percentage controlled by DAO's conditional_liquidity_ratio_percent
+     * - Percentage determined by DAO config's conditional_liquidity_ratio_percent (not per-proposal)
      *
      * TRADING → (ended): Market stops trading, ready for finalization
      *

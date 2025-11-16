@@ -189,15 +189,39 @@ public fun do_create_pool<AssetType: drop, StableType: drop, Outcome: store, IW:
     assert!(action.initial_stable_amount > 0, EInvalidAmount);
     assert!(action.fee_bps <= 10000, EInvalidRatio);
     assert!(action.minimum_liquidity > 0, EInvalidAmount);
-    assert!(action.conditional_liquidity_ratio_percent > 0 && action.conditional_liquidity_ratio_percent <= 99, EInvalidRatio);
+    assert!(
+        action.conditional_liquidity_ratio_percent > 0 &&
+        action.conditional_liquidity_ratio_percent <= 99,
+        EInvalidRatio
+    );
 
     // Create resource request with pool creation parameters
     let mut request = resource_requests::new_request<CreatePoolAction<AssetType, StableType>>(ctx);
-    resource_requests::add_context(&mut request, string::utf8(b"initial_asset_amount"), action.initial_asset_amount);
-    resource_requests::add_context(&mut request, string::utf8(b"initial_stable_amount"), action.initial_stable_amount);
-    resource_requests::add_context(&mut request, string::utf8(b"fee_bps"), action.fee_bps);
-    resource_requests::add_context(&mut request, string::utf8(b"minimum_liquidity"), action.minimum_liquidity);
-    resource_requests::add_context(&mut request, string::utf8(b"conditional_liquidity_ratio_percent"), action.conditional_liquidity_ratio_percent);
+    resource_requests::add_context(
+        &mut request,
+        string::utf8(b"initial_asset_amount"),
+        action.initial_asset_amount
+    );
+    resource_requests::add_context(
+        &mut request,
+        string::utf8(b"initial_stable_amount"),
+        action.initial_stable_amount
+    );
+    resource_requests::add_context(
+        &mut request,
+        string::utf8(b"fee_bps"),
+        action.fee_bps
+    );
+    resource_requests::add_context(
+        &mut request,
+        string::utf8(b"minimum_liquidity"),
+        action.minimum_liquidity
+    );
+    resource_requests::add_context(
+        &mut request,
+        string::utf8(b"conditional_liquidity_ratio_percent"),
+        action.conditional_liquidity_ratio_percent
+    );
     resource_requests::add_context(&mut request, string::utf8(b"account_id"), object::id(account));
 
     executable::increment_action_idx(executable);
@@ -265,18 +289,34 @@ public fun fulfill_create_pool<AssetType: drop, StableType: drop, IW: copy + dro
     ctx: &mut TxContext,
 ): (ResourceReceipt<CreatePoolAction<AssetType, StableType>>, ID) {
     // Extract parameters from request
-    let initial_asset_amount: u64 = resource_requests::get_context(&request, string::utf8(b"initial_asset_amount"));
-    let initial_stable_amount: u64 = resource_requests::get_context(&request, string::utf8(b"initial_stable_amount"));
-    let fee_bps: u64 = resource_requests::get_context(&request, string::utf8(b"fee_bps"));
-    let _minimum_liquidity: u64 = resource_requests::get_context(&request, string::utf8(b"minimum_liquidity"));
-    let conditional_liquidity_ratio_percent: u64 = resource_requests::get_context(&request, string::utf8(b"conditional_liquidity_ratio_percent"));
+    let initial_asset_amount: u64 = resource_requests::get_context(
+        &request,
+        string::utf8(b"initial_asset_amount")
+    );
+    let initial_stable_amount: u64 = resource_requests::get_context(
+        &request,
+        string::utf8(b"initial_stable_amount")
+    );
+    let fee_bps: u64 = resource_requests::get_context(
+        &request,
+        string::utf8(b"fee_bps")
+    );
+    let _minimum_liquidity: u64 = resource_requests::get_context(
+        &request,
+        string::utf8(b"minimum_liquidity")
+    );
+    let conditional_liquidity_ratio_percent: u64 = resource_requests::get_context(
+        &request,
+        string::utf8(b"conditional_liquidity_ratio_percent")
+    );
 
     // Verify coins match requested amounts
     assert!(coin::value(&asset_coin) >= initial_asset_amount, EInvalidAmount);
     assert!(coin::value(&stable_coin) >= initial_stable_amount, EInvalidAmount);
 
     // Create the pool with FULL FUTARCHY FEATURES (TWAP oracle, escrow tracking, etc.)
-    // oracle_conditional_threshold_bps: 5000 = 50% (use conditional oracle when conditional markets have >50% liquidity)
+    // oracle_conditional_threshold_bps: 5000 = 50%
+    // (use conditional oracle when conditional markets have >50% liquidity)
     let mut pool = unified_spot_pool::new<AssetType, StableType>(
         fee_bps,
         option::none(), // No dynamic fee schedule
@@ -384,11 +424,19 @@ public fun do_add_liquidity<AssetType: drop, StableType: drop, Outcome: store, I
     let vault = vault::borrow_vault(account, registry, vault_name);
     assert!(vault::coin_type_exists<AssetType>(vault), EInsufficientVaultBalance);
     assert!(vault::coin_type_exists<StableType>(vault), EInsufficientVaultBalance);
-    assert!(vault::coin_type_value<AssetType>(vault) >= action.asset_amount, EInsufficientVaultBalance);
-    assert!(vault::coin_type_value<StableType>(vault) >= action.stable_amount, EInsufficientVaultBalance);
+    assert!(
+        vault::coin_type_value<AssetType>(vault) >= action.asset_amount,
+        EInsufficientVaultBalance
+    );
+    assert!(
+        vault::coin_type_value<StableType>(vault) >= action.stable_amount,
+        EInsufficientVaultBalance
+    );
     
     // Create resource request with action details (make a copy since action has copy ability)
-    let mut request = resource_requests::new_request<AddLiquidityAction<AssetType, StableType>>(ctx);
+    let mut request = resource_requests::new_request<
+        AddLiquidityAction<AssetType, StableType>
+    >(ctx);
     // Context not needed for typed requests
     // resource_requests::add_context(&mut request, string::utf8(b"action"), action);
     resource_requests::add_context(&mut request, string::utf8(b"account_id"), object::id(account));
@@ -400,7 +448,12 @@ public fun do_add_liquidity<AssetType: drop, StableType: drop, Outcome: store, I
 /// Fulfill add liquidity request with vault coins and pool
 /// Deposits LP token to custody automatically
 /// Returns excess coins back to treasury vault to prevent value donation to existing LPs
-public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, Outcome: store, IW: copy + drop>(
+public fun fulfill_add_liquidity<
+    AssetType: drop,
+    StableType: drop,
+    Outcome: store,
+    IW: copy + drop
+>(
     request: ResourceRequest<AddLiquidityAction<AssetType, StableType>>,
     executable: &mut Executable<Outcome>,
     account: &mut Account,
@@ -542,7 +595,10 @@ public fun fulfill_withdraw_lp_token<AssetType: drop, StableType: drop, W: copy 
     registry: &PackageRegistry,
     witness: W,
     ctx: &mut TxContext,
-): (LPToken<AssetType, StableType>, resource_requests::ResourceReceipt<WithdrawLpTokenAction<AssetType, StableType>>) {
+): (
+    LPToken<AssetType, StableType>,
+    resource_requests::ResourceReceipt<WithdrawLpTokenAction<AssetType, StableType>>
+) {
     let action = resource_requests::extract_action(request);
 
     let lp_token = lp_token_custody::withdraw_lp_token<AssetType, StableType, W>(
@@ -619,7 +675,11 @@ public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, W: copy +
     lp_token: LPToken<AssetType, StableType>,
     witness: W,
     ctx: &mut TxContext,
-): (Coin<AssetType>, Coin<StableType>, resource_requests::ResourceReceipt<RemoveLiquidityAction<AssetType, StableType>>) {
+): (
+    Coin<AssetType>,
+    Coin<StableType>,
+    resource_requests::ResourceReceipt<RemoveLiquidityAction<AssetType, StableType>>
+) {
     let action = resource_requests::extract_action(request);
 
     assert!(action.pool_id == object::id(pool), EEmptyPool);
@@ -636,7 +696,8 @@ public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, W: copy +
         {
             let dao_state = futarchy_config::state_mut_from_account(account, registry);
             assert!(
-                futarchy_config::operational_state(dao_state) == futarchy_config::state_terminated(),
+                futarchy_config::operational_state(dao_state) ==
+                    futarchy_config::state_terminated(),
                 EBypassNotAllowed
             );
         };
@@ -710,7 +771,11 @@ public fun do_swap<AssetType: drop, StableType: drop, Outcome: store, IW: copy +
     // Create resource request
     let mut request = resource_requests::new_request<SwapAction<AssetType, StableType>>(_ctx);
     resource_requests::add_context(&mut request, string::utf8(b"pool_id"), pool_id);
-    resource_requests::add_context(&mut request, string::utf8(b"swap_asset"), if (swap_asset) 1 else 0);
+    resource_requests::add_context(
+        &mut request,
+        string::utf8(b"swap_asset"),
+        if (swap_asset) 1 else 0
+    );
     resource_requests::add_context(&mut request, string::utf8(b"amount_in"), amount_in);
     resource_requests::add_context(&mut request, string::utf8(b"min_amount_out"), min_amount_out);
 
@@ -926,7 +991,8 @@ public fun enable_remove_liquidity_bypass<AssetType, StableType>(
     };
 
     let key = string::utf8(b"action");
-    let action: RemoveLiquidityAction<AssetType, StableType> = resource_requests::take_context(request, key);
+    let action: RemoveLiquidityAction<AssetType, StableType> =
+        resource_requests::take_context(request, key);
 
     let RemoveLiquidityAction {
         pool_id,
@@ -966,7 +1032,11 @@ public fun new_create_pool_action<AssetType, StableType>(
     assert!(initial_stable_amount > 0, EInvalidAmount);
     assert!(fee_bps <= 10000, EInvalidRatio); // Max 100%
     assert!(minimum_liquidity > 0, EInvalidAmount);
-    assert!(conditional_liquidity_ratio_percent > 0 && conditional_liquidity_ratio_percent <= 99, EInvalidRatio);
+    assert!(
+        conditional_liquidity_ratio_percent > 0 &&
+        conditional_liquidity_ratio_percent <= 99,
+        EInvalidRatio
+    );
 
     let action = CreatePoolAction<AssetType, StableType> {
         initial_asset_amount,
@@ -1044,82 +1114,114 @@ public fun new_withdraw_fees_action<AssetType, StableType>(
 // === Getter Functions ===
 
 /// Get pool ID from AddLiquidityAction (alias for action_data_structs)
-public fun get_pool_id<AssetType, StableType>(action: &AddLiquidityAction<AssetType, StableType>): ID {
+public fun get_pool_id<AssetType, StableType>(
+    action: &AddLiquidityAction<AssetType, StableType>
+): ID {
     action.pool_id
 }
 
 /// Get asset amount from AddLiquidityAction (alias for action_data_structs)
-public fun get_asset_amount<AssetType, StableType>(action: &AddLiquidityAction<AssetType, StableType>): u64 {
+public fun get_asset_amount<AssetType, StableType>(
+    action: &AddLiquidityAction<AssetType, StableType>
+): u64 {
     action.asset_amount
 }
 
 /// Get stable amount from AddLiquidityAction (alias for action_data_structs)
-public fun get_stable_amount<AssetType, StableType>(action: &AddLiquidityAction<AssetType, StableType>): u64 {
+public fun get_stable_amount<AssetType, StableType>(
+    action: &AddLiquidityAction<AssetType, StableType>
+): u64 {
     action.stable_amount
 }
 
 /// Get minimum LP amount from AddLiquidityAction (alias for action_data_structs)
-public fun get_min_lp_amount<AssetType, StableType>(action: &AddLiquidityAction<AssetType, StableType>): u64 {
+public fun get_min_lp_amount<AssetType, StableType>(
+    action: &AddLiquidityAction<AssetType, StableType>
+): u64 {
     action.min_lp_out
 }
 
 /// Get pool ID from RemoveLiquidityAction
-public fun get_remove_pool_id<AssetType, StableType>(action: &RemoveLiquidityAction<AssetType, StableType>): ID {
+public fun get_remove_pool_id<AssetType, StableType>(
+    action: &RemoveLiquidityAction<AssetType, StableType>
+): ID {
     action.pool_id
 }
 
 /// Get token ID from RemoveLiquidityAction
-public fun get_remove_token_id<AssetType, StableType>(action: &RemoveLiquidityAction<AssetType, StableType>): ID {
+public fun get_remove_token_id<AssetType, StableType>(
+    action: &RemoveLiquidityAction<AssetType, StableType>
+): ID {
     action.token_id
 }
 
 /// Get LP amount from RemoveLiquidityAction
-public fun get_lp_amount<AssetType, StableType>(action: &RemoveLiquidityAction<AssetType, StableType>): u64 {
+public fun get_lp_amount<AssetType, StableType>(
+    action: &RemoveLiquidityAction<AssetType, StableType>
+): u64 {
     action.lp_amount
 }
 
 /// Get minimum asset amount from RemoveLiquidityAction
-public fun get_min_asset_amount<AssetType, StableType>(action: &RemoveLiquidityAction<AssetType, StableType>): u64 {
+public fun get_min_asset_amount<AssetType, StableType>(
+    action: &RemoveLiquidityAction<AssetType, StableType>
+): u64 {
     action.min_asset_amount
 }
 
 /// Get minimum stable amount from RemoveLiquidityAction
-public fun get_min_stable_amount<AssetType, StableType>(action: &RemoveLiquidityAction<AssetType, StableType>): u64 {
+public fun get_min_stable_amount<AssetType, StableType>(
+    action: &RemoveLiquidityAction<AssetType, StableType>
+): u64 {
     action.min_stable_amount
 }
 
 /// Get bypass flag from RemoveLiquidityAction
-public fun get_bypass_minimum<AssetType, StableType>(action: &RemoveLiquidityAction<AssetType, StableType>): bool {
+public fun get_bypass_minimum<AssetType, StableType>(
+    action: &RemoveLiquidityAction<AssetType, StableType>
+): bool {
     action.bypass_minimum
 }
 
 /// Get pool ID from WithdrawLpTokenAction
-public fun get_withdraw_pool_id<AssetType, StableType>(action: &WithdrawLpTokenAction<AssetType, StableType>): ID {
+public fun get_withdraw_pool_id<AssetType, StableType>(
+    action: &WithdrawLpTokenAction<AssetType, StableType>
+): ID {
     action.pool_id
 }
 
 /// Get token ID from WithdrawLpTokenAction
-public fun get_withdraw_token_id<AssetType, StableType>(action: &WithdrawLpTokenAction<AssetType, StableType>): ID {
+public fun get_withdraw_token_id<AssetType, StableType>(
+    action: &WithdrawLpTokenAction<AssetType, StableType>
+): ID {
     action.token_id
 }
 
 /// Get initial asset amount from CreatePoolAction
-public fun get_initial_asset_amount<AssetType, StableType>(action: &CreatePoolAction<AssetType, StableType>): u64 {
+public fun get_initial_asset_amount<AssetType, StableType>(
+    action: &CreatePoolAction<AssetType, StableType>
+): u64 {
     action.initial_asset_amount
 }
 
 /// Get initial stable amount from CreatePoolAction
-public fun get_initial_stable_amount<AssetType, StableType>(action: &CreatePoolAction<AssetType, StableType>): u64 {
+public fun get_initial_stable_amount<AssetType, StableType>(
+    action: &CreatePoolAction<AssetType, StableType>
+): u64 {
     action.initial_stable_amount
 }
 
 /// Get fee basis points from CreatePoolAction
-public fun get_fee_bps<AssetType, StableType>(action: &CreatePoolAction<AssetType, StableType>): u64 {
+public fun get_fee_bps<AssetType, StableType>(
+    action: &CreatePoolAction<AssetType, StableType>
+): u64 {
     action.fee_bps
 }
 
 /// Get minimum liquidity from CreatePoolAction
-public fun get_minimum_liquidity<AssetType, StableType>(action: &CreatePoolAction<AssetType, StableType>): u64 {
+public fun get_minimum_liquidity<AssetType, StableType>(
+    action: &CreatePoolAction<AssetType, StableType>
+): u64 {
     action.minimum_liquidity
 }
 
@@ -1147,7 +1249,9 @@ public fun lp_value<AssetType, StableType>(lp_token: &LPToken<AssetType, StableT
 // === Destruction Functions ===
 
 /// Destroy CreatePoolAction after use
-public fun destroy_create_pool_action<AssetType, StableType>(action: CreatePoolAction<AssetType, StableType>) {
+public fun destroy_create_pool_action<AssetType, StableType>(
+    action: CreatePoolAction<AssetType, StableType>
+) {
     let CreatePoolAction {
         initial_asset_amount: _,
         initial_stable_amount: _,
@@ -1167,13 +1271,17 @@ public fun destroy_update_pool_params_action(action: UpdatePoolParamsAction) {
 }
 
 /// Destroy AddLiquidityAction after use (delegate to action_data_structs)
-public fun destroy_add_liquidity_action<AssetType, StableType>(action: AddLiquidityAction<AssetType, StableType>) {
+public fun destroy_add_liquidity_action<AssetType, StableType>(
+    action: AddLiquidityAction<AssetType, StableType>
+) {
     // AddLiquidityAction has drop ability, so it will be automatically dropped
     let _ = action;
 }
 
 /// Destroy RemoveLiquidityAction after use
-public fun destroy_remove_liquidity_action<AssetType, StableType>(action: RemoveLiquidityAction<AssetType, StableType>) {
+public fun destroy_remove_liquidity_action<AssetType, StableType>(
+    action: RemoveLiquidityAction<AssetType, StableType>
+) {
     let RemoveLiquidityAction {
         pool_id: _,
         token_id: _,
@@ -1185,7 +1293,9 @@ public fun destroy_remove_liquidity_action<AssetType, StableType>(action: Remove
 }
 
 /// Destroy WithdrawLpTokenAction after use
-public fun destroy_withdraw_lp_token_action<AssetType, StableType>(action: WithdrawLpTokenAction<AssetType, StableType>) {
+public fun destroy_withdraw_lp_token_action<AssetType, StableType>(
+    action: WithdrawLpTokenAction<AssetType, StableType>
+) {
     let WithdrawLpTokenAction {
         pool_id: _,
         token_id: _,
@@ -1204,14 +1314,18 @@ public fun destroy_swap_action<AssetType, StableType>(action: SwapAction<AssetTy
 }
 
 /// Destroy CollectFeesAction after use
-public fun destroy_collect_fees_action<AssetType, StableType>(action: CollectFeesAction<AssetType, StableType>) {
+public fun destroy_collect_fees_action<AssetType, StableType>(
+    action: CollectFeesAction<AssetType, StableType>
+) {
     let CollectFeesAction {
         pool_id: _,
     } = action;
 }
 
 /// Destroy WithdrawFeesAction after use
-public fun destroy_withdraw_fees_action<AssetType, StableType>(action: WithdrawFeesAction<AssetType, StableType>) {
+public fun destroy_withdraw_fees_action<AssetType, StableType>(
+    action: WithdrawFeesAction<AssetType, StableType>
+) {
     let WithdrawFeesAction {
         pool_id: _,
         asset_amount: _,
@@ -1233,7 +1347,9 @@ public use fun destroy_update_pool_params_action as UpdatePoolParamsAction.destr
 // === Deserialization Constructors ===
 
 /// Deserialize AddLiquidityAction from bytes (alias for action_data_structs)
-public(package) fun add_liquidity_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): AddLiquidityAction<AssetType, StableType> {
+public(package) fun add_liquidity_action_from_bytes<AssetType, StableType>(
+    bytes: vector<u8>
+): AddLiquidityAction<AssetType, StableType> {
     // Deserialize from bytes
     let mut bcs = bcs::new(bytes);
     AddLiquidityAction {
@@ -1245,7 +1361,9 @@ public(package) fun add_liquidity_action_from_bytes<AssetType, StableType>(bytes
 }
 
 /// Deserialize RemoveLiquidityAction from bytes
-public(package) fun remove_liquidity_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): RemoveLiquidityAction<AssetType, StableType> {
+public(package) fun remove_liquidity_action_from_bytes<AssetType, StableType>(
+    bytes: vector<u8>
+): RemoveLiquidityAction<AssetType, StableType> {
     let mut bcs = bcs::new(bytes);
     RemoveLiquidityAction {
         pool_id: object::id_from_address(bcs::peel_address(&mut bcs)),
@@ -1258,7 +1376,9 @@ public(package) fun remove_liquidity_action_from_bytes<AssetType, StableType>(by
 }
 
 /// Deserialize WithdrawLpTokenAction from bytes
-public(package) fun withdraw_lp_token_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): WithdrawLpTokenAction<AssetType, StableType> {
+public(package) fun withdraw_lp_token_action_from_bytes<AssetType, StableType>(
+    bytes: vector<u8>
+): WithdrawLpTokenAction<AssetType, StableType> {
     let mut bcs = bcs::new(bytes);
     WithdrawLpTokenAction {
         pool_id: object::id_from_address(bcs::peel_address(&mut bcs)),
@@ -1267,7 +1387,9 @@ public(package) fun withdraw_lp_token_action_from_bytes<AssetType, StableType>(b
 }
 
 /// Deserialize CreatePoolAction from bytes
-public(package) fun create_pool_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): CreatePoolAction<AssetType, StableType> {
+public(package) fun create_pool_action_from_bytes<AssetType, StableType>(
+    bytes: vector<u8>
+): CreatePoolAction<AssetType, StableType> {
     let mut bcs = bcs::new(bytes);
     CreatePoolAction {
         initial_asset_amount: bcs::peel_u64(&mut bcs),
@@ -1279,7 +1401,9 @@ public(package) fun create_pool_action_from_bytes<AssetType, StableType>(bytes: 
 }
 
 /// Deserialize UpdatePoolParamsAction from bytes
-public(package) fun update_pool_params_action_from_bytes(bytes: vector<u8>): UpdatePoolParamsAction {
+public(package) fun update_pool_params_action_from_bytes(
+    bytes: vector<u8>
+): UpdatePoolParamsAction {
     let mut bcs = bcs::new(bytes);
     UpdatePoolParamsAction {
         pool_id: object::id_from_address(bcs::peel_address(&mut bcs)),
@@ -1290,7 +1414,9 @@ public(package) fun update_pool_params_action_from_bytes(bytes: vector<u8>): Upd
 
 
 /// Deserialize SwapAction from bytes
-public(package) fun swap_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): SwapAction<AssetType, StableType> {
+public(package) fun swap_action_from_bytes<AssetType, StableType>(
+    bytes: vector<u8>
+): SwapAction<AssetType, StableType> {
     let mut bcs = bcs::new(bytes);
     SwapAction {
         pool_id: object::id_from_address(bcs::peel_address(&mut bcs)),
@@ -1301,7 +1427,9 @@ public(package) fun swap_action_from_bytes<AssetType, StableType>(bytes: vector<
 }
 
 /// Deserialize CollectFeesAction from bytes
-public(package) fun collect_fees_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): CollectFeesAction<AssetType, StableType> {
+public(package) fun collect_fees_action_from_bytes<AssetType, StableType>(
+    bytes: vector<u8>
+): CollectFeesAction<AssetType, StableType> {
     let mut bcs = bcs::new(bytes);
     CollectFeesAction {
         pool_id: object::id_from_address(bcs::peel_address(&mut bcs)),
@@ -1309,7 +1437,9 @@ public(package) fun collect_fees_action_from_bytes<AssetType, StableType>(bytes:
 }
 
 /// Deserialize WithdrawFeesAction from bytes
-public(package) fun withdraw_fees_action_from_bytes<AssetType, StableType>(bytes: vector<u8>): WithdrawFeesAction<AssetType, StableType> {
+public(package) fun withdraw_fees_action_from_bytes<AssetType, StableType>(
+    bytes: vector<u8>
+): WithdrawFeesAction<AssetType, StableType> {
     let mut bcs = bcs::new(bytes);
     WithdrawFeesAction {
         pool_id: object::id_from_address(bcs::peel_address(&mut bcs)),

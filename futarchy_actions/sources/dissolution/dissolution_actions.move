@@ -56,7 +56,9 @@ public struct CreateDissolutionCapability has drop {}
 
 // === Marker Functions ===
 
-public fun create_dissolution_capability_marker(): CreateDissolutionCapability { CreateDissolutionCapability {} }
+public fun create_dissolution_capability_marker(): CreateDissolutionCapability {
+    CreateDissolutionCapability {}
+}
 
 // === Structs ===
 
@@ -131,7 +133,8 @@ public fun create_capability_if_terminated<AssetType>(
 
         // Get dissolution unlock time from config (set during termination)
         let unlock_time_option = futarchy_config::dissolution_unlock_time(dao_state);
-        assert!(unlock_time_option.is_some(), ENotTerminated); // Should have been set during termination
+        // Should have been set during termination
+        assert!(unlock_time_option.is_some(), ENotTerminated);
 
         let unlock_ms = *unlock_time_option.borrow();
         let terminated_ms = *futarchy_config::terminated_at(dao_state).borrow();
@@ -270,7 +273,9 @@ public fun redeem<Config: store, AssetType, RedeemCoinType: drop>(
         capability_id: object::id(capability),
         user: ctx.sender(),
         asset_amount_burned: asset_amount,
-        coin_type_redeemed: type_name::with_defining_ids<RedeemCoinType>().into_string().to_string(),
+        coin_type_redeemed: type_name::with_defining_ids<RedeemCoinType>()
+            .into_string()
+            .to_string(),
         coin_amount_received: redeem_amount,
         vault_name,
     });
@@ -306,7 +311,8 @@ public struct CreateDissolutionCapabilityAction<phantom AssetType> has store, dr
 // === Action Constructors ===
 
 /// Create action for proposal system
-public fun new_create_dissolution_capability<AssetType>(): CreateDissolutionCapabilityAction<AssetType> {
+public fun new_create_dissolution_capability<AssetType>():
+    CreateDissolutionCapabilityAction<AssetType> {
     CreateDissolutionCapabilityAction {}
 }
 

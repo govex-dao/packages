@@ -4,9 +4,11 @@
 // Portions of this file are derived from the account.tech Move Framework project.
 // Those portions remain licensed under the Apache License, Version 2.0.
 
-/// This module allows objects owned by the account to be accessed through intents in a secure way.
+/// This module allows objects owned by the account to be accessed through intents in a
+/// secure way.
 /// The objects can be taken only via Actions which use Transfer to Object (TTO).
-/// This action can't be proposed directly since it wouldn't make sense to withdraw an object without using it.
+/// This action can't be proposed directly since it wouldn't make sense to withdraw an
+/// object without using it.
 
 module account_protocol::owned;
 
@@ -250,7 +252,8 @@ public fun delete_withdraw_coin(expired: &mut Expired, account: &Account) {
 public fun merge_and_split<Config: store, CoinType>(
     auth: Auth,
     account: &mut Account,
-    to_merge: vector<Receiving<Coin<CoinType>>>, // there can be only one coin if we just want to split
+    // there can be only one coin if we just want to split
+    to_merge: vector<Receiving<Coin<CoinType>>>,
     to_split: vector<u64>, // there can be no amount if we just want to merge
     ctx: &mut TxContext
 ): vector<ID> {

@@ -122,7 +122,13 @@ fun do_set_quotas_internal(
     _ctx: &mut TxContext,
 ) {
     // Destructure to consume the action
-    let SetQuotasAction { users, quota_amount, quota_period_ms, reduced_fee, sponsor_quota_amount } = action;
+    let SetQuotasAction {
+        users,
+        quota_amount,
+        quota_period_ms,
+        reduced_fee,
+        sponsor_quota_amount
+    } = action;
 
     let dao_id = object::id(account);
 

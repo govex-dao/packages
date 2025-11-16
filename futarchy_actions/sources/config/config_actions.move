@@ -68,9 +68,15 @@ public fun trading_params_update_marker(): TradingParamsUpdate { TradingParamsUp
 public fun metadata_update_marker(): MetadataUpdate { MetadataUpdate {} }
 public fun twap_config_update_marker(): TwapConfigUpdate { TwapConfigUpdate {} }
 public fun governance_update_marker(): GovernanceUpdate { GovernanceUpdate {} }
-public fun metadata_table_update_marker(): MetadataTableUpdate { MetadataTableUpdate {} }
-public fun sponsorship_config_update_marker(): SponsorshipConfigUpdate { SponsorshipConfigUpdate {} }
-public fun update_conditional_metadata_marker(): UpdateConditionalMetadata { UpdateConditionalMetadata {} }
+public fun metadata_table_update_marker(): MetadataTableUpdate {
+    MetadataTableUpdate {}
+}
+public fun sponsorship_config_update_marker(): SponsorshipConfigUpdate {
+    SponsorshipConfigUpdate {}
+}
+public fun update_conditional_metadata_marker(): UpdateConditionalMetadata {
+    UpdateConditionalMetadata {}
+}
 public fun batch_config_marker(): BatchConfig { BatchConfig {} }
 
 // === Aliases ===
@@ -185,7 +191,8 @@ public struct SetProposalsEnabledAction has store, drop, copy {
 /// This must go through the normal futarchy governance process
 public struct TerminateDaoAction has store, drop, copy {
     reason: String,  // Why DAO is being terminated (for transparency/audit trail)
-    dissolution_unlock_delay_ms: u64,  // Time to wait before redemption opens (allows auctions/settlements)
+    // Time to wait before redemption opens (allows auctions/settlements)
+    dissolution_unlock_delay_ms: u64,
 }
 
 /// Action to update the DAO name
@@ -232,8 +239,10 @@ public struct GovernanceUpdateAction has store, drop, copy {
     proposal_creation_fee: Option<u64>,  // DAO-level proposal creation fee (in StableType)
     proposal_fee_per_outcome: Option<u64>, // DAO-level fee per additional outcome (in StableType)
     accept_new_proposals: Option<bool>,  // Enable/disable proposal creation
-    enable_premarket_reservation_lock: Option<bool>, // Enable/disable premarket reservation lock
-    show_proposal_details: Option<bool>, // Enable/disable showing proposal details in UI (default: false for security)
+    // Enable/disable premarket reservation lock
+    enable_premarket_reservation_lock: Option<bool>,
+    // Enable/disable showing proposal details in UI (default: false for security)
+    show_proposal_details: Option<bool>,
 }
 
 /// Metadata table update action
@@ -455,7 +464,12 @@ public fun do_update_name<Outcome: store, IW: drop>(
     assert!(new_name.length() > 0, EEmptyName);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
 
     // Update the name - futarchy_config expects a regular String
     futarchy_config::set_dao_name(config, new_name);
@@ -487,7 +501,12 @@ public fun do_update_name_internal(
     assert!(new_name.length() > 0, EEmptyName);
     
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
     
     // Update the name directly (set_dao_name handles conversion internally)
     futarchy_config::set_dao_name(config, new_name);
@@ -551,7 +570,12 @@ public fun do_update_trading_params<Outcome: store, IW: drop>(
     validate_trading_params_update(&action);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
 
     // Apply updates if provided
     if (action.min_asset_amount.is_some()) {
@@ -639,7 +663,12 @@ public fun do_update_metadata<Outcome: store, IW: drop>(
     validate_metadata_update(&action);
     
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
     
     // Apply updates if provided - convert types as needed
     if (action.dao_name.is_some()) {
@@ -717,7 +746,12 @@ public fun do_update_twap_config<Outcome: store, IW: drop>(
     validate_twap_config_update(&action);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
 
     // Apply updates if provided
     if (action.start_delay.is_some()) {
@@ -727,7 +761,10 @@ public fun do_update_twap_config<Outcome: store, IW: drop>(
         futarchy_config::set_amm_twap_step_max(config, *action.step_max.borrow());
     };
     if (action.initial_observation.is_some()) {
-        futarchy_config::set_amm_twap_initial_observation(config, *action.initial_observation.borrow());
+        futarchy_config::set_amm_twap_initial_observation(
+            config,
+            *action.initial_observation.borrow()
+        );
     };
     if (action.threshold.is_some()) {
         futarchy_config::set_twap_threshold(config, *action.threshold.borrow());
@@ -805,14 +842,22 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     validate_governance_update(&action);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
 
     // Apply updates if provided
     if (action.max_outcomes.is_some()) {
         futarchy_config::set_max_outcomes(config, *action.max_outcomes.borrow());
     };
     if (action.max_actions_per_outcome.is_some()) {
-        futarchy_config::set_max_actions_per_outcome(config, *action.max_actions_per_outcome.borrow());
+        futarchy_config::set_max_actions_per_outcome(
+            config,
+            *action.max_actions_per_outcome.borrow()
+        );
     };
     // Note: set_required_bond_amount doesn't exist yet in futarchy_config
     // if (action.required_bond_amount.is_some()) {
@@ -820,10 +865,16 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     // };
     let _ = action.required_bond_amount;
     if (action.max_intents_per_outcome.is_some()) {
-        futarchy_config::set_max_intents_per_outcome(config, *action.max_intents_per_outcome.borrow());
+        futarchy_config::set_max_intents_per_outcome(
+            config,
+            *action.max_intents_per_outcome.borrow()
+        );
     };
     if (action.proposal_intent_expiry_ms.is_some()) {
-        futarchy_config::set_proposal_intent_expiry_ms(config, *action.proposal_intent_expiry_ms.borrow());
+        futarchy_config::set_proposal_intent_expiry_ms(
+            config,
+            *action.proposal_intent_expiry_ms.borrow()
+        );
     };
     // Note: optimistic_challenge_fee and optimistic_challenge_period_ms setters don't exist yet
     // These would need to be added to futarchy_config
@@ -836,13 +887,19 @@ public fun do_update_governance<Outcome: store, IW: drop>(
         futarchy_config::set_proposal_creation_fee(config, *action.proposal_creation_fee.borrow());
     };
     if (action.proposal_fee_per_outcome.is_some()) {
-        futarchy_config::set_proposal_fee_per_outcome(config, *action.proposal_fee_per_outcome.borrow());
+        futarchy_config::set_proposal_fee_per_outcome(
+            config,
+            *action.proposal_fee_per_outcome.borrow()
+        );
     };
     if (action.accept_new_proposals.is_some()) {
         futarchy_config::set_accept_new_proposals(config, *action.accept_new_proposals.borrow());
     };
     if (action.enable_premarket_reservation_lock.is_some()) {
-        futarchy_config::set_enable_premarket_reservation_lock(config, *action.enable_premarket_reservation_lock.borrow());
+        futarchy_config::set_enable_premarket_reservation_lock(
+            config,
+            *action.enable_premarket_reservation_lock.borrow()
+        );
     };
     if (action.show_proposal_details.is_some()) {
         futarchy_config::set_show_proposal_details(config, *action.show_proposal_details.borrow());
@@ -931,7 +988,12 @@ public fun do_update_metadata_table<Outcome: store, IW: drop>(
     assert!(action.keys.length() == action.values.length(), EMismatchedKeyValueLength);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
 
     // Metadata table operations would be implemented here when available in futarchy_config
     // Currently, futarchy_config doesn't have a metadata table, so we validate the action
@@ -995,7 +1057,12 @@ public fun do_update_conditional_metadata<Outcome: store, IW: drop>(
     let account_id = object::id(account);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
 
     // Apply updates using futarchy_config setters (standard pattern)
     if (use_outcome_index_opt.is_some()) {
@@ -1067,7 +1134,12 @@ public fun do_update_sponsorship_config<Outcome: store, IW: drop>(
     let account_id = object::id(account);
 
     // Get mutable config through Account protocol with witness
-    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(account, registry, version, futarchy_config::witness());
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
     let dao_cfg = futarchy_config::dao_config_mut(config);
     let sponsorship_cfg = dao_config::sponsorship_config_mut(dao_cfg);
 
@@ -1079,10 +1151,16 @@ public fun do_update_sponsorship_config<Outcome: store, IW: drop>(
         dao_config::set_sponsored_threshold(sponsorship_cfg, sponsored_threshold.destroy_some());
     };
     if (waive_advancement_fees.is_some()) {
-        dao_config::set_waive_advancement_fees(sponsorship_cfg, waive_advancement_fees.destroy_some());
+        dao_config::set_waive_advancement_fees(
+            sponsorship_cfg,
+            waive_advancement_fees.destroy_some()
+        );
     };
     if (default_sponsor_quota_amount.is_some()) {
-        dao_config::set_default_sponsor_quota_amount(sponsorship_cfg, default_sponsor_quota_amount.destroy_some());
+        dao_config::set_default_sponsor_quota_amount(
+            sponsorship_cfg,
+            default_sponsor_quota_amount.destroy_some()
+        );
     };
 
     // Get final values after updates
@@ -1916,7 +1994,9 @@ public fun do_update_twap_params<Outcome: store, IW: drop>(
 // === Deserialization Constructors ===
 
 /// Deserialize SetProposalsEnabledAction from bytes
-public(package) fun set_proposals_enabled_action_from_bytes(bytes: vector<u8>): SetProposalsEnabledAction {
+public(package) fun set_proposals_enabled_action_from_bytes(
+    bytes: vector<u8>
+): SetProposalsEnabledAction {
     let mut bcs = bcs::new(bytes);
     SetProposalsEnabledAction {
         enabled: bcs.peel_bool(),
@@ -1954,7 +2034,9 @@ public(package) fun metadata_update_action_from_bytes(bytes: vector<u8>): Metada
 }
 
 /// Deserialize TradingParamsUpdateAction from bytes
-public(package) fun trading_params_update_action_from_bytes(bytes: vector<u8>): TradingParamsUpdateAction {
+public(package) fun trading_params_update_action_from_bytes(
+    bytes: vector<u8>
+): TradingParamsUpdateAction {
     let mut bcs = bcs::new(bytes);
     TradingParamsUpdateAction {
         min_asset_amount: bcs.peel_option_u64(),
@@ -1966,7 +2048,9 @@ public(package) fun trading_params_update_action_from_bytes(bytes: vector<u8>): 
 }
 
 /// Deserialize TwapConfigUpdateAction from bytes
-public(package) fun twap_config_update_action_from_bytes(bytes: vector<u8>): TwapConfigUpdateAction {
+public(package) fun twap_config_update_action_from_bytes(
+    bytes: vector<u8>
+): TwapConfigUpdateAction {
     let mut bcs = bcs::new(bytes);
     TwapConfigUpdateAction {
         start_delay: bcs.peel_option_u64(),
@@ -2000,7 +2084,9 @@ public(package) fun governance_update_action_from_bytes(bytes: vector<u8>): Gove
 }
 
 /// Deserialize MetadataTableUpdateAction from bytes
-public(package) fun metadata_table_update_action_from_bytes(bytes: vector<u8>): MetadataTableUpdateAction {
+public(package) fun metadata_table_update_action_from_bytes(
+    bytes: vector<u8>
+): MetadataTableUpdateAction {
     let mut bcs = bcs::new(bytes);
     MetadataTableUpdateAction {
         keys: {
@@ -2037,7 +2123,9 @@ public(package) fun metadata_table_update_action_from_bytes(bytes: vector<u8>): 
 }
 
 /// Deserialize SponsorshipConfigUpdateAction from bytes
-public(package) fun sponsorship_config_update_action_from_bytes(bytes: vector<u8>): SponsorshipConfigUpdateAction {
+public(package) fun sponsorship_config_update_action_from_bytes(
+    bytes: vector<u8>
+): SponsorshipConfigUpdateAction {
     let mut bcs = bcs::new(bytes);
     SponsorshipConfigUpdateAction {
         enabled: bcs.peel_option_bool(),

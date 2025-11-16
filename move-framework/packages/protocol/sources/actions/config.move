@@ -5,9 +5,12 @@
 // Those portions remain licensed under the Apache License, Version 2.0.
 
 /// This module allows to manage Account settings.
-/// The actions are related to the modifications of certain fields of the Account (metadata, deposits, etc).
-/// All these fields are encapsulated in the `Account` struct and each managed in their own module.
-/// They are only accessible mutably via package functions defined in account.move which are used here only.
+/// The actions are related to the modifications of certain fields of the Account
+/// (metadata, deposits, etc).
+/// All these fields are encapsulated in the `Account` struct and each managed in
+/// their own module.
+/// They are only accessible mutably via package functions defined in account.move
+/// which are used here only.
 
 module account_protocol::config;
 
@@ -140,7 +143,8 @@ public fun edit_metadata<Config: store>(
     values: vector<String>,
 ) {
     account.verify(auth);
-    *account::metadata_mut(account, registry, version::current()) = metadata::from_keys_values(keys, values);
+    *account::metadata_mut(account, registry, version::current()) =
+        metadata::from_keys_values(keys, values);
 }
 
 /// Creates an intent to configure object deposit settings
@@ -230,11 +234,12 @@ public fun delete_configure_deposits(expired: &mut Expired) {
     let mut reader = bcs::new(*action_data);
 
     // We don't need the values, but we must peel them to consume the bytes
-    let ConfigureDepositsAction { enable: _, new_max: _, reset_counter: _ } = ConfigureDepositsAction {
-        enable: bcs::peel_bool(&mut reader),
-        new_max: bcs::peel_option_u128(&mut reader),
-        reset_counter: bcs::peel_bool(&mut reader)
-    };
+    let ConfigureDepositsAction { enable: _, new_max: _, reset_counter: _ } =
+        ConfigureDepositsAction {
+            enable: bcs::peel_bool(&mut reader),
+            new_max: bcs::peel_option_u128(&mut reader),
+            reset_counter: bcs::peel_bool(&mut reader)
+        };
 }
 
 /// Creates an intent to manage type whitelist

@@ -24,10 +24,9 @@ const PRECISION_SCALE: u128 = 10000; // Scaling factor to avoid precision loss i
 /// Simplified API: just specify initial MEV fee and duration
 /// Final fee comes from the pool's base spot_amm_fee_bps (set in pool, not here)
 /// Fee decays linearly: fee(t) = initial_fee - (initial_fee - final_fee) * (t / duration)
-public struct FeeSchedule has store, copy, drop {
+public struct FeeSchedule has copy, drop, store {
     /// Initial MEV protection fee in basis points (0-9900, e.g., 9900 = 99%)
     initial_fee_bps: u64,
-
     /// Total duration of fee decay in milliseconds (0-86400000 = 0-24 hours)
     /// If 0, MEV protection is skipped (use base pool fee immediately)
     duration_ms: u64,
@@ -53,10 +52,7 @@ public struct FeeSchedule has store, copy, drop {
 /// # Decay Formula
 /// fee(t) = initial_fee_bps - (initial_fee_bps - final_fee_bps) * (t / duration_ms)
 /// where final_fee_bps comes from pool's base spot_amm_fee_bps
-public fun new_schedule(
-    initial_fee_bps: u64,
-    duration_ms: u64,
-): FeeSchedule {
+public fun new_schedule(initial_fee_bps: u64, duration_ms: u64): FeeSchedule {
     // Validate parameters
     assert!(initial_fee_bps <= FEE_SCALE, EInitialFeeTooHigh); // Can't exceed 100%
     assert!(initial_fee_bps <= MAX_INITIAL_FEE_BPS, EInitialFeeTooHigh); // DAO policy: max 99%
@@ -134,8 +130,8 @@ public fun get_current_fee(
 /// Uses linear decay (simple and gas-efficient)
 public fun default_launch_schedule(): FeeSchedule {
     FeeSchedule {
-        initial_fee_bps: 9900,        // 99% MEV protection fee
-        duration_ms: 7_200_000,       // 2 hours
+        initial_fee_bps: 9900, // 99% MEV protection fee
+        duration_ms: 7_200_000, // 2 hours
     }
 }
 
@@ -167,9 +163,6 @@ public fun fee_scale(): u64 {
 // === Test Helpers ===
 
 #[test_only]
-public fun new_schedule_for_testing(
-    initial: u64,
-    duration: u64,
-): FeeSchedule {
+public fun new_schedule_for_testing(initial: u64, duration: u64): FeeSchedule {
     new_schedule(initial, duration)
 }

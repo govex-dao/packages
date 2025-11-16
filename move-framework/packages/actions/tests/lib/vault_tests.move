@@ -3,9 +3,13 @@ module account_actions::vault_tests;
 
 use account_actions::vault;
 use account_actions::version;
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
+use account_protocol::package_registry::{
+    Self as package_registry,
+    PackageRegistry,
+    PackageAdminCap
+};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;
@@ -34,11 +38,28 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     let mut extensions = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
     // add core deps
-    package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountActions".to_string(),
+        @account_actions,
+        1,
+    );
 
     let deps = deps::new_for_testing(&extensions);
-    let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let account = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
     destroy(cap);
@@ -98,7 +119,6 @@ fun test_deposit_and_withdraw() {
     end(scenario, extensions, account, clock);
 }
 
-
 #[test]
 fun test_create_and_withdraw_from_stream() {
     let (mut scenario, extensions, mut account, mut clock) = start();
@@ -141,7 +161,13 @@ fun test_create_and_withdraw_from_stream() {
     clock.increment_for_testing(50_000);
 
     // Calculate claimable
-    let claimable = vault::calculate_claimable<Config>(&account, &extensions, vault_name, stream_id, &clock);
+    let claimable = vault::calculate_claimable<Config>(
+        &account,
+        &extensions,
+        vault_name,
+        stream_id,
+        &clock,
+    );
     assert!(claimable == 500);
 
     // Withdraw from stream (must be beneficiary)
@@ -392,14 +418,14 @@ fun test_withdrawal_limit() {
 //     let (mut scenario, extensions, mut account, mut clock) = start();
 //     let vault_name = b"test_vault".to_string();
 //     let beneficiary = @0xBEEF;
-// 
+//
 //     // Setup vault
 //     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
 //     vault::open<Config>(auth, &mut account, &extensions, vault_name, scenario.ctx());
 //     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
 //     let coin = coin::mint_for_testing<SUI>(1000, scenario.ctx());
 //     vault::deposit<Config, SUI>(auth, &mut account, &extensions, vault_name, coin);
-// 
+//
 //     // Create stream
 //     let start_time = clock.timestamp_ms();
 //     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
@@ -421,10 +447,10 @@ fun test_withdrawal_limit() {
 //         &clock,
 //         scenario.ctx(),
 //     );
-// 
+//
 //     // Advance time to vested
 //     clock.increment_for_testing(50_000);
-// 
+//
 //     // First withdrawal
 //     scenario.next_tx(beneficiary);
 //     let coin1 = vault::withdraw_from_stream<Config, SUI>(
@@ -437,7 +463,7 @@ fun test_withdrawal_limit() {
 //         scenario.ctx(),
 //     );
 //     destroy(coin1);
-// 
+//
 //     // Try to withdraw again immediately - should fail
 //     let coin2 = vault::withdraw_from_stream<Config, SUI>(
 //         &mut account,
@@ -448,7 +474,7 @@ fun test_withdrawal_limit() {
 //         &clock,
 //         scenario.ctx(),
 //     );
-// 
+//
 //     destroy(coin2);
 //     end(scenario, extensions, account, clock);
 // }

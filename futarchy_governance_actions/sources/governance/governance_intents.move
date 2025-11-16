@@ -5,30 +5,22 @@
 /// This module provides a simplified interface for governance operations
 module futarchy_governance_actions::governance_intents;
 
-// === Imports ===
-use std::string::{Self, String};
-use std::option::{Self, Option};
-use std::vector;
-use sui::{
-    clock::Clock,
-    tx_context::TxContext,
-    object,
-};
-use account_protocol::{
-    account::{Self, Account},
-    executable::{Self, Executable},
-    intents::{Self, Intent, Params},
-    intent_interface,
-    package_registry::PackageRegistry,
-};
-use account_protocol::intents::ActionSpec;
+use account_protocol::account::{Self, Account};
+use account_protocol::executable::{Self, Executable};
+use account_protocol::intent_interface;
+use account_protocol::intents::{Self, Intent, Params, ActionSpec};
+use account_protocol::package_registry::PackageRegistry;
+use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
-use futarchy_core::{
-    futarchy_config::{Self, FutarchyConfig},
-};
 use futarchy_governance_actions::intent_janitor;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_primitives::market_state::MarketState;
+use std::option::{Self, Option};
+use std::string::{Self, String};
+use std::vector;
+use sui::clock::Clock;
+use sui::object;
+use sui::tx_context::TxContext;
 
 // === Aliases ===
 use fun intent_interface::build_intent as Account.build_intent;
@@ -56,7 +48,7 @@ public fun execute_proposal_intent<AssetType, StableType, Outcome: store + drop 
     outcome_index: u64,
     outcome: Outcome,
     clock: &Clock,
-    ctx: &mut TxContext
+    ctx: &mut TxContext,
 ): Executable<Outcome> {
     // Get the intent spec from the proposal for the specified outcome
     let mut intent_spec_opt = proposal::take_intent_spec_for_outcome(proposal, outcome_index);
@@ -73,7 +65,7 @@ public fun execute_proposal_intent<AssetType, StableType, Outcome: store + drop 
         intent_spec,
         outcome,
         clock,
-        ctx
+        ctx,
     );
 
     // Now create the executable from the stored intent
@@ -102,7 +94,7 @@ public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
     specs: vector<ActionSpec>,
     outcome: Outcome,
     clock: &Clock,
-    ctx: &mut TxContext
+    ctx: &mut TxContext,
 ): String {
     // Generate a guaranteed-unique key using Sui's native ID generation
     // This ensures uniqueness even when multiple proposals execute in the same block
@@ -115,7 +107,7 @@ public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
         vector[clock.timestamp_ms()], // Execute immediately
         clock.timestamp_ms() + 3_600_000, // 1 hour expiry
         clock,
-        ctx
+        ctx,
     );
 
     // Create the intent using the account module
@@ -127,7 +119,7 @@ public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
         b"ProposalExecution".to_string(),
         version::current(),
         witness(),
-        ctx
+        ctx,
     );
 
     // Add all actions from the specs vector to the intent
@@ -141,7 +133,7 @@ public fun create_and_store_intent_from_spec<Outcome: store + drop + copy>(
             &mut intent,
             intents::action_spec_type(action_spec),
             *intents::action_spec_data(action_spec),
-            witness()
+            witness(),
         );
         i = i + 1;
     };

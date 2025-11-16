@@ -140,6 +140,7 @@ public fun default_queue_fullness_multiplier_bps(): u64 { 5000 }
 // === Cancellation Splits ===
 /// Bond split on cancellation: 50% proposer (partial refund), 50% DAO (spam tax)
 public fun bond_cancel_proposer_bps(): u64 { 5000 }
+
 public fun bond_cancel_dao_bps(): u64 { 5000 }
 
 /// Priority fee on cancellation: 100% refund to proposer
@@ -148,15 +149,18 @@ public fun priority_fee_cancel_refund_bps(): u64 { 10000 }
 // === Eviction Splits ===
 /// Bond split on eviction: 50% evictor (reward), 50% DAO
 public fun bond_evict_evictor_bps(): u64 { 5000 }
+
 public fun bond_evict_dao_bps(): u64 { 5000 }
 
 /// Priority fee on eviction: 90% proposer (partial refund), 10% evictor (reward)
 public fun priority_fee_evict_proposer_bps(): u64 { 9000 }
+
 public fun priority_fee_evict_evictor_bps(): u64 { 1000 }
 
 // === Activation Splits ===
 /// Bond split on activation: 50% activator (reward for cranking), 50% DAO
 public fun bond_activation_activator_bps(): u64 { 5000 }
+
 public fun bond_activation_dao_bps(): u64 { 5000 }
 
 /// Priority fee on activation: 100% to DAO treasury (full governance revenue!)

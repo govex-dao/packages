@@ -1,11 +1,15 @@
 #[test_only]
 module account_protocol::config_intents_tests;
 
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::config;
 use account_protocol::deps;
 use account_protocol::intents;
+use account_protocol::package_registry::{
+    Self as package_registry,
+    PackageRegistry,
+    PackageAdminCap
+};
 use account_protocol::version;
 use sui::clock::{Self, Clock};
 use sui::test_scenario::{Self as ts, Scenario};
@@ -36,21 +40,39 @@ fun start(): (Scenario, PackageRegistry, Account, Clock, PackageAdminCap) {
     let mut extensions = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
     // add core deps
-    package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut extensions,  b"AccountConfig".to_string(), @0x1, 1);
-    package_registry::update_for_testing(&mut extensions,  b"AccountConfig".to_string(), @0x11, 2);
-    package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @0x2, 1);
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
+    package_registry::add_for_testing(&mut extensions, b"AccountConfig".to_string(), @0x1, 1);
+    package_registry::update_for_testing(&mut extensions, b"AccountConfig".to_string(), @0x11, 2);
+    package_registry::add_for_testing(&mut extensions, b"AccountActions".to_string(), @0x2, 1);
     // add external dep
-    package_registry::add_for_testing(&mut extensions,  b"External".to_string(), @0xABC, 1);
+    package_registry::add_for_testing(&mut extensions, b"External".to_string(), @0xABC, 1);
 
     let deps = deps::new(&extensions);
-    let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let account = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
     (scenario, extensions, account, clock, cap)
 }
 
-fun end(scenario: Scenario, extensions: PackageRegistry, account: Account, clock: Clock, cap: PackageAdminCap) {
+fun end(
+    scenario: Scenario,
+    extensions: PackageRegistry,
+    account: Account,
+    clock: Clock,
+    cap: PackageAdminCap,
+) {
     destroy(extensions);
     destroy(account);
     destroy(clock);

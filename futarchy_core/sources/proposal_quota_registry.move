@@ -412,7 +412,8 @@ public fun use_sponsor_quota(
     // Reset period if expired (aligned to boundaries)
     let periods_elapsed = (now - info.sponsor_period_start_ms) / info.quota_period_ms;
     if (periods_elapsed > 0) {
-        info.sponsor_period_start_ms = info.sponsor_period_start_ms + (periods_elapsed * info.quota_period_ms);
+        info.sponsor_period_start_ms =
+            info.sponsor_period_start_ms + (periods_elapsed * info.quota_period_ms);
         info.sponsor_quota_used = 0;
     };
 
@@ -459,7 +460,8 @@ public fun refund_sponsor_quota(
     // Reset period if expired (aligned to boundaries)
     let periods_elapsed = (now - info.sponsor_period_start_ms) / info.quota_period_ms;
     if (periods_elapsed > 0) {
-        info.sponsor_period_start_ms = info.sponsor_period_start_ms + (periods_elapsed * info.quota_period_ms);
+        info.sponsor_period_start_ms =
+            info.sponsor_period_start_ms + (periods_elapsed * info.quota_period_ms);
         info.sponsor_quota_used = 0;
 
         // Emit event for period reset (no refund needed)

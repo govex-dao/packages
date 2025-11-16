@@ -41,7 +41,7 @@ fun setup_spot_pool(scenario: &mut Scenario): (UnifiedSpotPool<ASSET, STABLE>, I
         asset_balance,
         stable_balance,
         30, // 0.3% fee
-        ctx
+        ctx,
     );
 
     (spot_pool, pool_id)
@@ -49,7 +49,7 @@ fun setup_spot_pool(scenario: &mut Scenario): (UnifiedSpotPool<ASSET, STABLE>, I
 
 fun setup_escrow_with_markets(
     scenario: &mut Scenario,
-    num_outcomes: u8
+    num_outcomes: u8,
 ): TokenEscrow<ASSET, STABLE> {
     let ctx = ts::ctx(scenario);
 
@@ -57,7 +57,7 @@ fun setup_escrow_with_markets(
     let mut escrow = coin_escrow::create_for_testing<ASSET, STABLE>(
         (num_outcomes as u64),
         30, // 0.3% fee
-        ctx
+        ctx,
     );
 
     // Initialize AMM pools with bootstrap liquidity
@@ -95,7 +95,7 @@ fun test_quantum_split_divides_among_pools() {
         proposal_id,
         80, // 80% to conditional pools
         &clock,
-        ts::ctx(&mut scenario)
+        ts::ctx(&mut scenario),
     );
 
     // Verify spot pool: should have 200 left (20% remaining)
@@ -151,7 +151,7 @@ fun test_escrow_backing_with_three_outcomes() {
         proposal_id,
         90, // 90% to conditional pools
         &clock,
-        ts::ctx(&mut scenario)
+        ts::ctx(&mut scenario),
     );
 
     // Verify: each of 3 pools gets 300 (900 / 3) + 1000 bootstrap
@@ -204,7 +204,7 @@ fun test_recombination_with_lp_fees() {
         proposal_id,
         80,
         &clock,
-        ts::ctx(&mut scenario)
+        ts::ctx(&mut scenario),
     );
 
     // Simulate trader depositing and swapping (this adds LP fees to pool)
@@ -241,7 +241,7 @@ fun test_recombination_with_lp_fees() {
         &mut spot_pool,
         &mut escrow,
         &clock,
-        ts::ctx(&mut scenario)
+        ts::ctx(&mut scenario),
     );
 
     // Verify: escrow should have reduced by exactly what was withdrawn
@@ -282,7 +282,7 @@ fun test_protocol_fees_included_in_recombination() {
         proposal_id,
         80,
         &clock,
-        ts::ctx(&mut scenario)
+        ts::ctx(&mut scenario),
     );
 
     // Simulate protocol fees accumulating (20% of swap fees)
@@ -313,7 +313,7 @@ fun test_protocol_fees_included_in_recombination() {
         &mut spot_pool,
         &mut escrow,
         &clock,
-        ts::ctx(&mut scenario)
+        ts::ctx(&mut scenario),
     );
 
     // Verify: withdrawal should include BOTH reserves AND protocol fees

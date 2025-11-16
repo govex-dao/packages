@@ -13,7 +13,7 @@ use std::string::String;
 // === Action Structs (for staging) ===
 
 /// Action to emit a text memo
-public struct EmitMemoAction has store, copy, drop {
+public struct EmitMemoAction has copy, drop, store {
     memo: String,
 }
 
@@ -41,7 +41,7 @@ public fun add_emit_memo_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::memo::Memo>(),
         action_data,
-        1  // version
+        1, // version
     );
     builder::add(builder, action_spec);
 }

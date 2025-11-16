@@ -22,10 +22,10 @@ fun test_new_set_quotas_single_user() {
     let users = vector[USER1];
     let action = quota_actions::new_set_quotas(
         users,
-        5u64,                      // quota_amount
-        2592000000u64,             // quota_period_ms (30 days)
-        100u64,                    // reduced_fee
-        3u64,                      // sponsor_quota_amount
+        5u64, // quota_amount
+        2592000000u64, // quota_period_ms (30 days)
+        100u64, // reduced_fee
+        3u64, // sponsor_quota_amount
     );
 
     assert!(quota_actions::users(&action).length() == 1, 0);
@@ -43,10 +43,10 @@ fun test_new_set_quotas_multiple_users() {
     let users = vector[USER1, USER2, USER3, USER4];
     let action = quota_actions::new_set_quotas(
         users,
-        10u64,                     // quota_amount
-        2592000000u64,             // quota_period_ms
-        50u64,                     // reduced_fee
-        5u64,                      // sponsor_quota_amount
+        10u64, // quota_amount
+        2592000000u64, // quota_period_ms
+        50u64, // reduced_fee
+        5u64, // sponsor_quota_amount
     );
 
     assert!(quota_actions::users(&action).length() == 4, 0);
@@ -64,10 +64,10 @@ fun test_new_set_quotas_removal() {
     let users = vector[USER1, USER2];
     let action = quota_actions::new_set_quotas(
         users,
-        0u64,                      // quota_amount = 0 means removal
-        0u64,                      // period ignored when removing
-        0u64,                      // fee ignored when removing
-        0u64,                      // sponsor quota ignored when removing
+        0u64, // quota_amount = 0 means removal
+        0u64, // period ignored when removing
+        0u64, // fee ignored when removing
+        0u64, // sponsor quota ignored when removing
     );
 
     assert!(quota_actions::quota_amount(&action) == 0, 0);
@@ -80,7 +80,7 @@ fun test_new_set_quotas_removal() {
 /// Test with empty user list
 fun test_new_set_quotas_empty_users() {
     let action = quota_actions::new_set_quotas(
-        vector[],                  // empty users list
+        vector[], // empty users list
         5u64,
         2592000000u64,
         100u64,
@@ -100,8 +100,8 @@ fun test_new_set_quotas_free_tier() {
         users,
         5u64,
         2592000000u64,
-        0u64,                      // free tier
-        0u64,                      // no sponsor quota
+        0u64, // free tier
+        0u64, // no sponsor quota
     );
 
     assert!(quota_actions::reduced_fee(&action) == 0, 0);
@@ -119,7 +119,7 @@ fun test_new_set_quotas_no_sponsorship() {
         5u64,
         2592000000u64,
         100u64,
-        0u64,                      // no sponsor quota
+        0u64, // no sponsor quota
     );
 
     assert!(quota_actions::sponsor_quota_amount(&action) == 0, 0);
@@ -164,7 +164,7 @@ fun test_new_set_quotas_short_period() {
     let action = quota_actions::new_set_quotas(
         users,
         3u64,
-        86400000u64,               // 1 day
+        86400000u64, // 1 day
         50u64,
         1u64,
     );
@@ -181,7 +181,7 @@ fun test_new_set_quotas_long_period() {
     let action = quota_actions::new_set_quotas(
         users,
         20u64,
-        7776000000u64,             // 90 days
+        7776000000u64, // 90 days
         500u64,
         10u64,
     );
@@ -198,10 +198,10 @@ fun test_new_set_quotas_high_quota() {
     let users = vector[USER1];
     let action = quota_actions::new_set_quotas(
         users,
-        1000u64,                   // very high quota
+        1000u64, // very high quota
         2592000000u64,
         50u64,
-        500u64,                    // high sponsor quota
+        500u64, // high sponsor quota
     );
 
     assert!(quota_actions::quota_amount(&action) == 1000, 0);
@@ -218,7 +218,7 @@ fun test_new_set_quotas_high_fee() {
         users,
         5u64,
         2592000000u64,
-        10000u64,                  // high fee
+        10000u64, // high fee
         3u64,
     );
 
@@ -237,10 +237,10 @@ fun test_new_set_quotas_extreme_values() {
 
     let action = quota_actions::new_set_quotas(
         users,
-        max_u64,                   // max quota
-        max_u64,                   // max period
-        max_u64,                   // max fee
-        max_u64,                   // max sponsor quota
+        max_u64, // max quota
+        max_u64, // max period
+        max_u64, // max fee
+        max_u64, // max sponsor quota
     );
 
     assert!(quota_actions::quota_amount(&action) == max_u64, 0);
@@ -258,10 +258,10 @@ fun test_new_set_quotas_minimum_values() {
 
     let action = quota_actions::new_set_quotas(
         users,
-        1u64,                      // minimum quota
-        1u64,                      // minimum period
-        0u64,                      // free
-        0u64,                      // no sponsor quota
+        1u64, // minimum quota
+        1u64, // minimum period
+        0u64, // free
+        0u64, // no sponsor quota
     );
 
     assert!(quota_actions::quota_amount(&action) == 1, 0);
@@ -275,15 +275,33 @@ fun test_new_set_quotas_minimum_values() {
 fun test_new_set_quotas_many_users() {
     let mut users = vector[];
     // Add various predefined addresses
-    users.push_back(@0x1); users.push_back(@0x2); users.push_back(@0x3);
-    users.push_back(@0x4); users.push_back(@0x5); users.push_back(@0x6);
-    users.push_back(@0x7); users.push_back(@0x8); users.push_back(@0x9);
-    users.push_back(@0xa); users.push_back(@0xb); users.push_back(@0xc);
-    users.push_back(@0xd); users.push_back(@0xe); users.push_back(@0xf);
-    users.push_back(@0x10); users.push_back(@0x11); users.push_back(@0x12);
-    users.push_back(@0x13); users.push_back(@0x14); users.push_back(@0x15);
-    users.push_back(@0x16); users.push_back(@0x17); users.push_back(@0x18);
-    users.push_back(@0x19); users.push_back(@0x1a); users.push_back(@0x1b);
+    users.push_back(@0x1);
+    users.push_back(@0x2);
+    users.push_back(@0x3);
+    users.push_back(@0x4);
+    users.push_back(@0x5);
+    users.push_back(@0x6);
+    users.push_back(@0x7);
+    users.push_back(@0x8);
+    users.push_back(@0x9);
+    users.push_back(@0xa);
+    users.push_back(@0xb);
+    users.push_back(@0xc);
+    users.push_back(@0xd);
+    users.push_back(@0xe);
+    users.push_back(@0xf);
+    users.push_back(@0x10);
+    users.push_back(@0x11);
+    users.push_back(@0x12);
+    users.push_back(@0x13);
+    users.push_back(@0x14);
+    users.push_back(@0x15);
+    users.push_back(@0x16);
+    users.push_back(@0x17);
+    users.push_back(@0x18);
+    users.push_back(@0x19);
+    users.push_back(@0x1a);
+    users.push_back(@0x1b);
 
     let action = quota_actions::new_set_quotas(
         users,
@@ -306,10 +324,10 @@ fun test_scenario_vip_tier() {
     let users = vector[USER1, USER2];
     let action = quota_actions::new_set_quotas(
         users,
-        20u64,                     // 20 proposals per month
-        2592000000u64,             // 30 days
-        10u64,                     // very low fee
-        10u64,                     // high sponsor quota
+        20u64, // 20 proposals per month
+        2592000000u64, // 30 days
+        10u64, // very low fee
+        10u64, // high sponsor quota
     );
 
     assert!(quota_actions::quota_amount(&action) == 20, 0);
@@ -325,10 +343,10 @@ fun test_scenario_regular_tier() {
     let users = vector[USER1, USER2, USER3];
     let action = quota_actions::new_set_quotas(
         users,
-        5u64,                      // 5 proposals per month
-        2592000000u64,             // 30 days
-        100u64,                    // moderate fee
-        3u64,                      // moderate sponsor quota
+        5u64, // 5 proposals per month
+        2592000000u64, // 30 days
+        100u64, // moderate fee
+        3u64, // moderate sponsor quota
     );
 
     assert!(quota_actions::quota_amount(&action) == 5, 0);
@@ -343,10 +361,10 @@ fun test_scenario_trial_tier() {
     let users = vector[USER1];
     let action = quota_actions::new_set_quotas(
         users,
-        3u64,                      // 3 proposals during trial
-        604800000u64,              // 7 days (trial period)
-        0u64,                      // free during trial
-        1u64,                      // limited sponsor quota
+        3u64, // 3 proposals during trial
+        604800000u64, // 7 days (trial period)
+        0u64, // free during trial
+        1u64, // limited sponsor quota
     );
 
     assert!(quota_actions::quota_amount(&action) == 3, 0);
@@ -362,10 +380,10 @@ fun test_scenario_remove_quotas() {
     let users = vector[USER1, USER2, USER3];
     let action = quota_actions::new_set_quotas(
         users,
-        0u64,                      // remove quota
-        0u64,                      // ignored
-        0u64,                      // ignored
-        0u64,                      // ignored
+        0u64, // remove quota
+        0u64, // ignored
+        0u64, // ignored
+        0u64, // ignored
     );
 
     assert!(quota_actions::quota_amount(&action) == 0, 0);
@@ -380,10 +398,10 @@ fun test_scenario_increase_quotas() {
     let users = vector[USER1];
     let action = quota_actions::new_set_quotas(
         users,
-        15u64,                     // increased from 5 to 15
-        2592000000u64,             // same period
-        50u64,                     // reduced fee
-        8u64,                      // increased sponsor quota
+        15u64, // increased from 5 to 15
+        2592000000u64, // same period
+        50u64, // reduced fee
+        8u64, // increased sponsor quota
     );
 
     assert!(quota_actions::quota_amount(&action) == 15, 0);

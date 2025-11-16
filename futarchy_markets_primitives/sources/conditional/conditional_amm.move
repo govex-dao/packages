@@ -1060,14 +1060,22 @@ public fun add_liquidity_for_testing<AssetType, StableType>(
 
 #[test_only]
 /// Set protocol fees for testing
-public fun set_protocol_fees_for_testing(pool: &mut LiquidityPool, asset_fee: u64, stable_fee: u64) {
+public fun set_protocol_fees_for_testing(
+    pool: &mut LiquidityPool,
+    asset_fee: u64,
+    stable_fee: u64,
+) {
     pool.protocol_fees_asset = asset_fee;
     pool.protocol_fees_stable = stable_fee;
 }
 
 #[test_only]
 /// Add to reserves for testing (simulates fee accumulation)
-public fun add_reserves_for_testing(pool: &mut LiquidityPool, asset_amount: u64, stable_amount: u64) {
+public fun add_reserves_for_testing(
+    pool: &mut LiquidityPool,
+    asset_amount: u64,
+    stable_amount: u64,
+) {
     pool.asset_reserve = pool.asset_reserve + asset_amount;
     pool.stable_reserve = pool.stable_reserve + stable_amount;
 }

@@ -28,11 +28,11 @@
 
 module account_protocol::account;
 
-use account_protocol::package_registry;
 use account_protocol::deps::{Self, Deps};
 use account_protocol::executable::{Self, Executable};
 use account_protocol::intents::{Self, Intents, Intent, Expired, Params};
 use account_protocol::metadata::{Self, Metadata};
+use account_protocol::package_registry;
 use account_protocol::version;
 use account_protocol::version_witness::{Self, VersionWitness};
 use std::option::Option;
@@ -159,9 +159,7 @@ public(package) fun init_object_tracker(account: &mut Account, max_objects: u128
 }
 
 /// Get or create object tracker state
-public(package) fun ensure_object_tracker(
-    account: &mut Account,
-): &mut ObjectTrackerState {
+public(package) fun ensure_object_tracker(account: &mut Account): &mut ObjectTrackerState {
     if (!df::exists_(&account.id, ObjectTracker {})) {
         init_object_tracker(account, default_max_objects());
     };
@@ -455,10 +453,7 @@ public fun add_managed_data<Key: copy + drop + store, Data: store>(
 }
 
 /// Checks if a managed data struct exists in the account.
-public fun has_managed_data<Key: copy + drop + store>(
-    account: &Account,
-    key: Key,
-): bool {
+public fun has_managed_data<Key: copy + drop + store>(account: &Account, key: Key): bool {
     df::exists_(&account.id, key)
 }
 
@@ -512,10 +507,7 @@ public fun add_managed_asset<Key: copy + drop + store, Asset: key + store>(
 }
 
 /// Checks if a managed object exists in the account.
-public fun has_managed_asset<Key: copy + drop + store>(
-    account: &Account,
-    key: Key,
-): bool {
+public fun has_managed_asset<Key: copy + drop + store>(account: &Account, key: Key): bool {
     dof::exists_(&account.id, key)
 }
 
@@ -885,10 +877,7 @@ public(package) fun metadata_mut(
 
 /// Receives an object from an account with tracking, only used in owned action lib module.
 /// NOTE: This is for WITHDRAWALS - receiving an object FROM the account to return it.
-public(package) fun receive<T: key + store>(
-    account: &mut Account,
-    receiving: Receiving<T>,
-): T {
+public(package) fun receive<T: key + store>(account: &mut Account, receiving: Receiving<T>): T {
     let type_name = type_name::with_defining_ids<T>();
     let is_coin = is_coin_type(type_name);
 
@@ -923,7 +912,6 @@ public(package) fun track_object_removal<Config: store>(account: &mut Account, _
         tracker.deposits_open = true;
     };
 }
-
 
 //**************************************************************************************************//
 // Tests                                                                                            //
@@ -973,7 +961,12 @@ public struct TestAsset has key, store {
 fun test_addr() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -988,7 +981,12 @@ fun test_addr() {
 fun test_verify_auth() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1004,7 +1002,12 @@ fun test_verify_auth() {
 fun test_verify_auth_wrong_account() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1019,7 +1022,12 @@ fun test_verify_auth_wrong_account() {
 fun test_managed_data_flow() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1035,7 +1043,12 @@ fun test_managed_data_flow() {
     assert_eq(*borrowed_data, data);
 
     // Test borrow_mut
-    let borrowed_mut_data = borrow_managed_data_mut(&mut account, &registry, key, version::current());
+    let borrowed_mut_data = borrow_managed_data_mut(
+        &mut account,
+        &registry,
+        key,
+        version::current(),
+    );
     assert_eq(*borrowed_mut_data, data);
 
     // Test remove
@@ -1050,7 +1063,12 @@ fun test_managed_data_flow() {
 fun test_add_managed_data_already_exists() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1068,7 +1086,12 @@ fun test_add_managed_data_already_exists() {
 fun test_borrow_managed_data_doesnt_exist() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1083,7 +1106,12 @@ fun test_borrow_managed_data_doesnt_exist() {
 fun test_borrow_managed_data_mut_doesnt_exist() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1098,7 +1126,12 @@ fun test_borrow_managed_data_mut_doesnt_exist() {
 fun test_remove_managed_data_doesnt_exist() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1113,7 +1146,12 @@ fun test_remove_managed_data_doesnt_exist() {
 fun test_managed_asset_flow() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1153,7 +1191,12 @@ fun test_managed_asset_flow() {
 fun test_has_managed_data_false() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1168,7 +1211,12 @@ fun test_has_managed_data_false() {
 fun test_has_managed_asset_false() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1183,7 +1231,12 @@ fun test_has_managed_asset_false() {
 fun test_add_managed_asset_already_exists() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1201,7 +1254,12 @@ fun test_add_managed_asset_already_exists() {
 fun test_borrow_managed_asset_doesnt_exist() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1216,7 +1274,12 @@ fun test_borrow_managed_asset_doesnt_exist() {
 fun test_borrow_managed_asset_mut_doesnt_exist() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1231,7 +1294,12 @@ fun test_borrow_managed_asset_mut_doesnt_exist() {
 fun test_remove_managed_asset_doesnt_exist() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let mut account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1252,11 +1320,21 @@ fun test_remove_managed_asset_doesnt_exist() {
 fun test_new_auth() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
-    let auth = new_auth<TestConfig, TestWitness>(&account, &registry, version::current(), TestWitness());
+    let auth = new_auth<TestConfig, TestWitness>(
+        &account,
+        &registry,
+        version::current(),
+        TestWitness(),
+    );
 
     assert_eq(auth.account_addr, account.addr());
     destroy(account);
@@ -1268,7 +1346,12 @@ fun test_new_auth() {
 fun test_metadata_access() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1283,7 +1366,12 @@ fun test_metadata_access() {
 fun test_config_access() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1298,7 +1386,12 @@ fun test_config_access() {
 fun test_assert_is_config_module_correct_witness() {
     let ctx = &mut tx_context::dummy();
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
 
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
@@ -1309,13 +1402,17 @@ fun test_assert_is_config_module_correct_witness() {
     destroy(registry);
 }
 
-
 // === Test Helper Functions ===
 
 #[test_only]
 public fun new_for_testing(ctx: &mut TxContext): Account {
     let mut registry = package_registry::new_for_testing(ctx);
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
     let deps = deps::new_for_testing(&registry);
     let account = new(TestConfig {}, deps, &registry, version::current(), TestWitness(), ctx);
     destroy(registry);

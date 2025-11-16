@@ -14,18 +14,19 @@
 /// Pattern matches futarchy_governance::ptb_executor for consistency.
 module futarchy_factory::launchpad_intent_executor;
 
-use account_protocol::{
-    account::{Self, Account},
-    executable::{Self, Executable},
-    intents,
-    package_registry::PackageRegistry,
-};
 use account_actions::version;
+use account_protocol::account::{Self, Account};
+use account_protocol::executable::{Self, Executable};
+use account_protocol::intents;
+use account_protocol::package_registry::PackageRegistry;
 use futarchy_core::futarchy_config::{Self as fc, FutarchyConfig};
 use futarchy_factory::launchpad::{Self, Raise};
 use futarchy_factory::launchpad_outcome::LaunchpadOutcome;
 use std::string::{Self, String};
-use sui::{clock::Clock, event, object, tx_context::TxContext};
+use sui::clock::Clock;
+use sui::event;
+use sui::object;
+use sui::tx_context::TxContext;
 
 // === Errors ===
 

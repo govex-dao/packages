@@ -45,17 +45,42 @@ fun setup_test(sender: address): Scenario {
         let mut registry = ts::take_shared<PackageRegistry>(&scenario);
         let admin_cap = ts::take_from_sender<package_registry::PackageAdminCap>(&scenario);
 
-        package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
-        package_registry::add_for_testing(&mut registry, b"FutarchyCore".to_string(), @futarchy_core, 1);
-        package_registry::add_for_testing(&mut registry, b"AccountActions".to_string(), @account_actions, 1);
-        package_registry::add_for_testing(&mut registry, b"FutarchyActions".to_string(), @futarchy_actions, 1);
+        package_registry::add_for_testing(
+            &mut registry,
+            b"AccountProtocol".to_string(),
+            @account_protocol,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"FutarchyCore".to_string(),
+            @futarchy_core,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"AccountActions".to_string(),
+            @account_actions,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"FutarchyActions".to_string(),
+            @futarchy_actions,
+            1,
+        );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyGovernanceActions".to_string(),
             @0xb1054e9a9b316e105c908be2cddb7f64681a63f0ae80e9e5922bf461589c4bc7,
-            1
+            1,
         );
-        package_registry::add_for_testing(&mut registry, b"FutarchyOracleActions".to_string(), @futarchy_oracle, 1);
+        package_registry::add_for_testing(
+            &mut registry,
+            b"FutarchyOracleActions".to_string(),
+            @futarchy_oracle,
+            1,
+        );
 
         ts::return_to_sender(&scenario, admin_cap);
         ts::return_shared(registry);
@@ -72,7 +97,7 @@ fun setup_test(sender: address): Scenario {
             &mut factory,
             &owner_cap,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         clock::destroy_for_testing(clock);
@@ -147,7 +172,9 @@ fun test_pro_rata_cap_exclusion() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -157,7 +184,9 @@ fun test_pro_rata_cap_exclusion() {
     // Contributor 1 contributes with 10k cap
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
@@ -182,7 +211,9 @@ fun test_pro_rata_cap_exclusion() {
     // Contributor 2 contributes with unlimited cap
     ts::next_tx(&mut scenario, CONTRIBUTOR2);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
@@ -207,7 +238,9 @@ fun test_pro_rata_cap_exclusion() {
     // Verify cap_sums updated correctly
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let cap_sums = launchpad::cap_sums(&raise);
 
         // At 10k cap level: only contributor2's 20k (contributor1's 10k cap excluded)
@@ -229,8 +262,8 @@ fun test_pro_rata_cap_exclusion() {
         //   - Contributor2: 20k
         //   Total: 28k
 
-        assert!(*cap_sums.borrow(0) == 8_000_000_000, 0);  // 8k
-        assert!(*cap_sums.borrow(1) == 8_000_000_000, 1);  // 8k
+        assert!(*cap_sums.borrow(0) == 8_000_000_000, 0); // 8k
+        assert!(*cap_sums.borrow(1) == 8_000_000_000, 1); // 8k
         assert!(*cap_sums.borrow(2) == 28_000_000_000, 2); // 28k
 
         ts::return_shared(raise);
@@ -291,7 +324,9 @@ fun test_contribution_multiple_times_same_cap() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -301,7 +336,9 @@ fun test_contribution_multiple_times_same_cap() {
     // First contribution
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
@@ -326,7 +363,9 @@ fun test_contribution_multiple_times_same_cap() {
     // Second contribution (same cap, should accumulate)
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
@@ -351,7 +390,9 @@ fun test_contribution_multiple_times_same_cap() {
     // Verify total contribution
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
 
         assert!(launchpad::contribution_of(&raise, CONTRIBUTOR1) == 8_000_000_000, 0);
         assert!(launchpad::total_raised(&raise) == 8_000_000_000, 1);
@@ -383,9 +424,9 @@ fun test_view_allowed_caps() {
         let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
 
         let mut allowed_caps = vector::empty<u64>();
-        vector::push_back(&mut allowed_caps, 5_000_000_000);   // 5k
-        vector::push_back(&mut allowed_caps, 10_000_000_000);  // 10k
-        vector::push_back(&mut allowed_caps, 25_000_000_000);  // 25k
+        vector::push_back(&mut allowed_caps, 5_000_000_000); // 5k
+        vector::push_back(&mut allowed_caps, 10_000_000_000); // 10k
+        vector::push_back(&mut allowed_caps, 25_000_000_000); // 25k
         vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
 
         launchpad::create_raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>(
@@ -416,7 +457,9 @@ fun test_view_allowed_caps() {
     // Verify allowed caps
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let allowed_caps = launchpad::allowed_caps(&raise);
 
         assert!(allowed_caps.length() == 4, 0);

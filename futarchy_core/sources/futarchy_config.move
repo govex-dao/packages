@@ -6,9 +6,9 @@
 /// All dynamic state and object references are stored as dynamic fields on the Account
 module futarchy_core::futarchy_config;
 
-use account_protocol::package_registry::PackageRegistry;
 use account_protocol::account::{Self, Account};
 use account_protocol::deps::{Self, Deps};
+use account_protocol::package_registry::PackageRegistry;
 use account_protocol::version_witness::VersionWitness;
 use futarchy_core::dao_config::{Self, DaoConfig};
 use futarchy_core::version;
@@ -24,8 +24,8 @@ use sui::tx_context::TxContext;
 // === Constants ===
 
 // Operational states
-const DAO_STATE_ACTIVE: u8 = 0;      // Normal operation - proposals can be created
-const DAO_STATE_TERMINATED: u8 = 1;  // Permanent shutdown - no new proposals (irreversible)
+const DAO_STATE_ACTIVE: u8 = 0; // Normal operation - proposals can be created
+const DAO_STATE_TERMINATED: u8 = 1; // Permanent shutdown - no new proposals (irreversible)
 
 // TWAP scale factor (prices are in 1e12 scale)
 const TWAP_SCALE: u128 = 1_000_000_000_000; // 1e12
@@ -129,11 +129,11 @@ public struct DaoState has store {
     verification_pending: bool,
     // Dissolution fields (set when DAO terminated)
     // Range: None or Some(0 to u64::MAX milliseconds)
-    terminated_at_ms: Option<u64>,  // When DAO was terminated
+    terminated_at_ms: Option<u64>, // When DAO was terminated
     // Range: None or Some(0 to u64::MAX milliseconds)
-    dissolution_unlock_delay_ms: Option<u64>,  // How long to wait before redemption
+    dissolution_unlock_delay_ms: Option<u64>, // How long to wait before redemption
     // Categories: true (capability created), false (not yet created)
-    dissolution_capability_created: bool,  // Prevent multiple capability creation
+    dissolution_capability_created: bool, // Prevent multiple capability creation
 }
 
 /// Key for storing DaoState as a dynamic field
@@ -191,9 +191,7 @@ public fun new_early_resolve_config(
 }
 
 /// Creates a new pure FutarchyConfig
-public fun new<AssetType: drop, StableType: drop>(
-    dao_config: DaoConfig,
-): FutarchyConfig {
+public fun new<AssetType: drop, StableType: drop>(dao_config: DaoConfig): FutarchyConfig {
     FutarchyConfig {
         asset_type: type_name::get<AssetType>().into_string().to_string(),
         stable_type: type_name::get<StableType>().into_string().to_string(),
@@ -571,7 +569,10 @@ public fun internal_config_mut(
 
 /// Get mutable access to the DaoState stored as a dynamic field on the Account
 /// This requires access to the Account object, not just the FutarchyConfig
-public fun state_mut_from_account(account: &mut Account, registry: &PackageRegistry): &mut DaoState {
+public fun state_mut_from_account(
+    account: &mut Account,
+    registry: &PackageRegistry,
+): &mut DaoState {
     account::borrow_managed_data_mut(account, registry, DaoStateKey {}, version::current())
 }
 
@@ -794,12 +795,16 @@ public fun new_with_package_registry(
 
 /// Test version that creates account with PackageRegistry
 #[test_only]
-public fun new_account_test(config: FutarchyConfig, registry: &PackageRegistry, ctx: &mut TxContext): Account {
+public fun new_account_test(
+    config: FutarchyConfig,
+    registry: &PackageRegistry,
+    ctx: &mut TxContext,
+): Account {
     // Create dependencies for testing with the actual registry
     let deps = deps::new_for_testing_with_config_and_registry(
         b"futarchy_core".to_string(),
         @futarchy_core,
-        registry
+        registry,
     );
 
     // Create account with FutarchyConfig using the config witness
@@ -815,7 +820,10 @@ public fun new_account_test(config: FutarchyConfig, registry: &PackageRegistry, 
 
 /// Get mutable access to internal config for test scenarios
 #[test_only]
-public fun internal_config_mut_test(account: &mut Account, registry: &PackageRegistry): &mut FutarchyConfig {
+public fun internal_config_mut_test(
+    account: &mut Account,
+    registry: &PackageRegistry,
+): &mut FutarchyConfig {
     account::config_mut<FutarchyConfig, ConfigWitness>(
         account,
         registry,
@@ -912,4 +920,3 @@ public(package) fun destroy_for_migration(config: FutarchyConfig) {
     // - No critical data was lost
     // For now, just allow destruction
 }
-

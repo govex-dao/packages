@@ -178,10 +178,7 @@ public fun add_package(
 /// Also removes all its action type mappings
 ///
 /// Authorization: Requires &mut PackageRegistry (type-system enforced)
-public fun remove_package(
-    registry: &mut PackageRegistry,
-    name: String,
-) {
+public fun remove_package(registry: &mut PackageRegistry, name: String) {
     assert!(registry.packages.contains(name), EPackageNotFound);
 
     // Get package metadata to clean up action types
@@ -204,8 +201,10 @@ public fun remove_package(
     let mut j = 0;
     while (j < versions.length()) {
         let pkg_version = &versions[j];
-        if (registry.by_addr.contains(pkg_version.addr) &&
-            *registry.by_addr.borrow(pkg_version.addr) == name) {
+        if (
+            registry.by_addr.contains(pkg_version.addr) &&
+            *registry.by_addr.borrow(pkg_version.addr) == name
+        ) {
             registry.by_addr.remove(pkg_version.addr);
             registry.active_versions.remove(pkg_version.addr);
         };
@@ -358,10 +357,7 @@ public fun update_package_metadata(
 ///
 /// For governance use: Lock the PackageAdminCap in the DAO account first using
 /// access_control::lock_cap(), then borrow it in governance actions
-public fun pause_account_creation(
-    registry: &mut PackageRegistry,
-    _cap: &PackageAdminCap,
-) {
+public fun pause_account_creation(registry: &mut PackageRegistry, _cap: &PackageAdminCap) {
     registry.account_creation_paused = true;
 }
 
@@ -369,9 +365,7 @@ public fun pause_account_creation(
 /// IMPORTANT: Authorization must be verified by caller before calling this function
 /// This is an internal API for governance actions where the cap check is done separately
 /// to avoid borrow checker conflicts
-public fun pause_account_creation_authorized(
-    registry: &mut PackageRegistry,
-) {
+public fun pause_account_creation_authorized(registry: &mut PackageRegistry) {
     registry.account_creation_paused = true;
 }
 
@@ -380,10 +374,7 @@ public fun pause_account_creation_authorized(
 ///
 /// For governance use: Lock the PackageAdminCap in the DAO account first using
 /// access_control::lock_cap(), then borrow it in governance actions
-public fun unpause_account_creation(
-    registry: &mut PackageRegistry,
-    _cap: &PackageAdminCap,
-) {
+public fun unpause_account_creation(registry: &mut PackageRegistry, _cap: &PackageAdminCap) {
     registry.account_creation_paused = false;
 }
 
@@ -391,9 +382,7 @@ public fun unpause_account_creation(
 /// IMPORTANT: Authorization must be verified by caller before calling this function
 /// This is an internal API for governance actions where the cap check is done separately
 /// to avoid borrow checker conflicts
-public fun unpause_account_creation_authorized(
-    registry: &mut PackageRegistry,
-) {
+public fun unpause_account_creation_authorized(registry: &mut PackageRegistry) {
     registry.account_creation_paused = false;
 }
 

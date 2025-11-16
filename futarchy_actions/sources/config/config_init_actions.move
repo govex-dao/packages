@@ -5,33 +5,38 @@
 /// These can be staged in intents for proposals.
 module futarchy_actions::config_init_actions;
 
-use std::{string::String, ascii::String as AsciiString, option::Option, type_name, vector};
-use sui::{url::Url, bcs};
 use account_protocol::intents;
+use futarchy_actions::config_actions::ConfigAction;
 use futarchy_core::dao_config;
 use futarchy_types::signed::SignedU128;
-use futarchy_actions::config_actions::ConfigAction;
+use std::ascii::String as AsciiString;
+use std::option::Option;
+use std::string::String;
+use std::type_name;
+use std::vector;
+use sui::bcs;
+use sui::url::Url;
 
 // === Layer 1: Action Structs ===
 
 /// Action to enable or disable proposals
-public struct SetProposalsEnabledAction has store, drop, copy {
+public struct SetProposalsEnabledAction has copy, drop, store {
     enabled: bool,
 }
 
 /// Action to permanently terminate the DAO
-public struct TerminateDaoAction has store, drop, copy {
+public struct TerminateDaoAction has copy, drop, store {
     reason: String,
     dissolution_unlock_delay_ms: u64,
 }
 
 /// Action to update the DAO name
-public struct UpdateNameAction has store, drop, copy {
+public struct UpdateNameAction has copy, drop, store {
     new_name: String,
 }
 
 /// Trading parameters update action
-public struct TradingParamsUpdateAction has store, drop, copy {
+public struct TradingParamsUpdateAction has copy, drop, store {
     min_asset_amount: Option<u64>,
     min_stable_amount: Option<u64>,
     review_period_ms: Option<u64>,
@@ -40,14 +45,14 @@ public struct TradingParamsUpdateAction has store, drop, copy {
 }
 
 /// DAO metadata update action
-public struct MetadataUpdateAction has store, drop, copy {
+public struct MetadataUpdateAction has copy, drop, store {
     dao_name: Option<AsciiString>,
     icon_url: Option<Url>,
     description: Option<String>,
 }
 
 /// TWAP configuration update action
-public struct TwapConfigUpdateAction has store, drop, copy {
+public struct TwapConfigUpdateAction has copy, drop, store {
     start_delay: Option<u64>,
     step_max: Option<u64>,
     initial_observation: Option<u128>,
@@ -55,7 +60,7 @@ public struct TwapConfigUpdateAction has store, drop, copy {
 }
 
 /// Governance settings update action
-public struct GovernanceUpdateAction has store, drop, copy {
+public struct GovernanceUpdateAction has copy, drop, store {
     max_outcomes: Option<u64>,
     max_actions_per_outcome: Option<u64>,
     required_bond_amount: Option<u64>,
@@ -71,20 +76,20 @@ public struct GovernanceUpdateAction has store, drop, copy {
 }
 
 /// Metadata table update action
-public struct MetadataTableUpdateAction has store, drop, copy {
+public struct MetadataTableUpdateAction has copy, drop, store {
     keys: vector<String>,
     values: vector<String>,
     keys_to_remove: vector<String>,
 }
 
 /// Conditional metadata configuration update action
-public struct ConditionalMetadataUpdateAction has store, drop, copy {
+public struct ConditionalMetadataUpdateAction has copy, drop, store {
     use_outcome_index: Option<bool>,
     conditional_metadata: Option<Option<dao_config::ConditionalMetadata>>,
 }
 
 /// Sponsorship configuration update action
-public struct SponsorshipConfigUpdateAction has store, drop, copy {
+public struct SponsorshipConfigUpdateAction has copy, drop, store {
     enabled: Option<bool>,
     sponsored_threshold: Option<SignedU128>,
     waive_advancement_fees: Option<bool>,
@@ -105,7 +110,7 @@ public fun add_set_proposals_enabled_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::SetProposalsEnabled>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -126,7 +131,7 @@ public fun add_terminate_dao_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::TerminateDao>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -143,7 +148,7 @@ public fun add_update_name_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::UpdateName>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -170,7 +175,7 @@ public fun add_update_trading_params_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::TradingParamsUpdate>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -193,7 +198,7 @@ public fun add_update_metadata_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::MetadataUpdate>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -218,7 +223,7 @@ public fun add_update_twap_config_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::TwapConfigUpdate>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -259,7 +264,7 @@ public fun add_update_governance_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::GovernanceUpdate>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -282,7 +287,7 @@ public fun add_update_metadata_table_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::MetadataTableUpdate>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -303,7 +308,7 @@ public fun add_update_conditional_metadata_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::UpdateConditionalMetadata>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -319,7 +324,7 @@ public fun add_batch_config_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::BatchConfig>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -344,7 +349,7 @@ public fun add_update_sponsorship_config_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::SponsorshipConfigUpdate>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

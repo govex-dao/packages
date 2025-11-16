@@ -17,22 +17,22 @@ const DEFAULT_TWAP_THRESHOLD: u128 = 1_000_000;
 /// Test creating update config action with all fields
 fun test_new_update_config_comprehensive() {
     let action = config_actions::new_update_config(
-        option::some(1000u64),              // min_asset_amount
-        option::some(2000u64),              // min_stable_amount
-        option::some(86400000u64),          // review_period_ms (1 day)
-        option::some(604800000u64),         // trading_period_ms (7 days)
-        option::some(30u16),                // conditional_amm_fee_bps (0.3%)
-        option::some(25u16),                // spot_amm_fee_bps (0.25%)
-        option::some(3600000u64),           // amm_twap_start_delay (1 hour)
-        option::some(100u64),               // amm_twap_step_max
-        option::some(1000000000u128),       // amm_twap_initial_observation
+        option::some(1000u64), // min_asset_amount
+        option::some(2000u64), // min_stable_amount
+        option::some(86400000u64), // review_period_ms (1 day)
+        option::some(604800000u64), // trading_period_ms (7 days)
+        option::some(30u16), // conditional_amm_fee_bps (0.3%)
+        option::some(25u16), // spot_amm_fee_bps (0.25%)
+        option::some(3600000u64), // amm_twap_start_delay (1 hour)
+        option::some(100u64), // amm_twap_step_max
+        option::some(1000000000u128), // amm_twap_initial_observation
         option::some(option::some(500000u128)), // twap_threshold
-        option::some(5u8),                  // max_outcomes
-        option::some(15u8),                 // max_actions_per_outcome
-        option::some(10u8),                 // max_intents_per_outcome
-        option::some(604800000u64),         // proposal_intent_expiry_ms (7 days)
+        option::some(5u8), // max_outcomes
+        option::some(15u8), // max_actions_per_outcome
+        option::some(10u8), // max_intents_per_outcome
+        option::some(604800000u64), // proposal_intent_expiry_ms (7 days)
         option::some(option::some(b"https://icon.url".to_string())), // icon_url
-        option::some(option::some(b"DAO description".to_string())),  // description
+        option::some(option::some(b"DAO description".to_string())), // description
     );
 
     // Verify all fields are set
@@ -56,12 +56,12 @@ fun test_new_update_config_comprehensive() {
 fun test_new_update_config_partial() {
     // Only update min amounts and fee
     let action = config_actions::new_update_config(
-        option::some(5000u64),              // min_asset_amount
-        option::some(10000u64),             // min_stable_amount
-        option::none(),                     // review_period_ms (no change)
-        option::none(),                     // trading_period_ms (no change)
-        option::some(35u16),                // conditional_amm_fee_bps
-        option::none(),                     // spot_amm_fee_bps (no change)
+        option::some(5000u64), // min_asset_amount
+        option::some(10000u64), // min_stable_amount
+        option::none(), // review_period_ms (no change)
+        option::none(), // trading_period_ms (no change)
+        option::some(35u16), // conditional_amm_fee_bps
+        option::none(), // spot_amm_fee_bps (no change)
         option::none(),
         option::none(),
         option::none(),
@@ -122,18 +122,18 @@ fun test_new_update_config_time_periods() {
     let action = config_actions::new_update_config(
         option::none(),
         option::none(),
-        option::some(172800000u64),         // review_period_ms (2 days)
-        option::some(1209600000u64),        // trading_period_ms (14 days)
+        option::some(172800000u64), // review_period_ms (2 days)
+        option::some(1209600000u64), // trading_period_ms (14 days)
         option::none(),
         option::none(),
-        option::some(7200000u64),           // amm_twap_start_delay (2 hours)
-        option::none(),
-        option::none(),
-        option::none(),
+        option::some(7200000u64), // amm_twap_start_delay (2 hours)
         option::none(),
         option::none(),
         option::none(),
-        option::some(1209600000u64),        // proposal_intent_expiry_ms (14 days)
+        option::none(),
+        option::none(),
+        option::none(),
+        option::some(1209600000u64), // proposal_intent_expiry_ms (14 days)
         option::none(),
         option::none(),
     );
@@ -154,11 +154,11 @@ fun test_new_update_config_amm_params() {
         option::none(),
         option::none(),
         option::none(),
-        option::some(50u16),                // conditional_amm_fee_bps (0.5%)
-        option::some(40u16),                // spot_amm_fee_bps (0.4%)
-        option::some(1800000u64),           // amm_twap_start_delay (30 min)
-        option::some(200u64),               // amm_twap_step_max
-        option::some(2000000000u128),       // amm_twap_initial_observation
+        option::some(50u16), // conditional_amm_fee_bps (0.5%)
+        option::some(40u16), // spot_amm_fee_bps (0.4%)
+        option::some(1800000u64), // amm_twap_start_delay (30 min)
+        option::some(200u64), // amm_twap_step_max
+        option::some(2000000000u128), // amm_twap_initial_observation
         option::some(option::some(750000u128)), // twap_threshold
         option::none(),
         option::none(),
@@ -189,9 +189,9 @@ fun test_new_update_config_limits() {
         option::none(),
         option::none(),
         option::none(),
-        option::some(10u8),                 // max_outcomes
-        option::some(20u8),                 // max_actions_per_outcome
-        option::some(15u8),                 // max_intents_per_outcome
+        option::some(10u8), // max_outcomes
+        option::some(20u8), // max_actions_per_outcome
+        option::some(15u8), // max_intents_per_outcome
         option::none(),
         option::none(),
         option::none(),
@@ -278,20 +278,20 @@ fun test_new_update_config_remove_optionals() {
 /// Test extreme values for numeric fields
 fun test_new_update_config_extreme_values() {
     let action = config_actions::new_update_config(
-        option::some(1u64),                 // min_asset_amount (very low)
+        option::some(1u64), // min_asset_amount (very low)
         option::some(18446744073709551615u64), // min_stable_amount (max u64)
-        option::some(1000u64),              // review_period_ms (1 second)
-        option::some(31536000000u64),       // trading_period_ms (1 year)
-        option::some(1u16),                 // conditional_amm_fee_bps (0.01%)
-        option::some(10000u16),             // spot_amm_fee_bps (100% - max)
-        option::some(0u64),                 // amm_twap_start_delay (instant)
-        option::some(1u64),                 // amm_twap_step_max (minimum)
-        option::some(1u128),                // amm_twap_initial_observation (minimum)
+        option::some(1000u64), // review_period_ms (1 second)
+        option::some(31536000000u64), // trading_period_ms (1 year)
+        option::some(1u16), // conditional_amm_fee_bps (0.01%)
+        option::some(10000u16), // spot_amm_fee_bps (100% - max)
+        option::some(0u64), // amm_twap_start_delay (instant)
+        option::some(1u64), // amm_twap_step_max (minimum)
+        option::some(1u128), // amm_twap_initial_observation (minimum)
         option::some(option::some(340282366920938463463374607431768211455u128)), // twap_threshold (max u128)
-        option::some(1u8),                  // max_outcomes (minimum)
-        option::some(255u8),                // max_actions_per_outcome (max u8)
-        option::some(255u8),                // max_intents_per_outcome (max u8)
-        option::some(1u64),                 // proposal_intent_expiry_ms (1ms)
+        option::some(1u8), // max_outcomes (minimum)
+        option::some(255u8), // max_actions_per_outcome (max u8)
+        option::some(255u8), // max_intents_per_outcome (max u8)
+        option::some(1u64), // proposal_intent_expiry_ms (1ms)
         option::none(),
         option::none(),
     );
@@ -314,9 +314,9 @@ fun test_new_update_config_realistic_scenarios() {
         option::none(),
         option::none(),
         option::none(),
-        option::some(432000000u64),         // trading_period_ms (5 days instead of 7)
-        option::some(40u16),                // conditional_amm_fee_bps (0.4%)
-        option::some(35u16),                // spot_amm_fee_bps (0.35%)
+        option::some(432000000u64), // trading_period_ms (5 days instead of 7)
+        option::some(40u16), // conditional_amm_fee_bps (0.4%)
+        option::some(35u16), // spot_amm_fee_bps (0.35%)
         option::none(),
         option::none(),
         option::none(),
@@ -343,9 +343,9 @@ fun test_new_update_config_realistic_scenarios() {
         option::none(),
         option::none(),
         option::none(),
-        option::some(10u8),                 // max_outcomes (from 3)
-        option::some(25u8),                 // max_actions_per_outcome (from 10)
-        option::some(20u8),                 // max_intents_per_outcome (from 5)
+        option::some(10u8), // max_outcomes (from 3)
+        option::some(25u8), // max_actions_per_outcome (from 10)
+        option::some(20u8), // max_intents_per_outcome (from 5)
         option::none(),
         option::none(),
         option::none(),
@@ -355,8 +355,8 @@ fun test_new_update_config_realistic_scenarios() {
 
     // Scenario 3: Update minimum amounts for token price change
     let action3 = config_actions::new_update_config(
-        option::some(500u64),               // min_asset_amount (reduced)
-        option::some(500u64),               // min_stable_amount (reduced)
+        option::some(500u64), // min_asset_amount (reduced)
+        option::some(500u64), // min_stable_amount (reduced)
         option::none(),
         option::none(),
         option::none(),

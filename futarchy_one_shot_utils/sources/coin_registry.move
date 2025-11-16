@@ -80,10 +80,7 @@ public struct CoinSetTaken has copy, drop {
 /// Checks:
 /// 1. Supply must be zero (prevents using already-minted coins)
 /// 2. Type parameters of treasury_cap and metadata must match (enforced by generics)
-public fun validate_coin_set<T>(
-    treasury_cap: &TreasuryCap<T>,
-    _metadata: &CoinMetadata<T>,
-) {
+public fun validate_coin_set<T>(treasury_cap: &TreasuryCap<T>, _metadata: &CoinMetadata<T>) {
     // Validate coin meets requirements: supply must be zero
     assert!(treasury_cap.total_supply() == 0, ESupplyNotZero);
 
@@ -97,10 +94,7 @@ public fun validate_coin_set<T>(
 /// 1. Supply must be zero (prevents using already-minted coins)
 /// 2. Metadata must be empty (name, symbol, description, icon)
 /// 3. Type parameters of treasury_cap and metadata must match (enforced by generics)
-fun validate_coin_set_for_registry<T>(
-    treasury_cap: &TreasuryCap<T>,
-    metadata: &CoinMetadata<T>,
-) {
+fun validate_coin_set_for_registry<T>(treasury_cap: &TreasuryCap<T>, metadata: &CoinMetadata<T>) {
     // First do basic validation
     validate_coin_set(treasury_cap, metadata);
 

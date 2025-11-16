@@ -1,13 +1,13 @@
 #[test_only]
 module futarchy_markets_core::proposal_tests;
 
+use account_protocol::intents::ActionSpec;
 use futarchy_markets_core::proposal;
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm::LiquidityPool;
 use futarchy_markets_primitives::market_state;
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
-use account_protocol::intents::ActionSpec;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use std::option;
 use std::string::{Self, String};
@@ -56,8 +56,8 @@ const STATE_FINALIZED: u8 = 3;
 
 // Outcome constants
 // NOTE: These must match the constants in proposal.move and proposal_lifecycle.move
-const OUTCOME_REJECTED: u64 = 0;  // Reject is ALWAYS outcome 0 (baseline/status quo)
-const OUTCOME_ACCEPTED: u64 = 1;  // Accept is ALWAYS outcome 1+ (proposed actions)
+const OUTCOME_REJECTED: u64 = 0; // Reject is ALWAYS outcome 0 (baseline/status quo)
+const OUTCOME_ACCEPTED: u64 = 1; // Accept is ALWAYS outcome 1+ (proposed actions)
 
 // === Test Helpers ===
 
@@ -100,4 +100,3 @@ fun create_test_proposal_id(ctx: &mut TxContext): ID {
 }
 
 // === Proposal Creation Tests ===
-

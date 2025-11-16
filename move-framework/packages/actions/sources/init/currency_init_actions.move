@@ -14,42 +14,42 @@ use std::vector;
 
 /// Action to return TreasuryCap to creator when raise fails
 /// PTB will call: currency::do_init_remove_treasury_cap<Config, Outcome, CoinType, IW>(executable, ...)
-public struct ReturnTreasuryCapAction has store, copy, drop {
+public struct ReturnTreasuryCapAction has copy, drop, store {
     recipient: address,
 }
 
 /// Action to return CoinMetadata to creator when raise fails
 /// PTB will call: currency::do_init_remove_metadata<Config, Outcome, Key, CoinType, IW>(executable, ...)
-public struct ReturnMetadataAction has store, copy, drop {
+public struct ReturnMetadataAction has copy, drop, store {
     recipient: address,
 }
 
 /// Action to mint new coins
-public struct MintAction has store, copy, drop {
+public struct MintAction has copy, drop, store {
     amount: u64,
 }
 
 /// Action to burn coins
-public struct BurnAction has store, copy, drop {
+public struct BurnAction has copy, drop, store {
     amount: u64,
 }
 
 /// Action to disable currency operations (immutable - can only disable, not re-enable)
-public struct DisableAction has store, copy, drop {
-    mint: bool,           // Disable minting
-    burn: bool,           // Disable burning
-    update_symbol: bool,  // Disable symbol updates
-    update_name: bool,    // Disable name updates
+public struct DisableAction has copy, drop, store {
+    mint: bool, // Disable minting
+    burn: bool, // Disable burning
+    update_symbol: bool, // Disable symbol updates
+    update_name: bool, // Disable name updates
     update_description: bool, // Disable description updates
-    update_icon: bool,    // Disable icon updates
+    update_icon: bool, // Disable icon updates
 }
 
 /// Action to update currency metadata
-public struct UpdateAction has store, copy, drop {
-    symbol: std::option::Option<vector<u8>>,        // ASCII string
-    name: std::option::Option<vector<u8>>,          // UTF-8 string
-    description: std::option::Option<vector<u8>>,   // UTF-8 string
-    icon_url: std::option::Option<vector<u8>>,      // ASCII string
+public struct UpdateAction has copy, drop, store {
+    symbol: std::option::Option<vector<u8>>, // ASCII string
+    name: std::option::Option<vector<u8>>, // UTF-8 string
+    description: std::option::Option<vector<u8>>, // UTF-8 string
+    icon_url: std::option::Option<vector<u8>>, // ASCII string
 }
 
 // === Spec Builders ===
@@ -72,7 +72,7 @@ public fun add_return_treasury_cap_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::RemoveTreasuryCap>(),
         action_data,
-        1  // version
+        1, // version
     );
     action_spec_builder::add(builder, action_spec);
 }
@@ -95,16 +95,13 @@ public fun add_return_metadata_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::RemoveMetadata>(),
         action_data,
-        1  // version
+        1, // version
     );
     action_spec_builder::add(builder, action_spec);
 }
 
 /// Add MintAction to Builder
-public fun add_mint_spec(
-    builder: &mut account_actions::action_spec_builder::Builder,
-    amount: u64,
-) {
+public fun add_mint_spec(builder: &mut account_actions::action_spec_builder::Builder, amount: u64) {
     use account_actions::action_spec_builder;
     use std::type_name;
     use sui::bcs;
@@ -115,16 +112,13 @@ public fun add_mint_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::CurrencyMint>(),
         action_data,
-        1  // version
+        1, // version
     );
     action_spec_builder::add(builder, action_spec);
 }
 
 /// Add BurnAction to Builder
-public fun add_burn_spec(
-    builder: &mut account_actions::action_spec_builder::Builder,
-    amount: u64,
-) {
+public fun add_burn_spec(builder: &mut account_actions::action_spec_builder::Builder, amount: u64) {
     use account_actions::action_spec_builder;
     use std::type_name;
     use sui::bcs;
@@ -135,7 +129,7 @@ public fun add_burn_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::CurrencyBurn>(),
         action_data,
-        1  // version
+        1, // version
     );
     action_spec_builder::add(builder, action_spec);
 }
@@ -167,7 +161,7 @@ public fun add_disable_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::CurrencyDisable>(),
         action_data,
-        1  // version
+        1, // version
     );
     action_spec_builder::add(builder, action_spec);
 }
@@ -195,7 +189,7 @@ public fun add_update_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::currency::CurrencyUpdate>(),
         action_data,
-        1  // version
+        1, // version
     );
     action_spec_builder::add(builder, action_spec);
 }

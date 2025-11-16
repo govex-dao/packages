@@ -276,7 +276,9 @@ public fun swap_balance_asset_to_stable<AssetType, StableType>(
     assert!(conditional_balance::market_id(balance) == market_id, EProposalMismatch);
 
     // Validate outcome exists in market
-    let market_outcome_count = futarchy_markets_primitives::market_state::outcome_count(market_state);
+    let market_outcome_count = futarchy_markets_primitives::market_state::outcome_count(
+        market_state,
+    );
     assert!((outcome_idx as u64) < market_outcome_count, EInvalidOutcome);
 
     // Lazy init price leaderboard on first swap (after init actions complete)
@@ -364,7 +366,9 @@ public fun swap_balance_stable_to_asset<AssetType, StableType>(
     assert!(conditional_balance::market_id(balance) == market_id, EProposalMismatch);
 
     // Validate outcome exists in market
-    let market_outcome_count = futarchy_markets_primitives::market_state::outcome_count(market_state);
+    let market_outcome_count = futarchy_markets_primitives::market_state::outcome_count(
+        market_state,
+    );
     assert!((outcome_idx as u64) < market_outcome_count, EInvalidOutcome);
 
     // Lazy init price leaderboard on first swap (after init actions complete)

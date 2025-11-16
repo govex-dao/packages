@@ -5,9 +5,9 @@
 /// These can be staged in intents for proposals.
 module futarchy_actions::dissolution_init_actions;
 
+use account_protocol::intents;
 use std::type_name;
 use sui::bcs;
-use account_protocol::intents;
 
 // === Layer 1: Action Structs ===
 
@@ -15,7 +15,7 @@ use account_protocol::intents;
 /// Note: This is typically called permissionlessly AFTER termination,
 /// but can also be included in the termination proposal itself
 /// All parameters come from DAO config set during termination
-public struct CreateDissolutionCapabilityAction<phantom AssetType> has store, drop, copy {
+public struct CreateDissolutionCapabilityAction<phantom AssetType> has copy, drop, store {
     // Empty - all parameters come from DAO config set during termination
 }
 
@@ -31,9 +31,11 @@ public fun add_create_dissolution_capability_spec<AssetType>(
     let action = CreateDissolutionCapabilityAction<AssetType> {};
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_actions::dissolution_actions::CreateDissolutionCapability>(),
+        type_name::with_defining_ids<
+            futarchy_actions::dissolution_actions::CreateDissolutionCapability,
+        >(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

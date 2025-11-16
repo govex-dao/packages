@@ -8,7 +8,10 @@
 /// package-visibility functions like do_*_unshared().
 module account_actions::init_actions;
 
-use account_actions::{currency, vault, access_control, version};
+use account_actions::access_control;
+use account_actions::currency;
+use account_actions::vault;
+use account_actions::version;
 use account_protocol::account::Account;
 use account_protocol::package_registry::PackageRegistry;
 use std::string;
@@ -141,4 +144,3 @@ public fun init_create_stream<Config: store, CoinType: drop>(
         ctx,
     )
 }
-

@@ -5,9 +5,11 @@
 /// This is the main entry point for creating DAOs in the Futarchy protocol
 module futarchy_factory::factory;
 
-use account_actions::{currency, vault};
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry};
+use account_actions::currency;
+use account_actions::vault;
 use account_protocol::account::{Self, Account};
+use account_protocol::intents::ActionSpec;
+use account_protocol::package_registry::{Self as package_registry, PackageRegistry};
 use futarchy_core::dao_config::{
     Self,
     DaoConfig,
@@ -20,9 +22,8 @@ use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
 use futarchy_markets_core::fee::{Self, FeeManager};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
-use futarchy_one_shot_utils::constants;
 use futarchy_one_shot_utils::coin_registry;
-use account_protocol::intents::ActionSpec;
+use futarchy_one_shot_utils::constants;
 use futarchy_types::signed::{Self as signed, SignedU128};
 use std::ascii::String as AsciiString;
 use std::option::Option;
@@ -80,9 +81,9 @@ public struct Factory has key, store {
     owner_cap_id: ID,
     allowed_stable_types: VecSet<TypeName>,
     // Launchpad fee configuration (in MIST - 1 SUI = 1_000_000_000 MIST)
-    launchpad_bid_fee: u64,              // Fee users pay per contribution (default: 0.1 SUI)
-    launchpad_cranker_reward: u64,       // Reward crankers get per claim (default: 0.05 SUI)
-    launchpad_settlement_reward: u64,    // Reward per cap processed in settlement (default: 0.05 SUI)
+    launchpad_bid_fee: u64, // Fee users pay per contribution (default: 0.1 SUI)
+    launchpad_cranker_reward: u64, // Reward crankers get per claim (default: 0.05 SUI)
+    launchpad_settlement_reward: u64, // Reward per cap processed in settlement (default: 0.05 SUI)
 }
 
 /// Admin capability for factory operations
@@ -428,7 +429,9 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     let _dao_fee_manager_id = object::id(fee_manager); // Use factory fee manager for now
 
     // Extract conditional_liquidity_ratio_percent from trading_params
-    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(&trading_params);
+    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(
+        &trading_params,
+    );
 
     // Create the unified spot pool with aggregator support enabled
     // This provides TWAP oracle, registry, and full aggregator features
@@ -450,7 +453,6 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     // Create the account with PackageRegistry validation for security
     let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);
 
-
     // Action registry removed - using statically-typed pattern
 
     // Initialize the default treasury vault using base vault module
@@ -471,7 +473,12 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
         version::current(),
         futarchy_config::authenticate(&account, ctx),
     );
-    vault::approve_coin_type<FutarchyConfig, SUI>(auth, &mut account, registry, std::string::utf8(b"treasury"));
+    vault::approve_coin_type<FutarchyConfig, SUI>(
+        auth,
+        &mut account,
+        registry,
+        std::string::utf8(b"treasury"),
+    );
 
     let auth = account::new_auth<FutarchyConfig, futarchy_config::ConfigWitness>(
         &account,
@@ -479,7 +486,12 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
         version::current(),
         futarchy_config::authenticate(&account, ctx),
     );
-    vault::approve_coin_type<FutarchyConfig, AssetType>(auth, &mut account, registry, std::string::utf8(b"treasury"));
+    vault::approve_coin_type<FutarchyConfig, AssetType>(
+        auth,
+        &mut account,
+        registry,
+        std::string::utf8(b"treasury"),
+    );
 
     let auth = account::new_auth<FutarchyConfig, futarchy_config::ConfigWitness>(
         &account,
@@ -487,7 +499,12 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
         version::current(),
         futarchy_config::authenticate(&account, ctx),
     );
-    vault::approve_coin_type<FutarchyConfig, StableType>(auth, &mut account, registry, std::string::utf8(b"treasury"));
+    vault::approve_coin_type<FutarchyConfig, StableType>(
+        auth,
+        &mut account,
+        registry,
+        std::string::utf8(b"treasury"),
+    );
 
     // Lock treasury cap and store coin metadata using Move framework's currency module
     // TreasuryCap is stored via currency::lock_cap for proper atomic borrowing
@@ -683,7 +700,13 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
             test_version,
             futarchy_config::authenticate(&account, ctx),
         );
-        vault::open<FutarchyConfig>(auth, &mut account, registry, std::string::utf8(b"treasury"), ctx);
+        vault::open<FutarchyConfig>(
+            auth,
+            &mut account,
+            registry,
+            std::string::utf8(b"treasury"),
+            ctx,
+        );
 
         // Pre-approve common coin types for permissionless deposits
         let auth = account::new_auth<FutarchyConfig, futarchy_config::ConfigWitness>(
@@ -692,7 +715,12 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
             test_version,
             futarchy_config::authenticate(&account, ctx),
         );
-        vault::approve_coin_type<FutarchyConfig, SUI>(auth, &mut account, registry, std::string::utf8(b"treasury"));
+        vault::approve_coin_type<FutarchyConfig, SUI>(
+            auth,
+            &mut account,
+            registry,
+            std::string::utf8(b"treasury"),
+        );
 
         let auth = account::new_auth<FutarchyConfig, futarchy_config::ConfigWitness>(
             &account,
@@ -700,7 +728,12 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
             test_version,
             futarchy_config::authenticate(&account, ctx),
         );
-        vault::approve_coin_type<FutarchyConfig, AssetType>(auth, &mut account, registry, std::string::utf8(b"treasury"));
+        vault::approve_coin_type<FutarchyConfig, AssetType>(
+            auth,
+            &mut account,
+            registry,
+            std::string::utf8(b"treasury"),
+        );
 
         let auth = account::new_auth<FutarchyConfig, futarchy_config::ConfigWitness>(
             &account,
@@ -708,7 +741,12 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
             test_version,
             futarchy_config::authenticate(&account, ctx),
         );
-        vault::approve_coin_type<FutarchyConfig, StableType>(auth, &mut account, registry, std::string::utf8(b"treasury"));
+        vault::approve_coin_type<FutarchyConfig, StableType>(
+            auth,
+            &mut account,
+            registry,
+            std::string::utf8(b"treasury"),
+        );
     };
 
     // Lock treasury cap and store coin metadata using Move framework's currency module
@@ -837,7 +875,9 @@ public fun create_dao_unshared<AssetType: drop, StableType: drop>(
     let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);
 
     // Extract conditional_liquidity_ratio_percent from trading_params
-    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(&trading_params);
+    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(
+        &trading_params,
+    );
 
     // Create unified spot pool with aggregator support enabled
     let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
@@ -1350,8 +1390,8 @@ public entry fun create_dao_test<AssetType: drop, StableType: drop>(
     review_period_ms: u64,
     trading_period_ms: u64,
     twap_start_delay: u64,
-   twap_step_max: u64,
-   twap_initial_observation: u128,
+    twap_step_max: u64,
+    twap_initial_observation: u128,
     twap_threshold_magnitude: u128,
     twap_threshold_negative: bool,
     amm_total_fee_bps: u64,

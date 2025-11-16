@@ -41,17 +41,42 @@ fun setup_test(sender: address): Scenario {
         let mut registry = ts::take_shared<PackageRegistry>(&scenario);
         let admin_cap = ts::take_from_sender<package_registry::PackageAdminCap>(&scenario);
 
-        package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
-        package_registry::add_for_testing(&mut registry, b"FutarchyCore".to_string(), @futarchy_core, 1);
-        package_registry::add_for_testing(&mut registry, b"AccountActions".to_string(), @account_actions, 1);
-        package_registry::add_for_testing(&mut registry, b"FutarchyActions".to_string(), @futarchy_actions, 1);
+        package_registry::add_for_testing(
+            &mut registry,
+            b"AccountProtocol".to_string(),
+            @account_protocol,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"FutarchyCore".to_string(),
+            @futarchy_core,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"AccountActions".to_string(),
+            @account_actions,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"FutarchyActions".to_string(),
+            @futarchy_actions,
+            1,
+        );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyGovernanceActions".to_string(),
             @0xb1054e9a9b316e105c908be2cddb7f64681a63f0ae80e9e5922bf461589c4bc7,
-            1
+            1,
         );
-        package_registry::add_for_testing(&mut registry, b"FutarchyOracleActions".to_string(), @futarchy_oracle, 1);
+        package_registry::add_for_testing(
+            &mut registry,
+            b"FutarchyOracleActions".to_string(),
+            @futarchy_oracle,
+            1,
+        );
 
         ts::return_to_sender(&scenario, admin_cap);
         ts::return_shared(registry);
@@ -67,7 +92,7 @@ fun setup_test(sender: address): Scenario {
             &mut factory,
             &owner_cap,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         clock::destroy_for_testing(clock);
@@ -138,7 +163,9 @@ fun test_zero_contribution_rejected() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -148,11 +175,13 @@ fun test_zero_contribution_rejected() {
     // Try to contribute 0 (should fail)
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
-        let contribution = create_stable_coin(0, &mut scenario);  // Zero!
+        let contribution = create_stable_coin(0, &mut scenario); // Zero!
         let crank_fee = create_payment(factory::launchpad_bid_fee(&factory), &mut scenario);
 
         launchpad::contribute(
@@ -206,7 +235,7 @@ fun test_contribution_before_start_time() {
             10_000_000_000,
             option::none(),
             allowed_caps,
-            option::some(86400000),  // 1 day delay
+            option::some(86400000), // 1 day delay
             false,
             b"Delayed Start Test".to_string(),
             vector::empty<String>(),
@@ -224,7 +253,9 @@ fun test_contribution_before_start_time() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -234,7 +265,9 @@ fun test_contribution_before_start_time() {
     // Try to contribute immediately (should fail - not started yet)
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
@@ -309,7 +342,9 @@ fun test_contribution_after_deadline() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -319,7 +354,9 @@ fun test_contribution_after_deadline() {
     // Try to contribute after deadline
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
@@ -398,7 +435,9 @@ fun test_settlement_before_deadline() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -408,14 +447,24 @@ fun test_settlement_before_deadline() {
     // Contribute
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
         let contribution = create_stable_coin(15_000_000_000, &mut scenario);
         let crank_fee = create_payment(factory::launchpad_bid_fee(&factory), &mut scenario);
 
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
 
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
@@ -425,7 +474,9 @@ fun test_settlement_before_deadline() {
     // Try to settle before deadline (should fail)
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
         launchpad::settle_raise(&mut raise, &clock, ts::ctx(&mut scenario));
@@ -487,7 +538,9 @@ fun test_double_settlement_rejected() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -496,14 +549,24 @@ fun test_double_settlement_rejected() {
 
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
         let contribution = create_stable_coin(15_000_000_000, &mut scenario);
         let crank_fee = create_payment(factory::launchpad_bid_fee(&factory), &mut scenario);
 
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
 
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
@@ -513,7 +576,9 @@ fun test_double_settlement_rejected() {
     // First settlement (succeeds)
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
         let deadline = launchpad::deadline(&raise);
@@ -528,7 +593,9 @@ fun test_double_settlement_rejected() {
     // Second settlement (should fail)
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
         let deadline = launchpad::deadline(&raise);
@@ -592,7 +659,9 @@ fun test_contribution_of_view_function() {
     // Lock intents before accepting contributions
     ts::next_tx(&mut scenario, CREATOR);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
         ts::return_to_sender(&scenario, creator_cap);
@@ -602,7 +671,9 @@ fun test_contribution_of_view_function() {
     // Check contribution_of before contribution (should be 0)
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         assert!(launchpad::contribution_of(&raise, CONTRIBUTOR1) == 0, 0);
         ts::return_shared(raise);
     };
@@ -610,14 +681,24 @@ fun test_contribution_of_view_function() {
     // Contribute
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
         let contribution = create_stable_coin(12_345_000_000, &mut scenario);
         let crank_fee = create_payment(factory::launchpad_bid_fee(&factory), &mut scenario);
 
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
 
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
@@ -627,7 +708,9 @@ fun test_contribution_of_view_function() {
     // Check contribution_of after contribution
     ts::next_tx(&mut scenario, CONTRIBUTOR1);
     {
-        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(&scenario);
+        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
         assert!(launchpad::contribution_of(&raise, CONTRIBUTOR1) == 12_345_000_000, 1);
         assert!(launchpad::total_raised(&raise) == 12_345_000_000, 2);
         ts::return_shared(raise);
@@ -651,8 +734,12 @@ fun test_nonzero_supply_rejected() {
         let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
-        let mut treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR_2>>(&scenario);
-        let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR_2>>(&scenario);
+        let mut treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR_2>>(
+            &scenario,
+        );
+        let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR_2>>(
+            &scenario,
+        );
 
         // Mint some coins to make supply > 0
         let preminted = coin::mint(&mut treasury_cap, 1000, ts::ctx(&mut scenario));

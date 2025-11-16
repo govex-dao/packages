@@ -3,28 +3,26 @@
 
 module futarchy_markets_core::proposal;
 
-use futarchy_markets_primitives::conditional_amm::{Self, LiquidityPool};
-use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
+use account_protocol::account;
+use account_protocol::intents::ActionSpec;
+use futarchy_core::dao_config::{Self, ConditionalCoinConfig};
+use futarchy_core::futarchy_config;
 use futarchy_markets_core::liquidity_initialize;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
+use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
+use futarchy_markets_primitives::conditional_amm::{Self, LiquidityPool};
 use futarchy_markets_primitives::market_state;
-// Removed: use futarchy_one_shot_utils::coin_validation - module was deleted, validation inlined
+use futarchy_types::signed::{Self as signed, SignedU128};
 use std::ascii::String as AsciiString;
-use std::string::{Self, String};
-use std::type_name;
 use std::option;
-use std::type_name::TypeName;
+use std::string::{Self, String};
+use std::type_name::{Self, TypeName};
 use std::vector;
+use sui::bag::{Self, Bag};
 use sui::balance::{Self as balance, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 use sui::event;
-use sui::bag::{Self, Bag};
-use account_protocol::account;
-use account_protocol::intents::ActionSpec;
-use futarchy_types::signed::{Self as signed, SignedU128};
-use futarchy_core::dao_config::{Self, ConditionalCoinConfig};
-use futarchy_core::futarchy_config;
 
 // === Introduction ===
 // This defines the core proposal logic and details
@@ -57,8 +55,8 @@ const EInvalidStableType: u64 = 24;
 // === Constants ===
 
 const STATE_PREMARKET: u8 = 0; // Proposal exists, outcomes can be added/mutated. No market yet.
-const STATE_REVIEW: u8 = 1;    // Market is initialized and locked for review. Not yet trading.
-const STATE_TRADING: u8 = 2;   // Market is live and trading.
+const STATE_REVIEW: u8 = 1; // Market is initialized and locked for review. Not yet trading.
+const STATE_TRADING: u8 = 2; // Market is live and trading.
 const STATE_FINALIZED: u8 = 3; // Market has resolved.
 
 // Outcome constants for TWAP calculation
@@ -71,9 +69,9 @@ const OUTCOME_ACCEPTED: u64 = 1;
 
 /// Key for storing conditional coin caps in Bag
 /// Each outcome has 2 coins: asset-conditional and stable-conditional
-public struct ConditionalCoinKey has store, copy, drop {
+public struct ConditionalCoinKey has copy, drop, store {
     outcome_index: u64,
-    is_asset: bool,  // true for asset, false for stable
+    is_asset: bool, // true for asset, false for stable
 }
 
 /// Configuration for proposal timing and periods
@@ -107,8 +105,8 @@ public struct OutcomeData has store {
     outcome_count: u64,
     outcome_messages: vector<String>,
     outcome_creators: vector<address>,
-    outcome_creator_fees: vector<u64>,  // Track fees paid by each outcome creator (for refunds)
-    intent_specs: vector<Option<vector<ActionSpec>>>,  // Direct use of protocol ActionSpec
+    outcome_creator_fees: vector<u64>, // Track fees paid by each outcome creator (for refunds)
+    intent_specs: vector<Option<vector<ActionSpec>>>, // Direct use of protocol ActionSpec
     actions_per_outcome: vector<u64>,
     winning_outcome: Option<u64>,
 }
@@ -128,33 +126,27 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     sponsored_by: Option<address>,
     /// Track the threshold reduction applied by sponsorship
     sponsor_threshold_reduction: SignedU128,
-
     // Market-related fields (pools now live in MarketState)
     escrow_id: Option<ID>,
     market_state_id: Option<ID>,
-
     // Conditional coin capabilities (stored dynamically per outcome)
-    conditional_treasury_caps: Bag,  // Stores TreasuryCap<ConditionalCoinType> per outcome
-    conditional_metadata: Bag,        // Stores CoinMetadata<ConditionalCoinType> per outcome
-
+    conditional_treasury_caps: Bag, // Stores TreasuryCap<ConditionalCoinType> per outcome
+    conditional_metadata: Bag, // Stores CoinMetadata<ConditionalCoinType> per outcome
     // Proposal content
     title: String,
     introduction_details: String,
     details: vector<String>,
     metadata: String,
-
     // Grouped configurations
     timing: ProposalTiming,
     liquidity_config: LiquidityConfig,
     twap_config: TwapConfig,
     outcome_data: OutcomeData,
-    
     // Fee-related fields
     amm_total_fee_bps: u64,
     conditional_liquidity_ratio_percent: u64, // Ratio of spot liquidity to split to conditional markets (base 100, not bps!)
     fee_escrow: Balance<StableType>, // DAO-level fees held for refund to losing outcome creators
     treasury_address: address,
-
     // Governance parameters (read from DAO config during creation)
     max_outcomes: u64, // Maximum number of outcomes allowed (prevents governance bypass when adding outcomes)
 }
@@ -266,7 +258,9 @@ public fun new_premarket<AssetType, StableType>(
     let min_asset_liquidity = futarchy_config::min_asset_amount(futarchy_cfg);
     let min_stable_liquidity = futarchy_config::min_stable_amount(futarchy_cfg);
     let amm_total_fee_bps = futarchy_config::conditional_amm_fee_bps(futarchy_cfg);
-    let conditional_liquidity_ratio_percent = futarchy_config::conditional_liquidity_ratio_percent(futarchy_cfg);
+    let conditional_liquidity_ratio_percent = futarchy_config::conditional_liquidity_ratio_percent(
+        futarchy_cfg,
+    );
 
     // TWAP parameters
     let twap_start_delay = futarchy_config::amm_twap_start_delay(futarchy_cfg);
@@ -279,7 +273,7 @@ public fun new_premarket<AssetType, StableType>(
 
     // Validate outcome count
     assert!(outcome_count <= max_outcomes, ETooManyOutcomes);
-    
+
     let proposal = Proposal<AssetType, StableType> {
         id,
         queued_proposal_id: proposal_id_from_queue,
@@ -323,7 +317,7 @@ public fun new_premarket<AssetType, StableType>(
             outcome_count,
             outcome_messages,
             outcome_creators: vector::tabulate!(outcome_count, |_| proposer),
-            outcome_creator_fees: vector::tabulate!(outcome_count, |_| 0u64),  // Initialize with 0 fees
+            outcome_creator_fees: vector::tabulate!(outcome_count, |_| 0u64), // Initialize with 0 fees
             intent_specs: vector::tabulate!(outcome_count, |_| option::none<vector<ActionSpec>>()),
             actions_per_outcome: vector::tabulate!(outcome_count, |_| 0),
             winning_outcome: option::none(),
@@ -358,7 +352,7 @@ public fun create_escrow_for_market<AssetType, StableType>(
         proposal.outcome_data.outcome_count,
         proposal.outcome_data.outcome_messages,
         clock,
-        ctx
+        ctx,
     );
 
     // Create and return escrow (not yet shared)
@@ -367,7 +361,12 @@ public fun create_escrow_for_market<AssetType, StableType>(
 
 /// Step 2: Extract conditional coin caps from proposal and register with escrow
 /// Must be called once per outcome (PTB calls this N times with different type parameters)
-public fun register_outcome_caps_with_escrow<AssetType, StableType, AssetConditionalCoin, StableConditionalCoin>(
+public fun register_outcome_caps_with_escrow<
+    AssetType,
+    StableType,
+    AssetConditionalCoin,
+    StableConditionalCoin,
+>(
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
@@ -378,10 +377,14 @@ public fun register_outcome_caps_with_escrow<AssetType, StableType, AssetConditi
     let asset_key = ConditionalCoinKey { outcome_index, is_asset: true };
     let stable_key = ConditionalCoinKey { outcome_index, is_asset: false };
 
-    let asset_cap: TreasuryCap<AssetConditionalCoin> =
-        bag::remove(&mut proposal.conditional_treasury_caps, asset_key);
-    let stable_cap: TreasuryCap<StableConditionalCoin> =
-        bag::remove(&mut proposal.conditional_treasury_caps, stable_key);
+    let asset_cap: TreasuryCap<AssetConditionalCoin> = bag::remove(
+        &mut proposal.conditional_treasury_caps,
+        asset_key,
+    );
+    let stable_cap: TreasuryCap<StableConditionalCoin> = bag::remove(
+        &mut proposal.conditional_treasury_caps,
+        stable_key,
+    );
 
     // Register with escrow
     coin_escrow::register_conditional_caps(escrow, outcome_index, asset_cap, stable_cap);
@@ -514,7 +517,7 @@ public fun add_outcome<AssetType, StableType>(
     // NOTE: asset_amounts and stable_amounts are NOT stored here
     // They are calculated during create_conditional_amm_pools() from spot pool reserves
     proposal.outcome_data.outcome_creators.push_back(creator);
-    proposal.outcome_data.outcome_creator_fees.push_back(fee_paid);  // Track the fee paid
+    proposal.outcome_data.outcome_creator_fees.push_back(fee_paid); // Track the fee paid
 
     // Initialize action count for new outcome
     proposal.outcome_data.actions_per_outcome.push_back(0);
@@ -689,7 +692,7 @@ public fun calculate_current_winner<AssetType, StableType>(
     let twaps = get_twaps_for_proposal(proposal, escrow, clock);
     let outcome_count = twaps.length();
 
-    assert!(outcome_count >= 2, EInvalidOutcome);  // Need at least 2 outcomes
+    assert!(outcome_count >= 2, EInvalidOutcome); // Need at least 2 outcomes
 
     // Find highest and second-highest TWAPs
     let mut winner_idx = 0u64;
@@ -786,9 +789,7 @@ public fun state<AssetType, StableType>(proposal: &Proposal<AssetType, StableTyp
 }
 
 /// Check if proposal is currently live (trading active)
-public fun is_live<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
-): bool {
+public fun is_live<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): bool {
     proposal.state == STATE_TRADING
 }
 
@@ -827,7 +828,9 @@ public fun market_state_id<AssetType, StableType>(proposal: &Proposal<AssetType,
     *proposal.market_state_id.borrow()
 }
 
-public fun get_market_initialized_at<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): u64 {
+public fun get_market_initialized_at<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): u64 {
     assert!(proposal.timing.market_initialized_at.is_some(), EInvalidState);
     *proposal.timing.market_initialized_at.borrow()
 }
@@ -837,7 +840,9 @@ public fun outcome_count<AssetType, StableType>(proposal: &Proposal<AssetType, S
 }
 
 /// Alias for outcome_count for better readability
-public fun get_num_outcomes<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): u64 {
+public fun get_num_outcomes<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): u64 {
     proposal.outcome_data.outcome_count
 }
 
@@ -921,7 +926,6 @@ public fun get_dao_id<AssetType, StableType>(proposal: &Proposal<AssetType, Stab
     proposal.dao_id
 }
 
-
 public fun proposal_id<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): ID {
     proposal.id.to_inner()
 }
@@ -964,15 +968,21 @@ public fun get_twap_threshold<AssetType, StableType>(
     proposal.twap_config.twap_threshold
 }
 
-public fun get_twap_start_delay<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): u64 {
+public fun get_twap_start_delay<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): u64 {
     proposal.timing.twap_start_delay
 }
 
-public fun get_twap_initial_observation<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): u128 {
+public fun get_twap_initial_observation<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): u128 {
     proposal.twap_config.twap_initial_observation
 }
 
-public fun get_twap_step_max<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): u64 {
+public fun get_twap_step_max<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): u64 {
     proposal.twap_config.twap_step_max
 }
 
@@ -982,9 +992,10 @@ public fun get_amm_total_fee_bps<AssetType, StableType>(
     proposal.amm_total_fee_bps
 }
 
-
 /// Returns the parameters needed to initialize the market after the premarket phase.
-public fun get_market_init_params<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): (u64, &vector<String>, &vector<u64>, &vector<u64>) {
+public fun get_market_init_params<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): (u64, &vector<String>, &vector<u64>, &vector<u64>) {
     (
         proposal.outcome_data.outcome_count,
         &proposal.outcome_data.outcome_messages,
@@ -1013,7 +1024,7 @@ public fun advance_state<AssetType, StableType>(
         // Fallback to created_at if market not initialized (shouldn't happen in normal flow)
         proposal.timing.created_at
     };
-    
+
     // Check if we should transition from REVIEW to TRADING
     if (proposal.state == STATE_REVIEW) {
         let review_end = base_timestamp + proposal.timing.review_period_ms;
@@ -1042,10 +1053,11 @@ public fun advance_state<AssetType, StableType>(
             return true
         };
     };
-    
+
     // Check if we should transition from TRADING to ended
     if (proposal.state == STATE_TRADING) {
-        let trading_end = base_timestamp + proposal.timing.review_period_ms + proposal.timing.trading_period_ms;
+        let trading_end =
+            base_timestamp + proposal.timing.review_period_ms + proposal.timing.trading_period_ms;
         if (current_time >= trading_end) {
             // End trading in the market state
             let market = coin_escrow::get_market_state_mut(escrow);
@@ -1057,7 +1069,7 @@ public fun advance_state<AssetType, StableType>(
             return true
         };
     };
-    
+
     false
 }
 
@@ -1099,7 +1111,7 @@ public fun finalize_proposal<AssetType, StableType>(
 ) {
     // Ensure we're in a state that can be finalized
     assert!(proposal.state == STATE_TRADING || proposal.state == STATE_REVIEW, EInvalidState);
-    
+
     // If still in trading, end trading first
     if (proposal.state == STATE_TRADING) {
         let market = coin_escrow::get_market_state_mut(escrow);
@@ -1107,7 +1119,7 @@ public fun finalize_proposal<AssetType, StableType>(
             market_state::end_trading(market, clock);
         };
     };
-    
+
     // Critical fix: Compute the winning outcome on-chain from TWAP prices
     // Get TWAP prices from all pools
     let twap_prices = get_twaps_for_proposal(proposal, escrow, clock);
@@ -1129,26 +1141,28 @@ public fun finalize_proposal<AssetType, StableType>(
         // This should be revisited based on your specific requirements
         0
     };
-    
+
     // Set the winning outcome
     proposal.outcome_data.winning_outcome = option::some(winning_outcome);
-    
+
     // Update state to finalized
     proposal.state = STATE_FINALIZED;
-    
+
     // Finalize the market state
     let market = coin_escrow::get_market_state_mut(escrow);
     market_state::finalize(market, winning_outcome, clock);
 }
 
-public fun get_outcome_creators<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): &vector<address> {
+public fun get_outcome_creators<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): &vector<address> {
     &proposal.outcome_data.outcome_creators
 }
 
 /// Get the address of the creator for a specific outcome
 public fun get_outcome_creator<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
-    outcome_index: u64
+    outcome_index: u64,
 ): address {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
     *vector::borrow(&proposal.outcome_data.outcome_creators, outcome_index)
@@ -1157,7 +1171,7 @@ public fun get_outcome_creator<AssetType, StableType>(
 /// Get the fee paid by the creator for a specific outcome
 public fun get_outcome_creator_fee<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
-    outcome_index: u64
+    outcome_index: u64,
 ): u64 {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
     *vector::borrow(&proposal.outcome_data.outcome_creator_fees, outcome_index)
@@ -1165,7 +1179,7 @@ public fun get_outcome_creator_fee<AssetType, StableType>(
 
 /// Get all outcome creator fees
 public fun get_outcome_creator_fees<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
+    proposal: &Proposal<AssetType, StableType>,
 ): &vector<u64> {
     &proposal.outcome_data.outcome_creator_fees
 }
@@ -1173,7 +1187,7 @@ public fun get_outcome_creator_fees<AssetType, StableType>(
 /// Get proposal start time for early resolve calculations
 /// Returns market_initialized_at if available, otherwise created_at
 public(package) fun get_start_time_for_early_resolve<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
+    proposal: &Proposal<AssetType, StableType>,
 ): u64 {
     if (proposal.timing.market_initialized_at.is_some()) {
         *proposal.timing.market_initialized_at.borrow()
@@ -1182,11 +1196,15 @@ public(package) fun get_start_time_for_early_resolve<AssetType, StableType>(
     }
 }
 
-public fun get_liquidity_provider<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): Option<address> {
+public fun get_liquidity_provider<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): Option<address> {
     proposal.liquidity_provider
 }
 
-public fun get_proposer<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): address {
+public fun get_proposer<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): address {
     proposal.proposer
 }
 
@@ -1196,7 +1214,9 @@ public fun get_used_quota<AssetType, StableType>(proposal: &Proposal<AssetType, 
 }
 
 /// Check if this proposal's liquidity is in withdraw-only mode
-public fun is_withdraw_only<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): bool {
+public fun is_withdraw_only<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): bool {
     proposal.withdraw_only_mode
 }
 
@@ -1213,23 +1233,24 @@ public entry fun set_withdraw_only_mode<AssetType, StableType>(
     proposal.withdraw_only_mode = withdraw_only;
 }
 
-public fun get_outcome_messages<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): &vector<String> {
+public fun get_outcome_messages<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): &vector<String> {
     &proposal.outcome_data.outcome_messages
 }
 
 /// Get the intent spec for a specific outcome
 public fun get_intent_spec_for_outcome<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
-    outcome_index: u64
+    outcome_index: u64,
 ): &Option<vector<ActionSpec>> {
     vector::borrow(&proposal.outcome_data.intent_specs, outcome_index)
 }
 
-
 /// Take (move out) the intent spec for a specific outcome and clear the slot.
 public fun take_intent_spec_for_outcome<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    outcome_index: u64
+    outcome_index: u64,
 ): Option<vector<ActionSpec>> {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
     let slot = vector::borrow_mut(&mut proposal.outcome_data.intent_specs, outcome_index);
@@ -1243,14 +1264,16 @@ public fun take_intent_spec_for_outcome<AssetType, StableType>(
 /// This witness can only be created once per (proposal, outcome) pair.
 public fun make_cancel_witness<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    outcome_index: u64
+    outcome_index: u64,
 ): option::Option<CancelWitness> {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
     let addr = object::uid_to_address(&proposal.id);
     let mut spec_opt = take_intent_spec_for_outcome(proposal, outcome_index);
     if (option::is_some(&spec_opt)) {
-        let action_count_slot =
-            vector::borrow_mut(&mut proposal.outcome_data.actions_per_outcome, outcome_index);
+        let action_count_slot = vector::borrow_mut(
+            &mut proposal.outcome_data.actions_per_outcome,
+            outcome_index,
+        );
         *action_count_slot = 0;
         option::destroy_some(spec_opt);
         option::some(CancelWitness {
@@ -1279,7 +1302,10 @@ public fun set_intent_spec_for_outcome<AssetType, StableType>(
     assert!(outcome_index > 0, ECannotSetActionsForRejectOutcome);
 
     let spec_slot = vector::borrow_mut(&mut proposal.outcome_data.intent_specs, outcome_index);
-    let action_count = vector::borrow_mut(&mut proposal.outcome_data.actions_per_outcome, outcome_index);
+    let action_count = vector::borrow_mut(
+        &mut proposal.outcome_data.actions_per_outcome,
+        outcome_index,
+    );
 
     // Get action count from the spec
     let num_actions = vector::length(&intent_spec);
@@ -1292,11 +1318,10 @@ public fun set_intent_spec_for_outcome<AssetType, StableType>(
     *action_count = num_actions;
 }
 
-
 /// Check if an outcome has an intent spec
 public fun has_intent_spec<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
-    outcome_index: u64
+    outcome_index: u64,
 ): bool {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
     option::is_some(vector::borrow(&proposal.outcome_data.intent_specs, outcome_index))
@@ -1305,7 +1330,7 @@ public fun has_intent_spec<AssetType, StableType>(
 /// Get the number of actions for a specific outcome
 public fun get_actions_for_outcome<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
-    outcome_index: u64
+    outcome_index: u64,
 ): u64 {
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
     *vector::borrow(&proposal.outcome_data.actions_per_outcome, outcome_index)
@@ -1319,7 +1344,10 @@ public fun clear_intent_spec_for_outcome<AssetType, StableType>(
     assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
 
     let spec_slot = vector::borrow_mut(&mut proposal.outcome_data.intent_specs, outcome_index);
-    let action_count = vector::borrow_mut(&mut proposal.outcome_data.actions_per_outcome, outcome_index);
+    let action_count = vector::borrow_mut(
+        &mut proposal.outcome_data.actions_per_outcome,
+        outcome_index,
+    );
 
     if (option::is_some(spec_slot)) {
         // Clear the intent spec
@@ -1329,7 +1357,6 @@ public fun clear_intent_spec_for_outcome<AssetType, StableType>(
         *action_count = 0;
     };
 }
-
 
 /// Emits the ProposalOutcomeMutated event
 public fun emit_outcome_mutated(
@@ -1388,7 +1415,7 @@ public fun new_for_testing<AssetType, StableType>(
     winning_outcome: Option<u64>,
     treasury_address: address,
     intent_specs: vector<Option<vector<ActionSpec>>>,
-    ctx: &mut TxContext
+    ctx: &mut TxContext,
 ): Proposal<AssetType, StableType> {
     Proposal {
         id: object::new(ctx),
@@ -1433,13 +1460,13 @@ public fun new_for_testing<AssetType, StableType>(
             outcome_count: outcome_count as u64,
             outcome_messages,
             outcome_creators,
-            outcome_creator_fees: vector::tabulate!(outcome_count as u64, |_| 0u64),  // Initialize with 0 fees
+            outcome_creator_fees: vector::tabulate!(outcome_count as u64, |_| 0u64), // Initialize with 0 fees
             intent_specs,
             actions_per_outcome: vector::tabulate!(outcome_count as u64, |_| 0),
             winning_outcome,
         },
         amm_total_fee_bps,
-        conditional_liquidity_ratio_percent: 50,  // 50% (base 100, not bps!)
+        conditional_liquidity_ratio_percent: 50, // 50% (base 100, not bps!)
         fee_escrow: balance::zero(), // No fees for test proposals
         treasury_address,
         max_outcomes,
@@ -1450,7 +1477,7 @@ public fun new_for_testing<AssetType, StableType>(
 /// Set the state of a proposal for testing
 public fun set_state_for_testing<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    new_state: u8
+    new_state: u8,
 ) {
     proposal.state = new_state;
 }
@@ -1459,7 +1486,7 @@ public fun set_state_for_testing<AssetType, StableType>(
 /// Set the escrow_id of a proposal for testing
 public fun set_escrow_id_for_testing<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    escrow_id: ID
+    escrow_id: ID,
 ) {
     proposal.escrow_id = option::some(escrow_id);
 }
@@ -1468,7 +1495,7 @@ public fun set_escrow_id_for_testing<AssetType, StableType>(
 /// Set the market_state_id of a proposal for testing
 public fun set_market_state_id_for_testing<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    market_state_id: ID
+    market_state_id: ID,
 ) {
     proposal.market_state_id = option::some(market_state_id);
 }
@@ -1488,7 +1515,6 @@ public fun test_get_market_state<AssetType, StableType>(
 ): &market_state::MarketState {
     escrow.get_market_state()
 }
-
 
 // === Additional View Functions ===
 
@@ -1510,11 +1536,11 @@ public fun id_address<AssetType, StableType>(proposal: &Proposal<AssetType, Stab
 public fun add_conditional_coin<AssetType, StableType, ConditionalCoinType>(
     proposal: &mut Proposal<AssetType, StableType>,
     outcome_index: u64,
-    is_asset: bool,  // true for asset-conditional, false for stable-conditional
+    is_asset: bool, // true for asset-conditional, false for stable-conditional
     mut treasury_cap: TreasuryCap<ConditionalCoinType>,
     mut metadata: CoinMetadata<ConditionalCoinType>,
     coin_config: &ConditionalCoinConfig,
-    asset_type_name: &String,  // Name of AssetType (e.g., "SUI")
+    asset_type_name: &String, // Name of AssetType (e.g., "SUI")
     stable_type_name: &String, // Name of StableType (e.g., "USDC")
 ) {
     assert!(proposal.state == STATE_PREMARKET, EInvalidState);
@@ -1544,11 +1570,7 @@ public fun add_conditional_coin<AssetType, StableType, ConditionalCoinType>(
 
 /// Entry helper that derives the DAO's ConditionalCoinConfig from the account object.
 /// Removes the need for clients to manually locate the Futarchy config dynamic field.
-public entry fun add_conditional_coin_via_account<
-    AssetType,
-    StableType,
-    ConditionalCoinType,
->(
+public entry fun add_conditional_coin_via_account<AssetType, StableType, ConditionalCoinType>(
     proposal: &mut Proposal<AssetType, StableType>,
     outcome_index: u64,
     is_asset: bool,
@@ -1655,16 +1677,14 @@ fun u64_to_ascii(mut num: u64): AsciiString {
 /// Get mutable reference to proposal's UID for dynamic field operations
 /// Public to allow other packages (e.g., futarchy_governance) to use dynamic fields
 public fun borrow_uid_mut<AssetType, StableType>(
-    proposal: &mut Proposal<AssetType, StableType>
+    proposal: &mut Proposal<AssetType, StableType>,
 ): &mut UID {
     &mut proposal.id
 }
 
 /// Get immutable reference to proposal's UID for dynamic field reads
 /// Public to allow other packages (e.g., futarchy_governance) to use dynamic fields
-public fun borrow_uid<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
-): &UID {
+public fun borrow_uid<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): &UID {
     &proposal.id
 }
 
@@ -1672,22 +1692,20 @@ public fun borrow_uid<AssetType, StableType>(
 
 /// Get the sponsor address (if any)
 public fun get_sponsored_by<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
+    proposal: &Proposal<AssetType, StableType>,
 ): Option<address> {
     proposal.sponsored_by
 }
 
 /// Get the threshold reduction applied by sponsorship
 public fun get_sponsor_threshold_reduction<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
+    proposal: &Proposal<AssetType, StableType>,
 ): SignedU128 {
     proposal.sponsor_threshold_reduction
 }
 
 /// Check if proposal is sponsored
-public fun is_sponsored<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
-): bool {
+public fun is_sponsored<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): bool {
     proposal.sponsored_by.is_some()
 }
 
@@ -1723,7 +1741,7 @@ public fun clear_sponsorship<AssetType, StableType>(
 /// The reduction is applied as: effective = base - reduction
 /// If the reduction would make the threshold excessively negative, cap at a reasonable minimum
 public fun get_effective_twap_threshold<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>
+    proposal: &Proposal<AssetType, StableType>,
 ): SignedU128 {
     let base_threshold = proposal.twap_config.twap_threshold;
 
@@ -1789,33 +1807,36 @@ public fun create_test_proposal<AssetType, StableType>(
 
     let outcome_creators = vector::tabulate!(outcome_count as u64, |_| @0xAAA);
 
-    let intent_specs = vector::tabulate!(outcome_count as u64, |_| option::none<vector<ActionSpec>>());
+    let intent_specs = vector::tabulate!(
+        outcome_count as u64,
+        |_| option::none<vector<ActionSpec>>(),
+    );
 
     let mut proposal = new_for_testing<AssetType, StableType>(
-        @0x1,                       // dao_id
-        @0x2,                       // proposer
-        option::some(@0x3),         // liquidity_provider
-        string::utf8(b"Test"),      // title
-        string::utf8(b"Introduction Details"),  // introduction_details
-        string::utf8(b"Metadata"),  // metadata
+        @0x1, // dao_id
+        @0x2, // proposer
+        option::some(@0x3), // liquidity_provider
+        string::utf8(b"Test"), // title
+        string::utf8(b"Introduction Details"), // introduction_details
+        string::utf8(b"Metadata"), // metadata
         outcome_messages,
-        outcome_messages,           // initial_outcome_details (reuse outcome_messages)
+        outcome_messages, // initial_outcome_details (reuse outcome_messages)
         outcome_creators,
         outcome_count,
-        60000,                      // review_period_ms (1 min)
-        120000,                     // trading_period_ms (2 min)
-        1000,                       // min_asset_liquidity
-        1000,                       // min_stable_liquidity
-        30000,                      // twap_start_delay
-        1000000000000000000u128,    // twap_initial_observation
-        10000,                      // twap_step_max
-        signed::from_u128(500000000000000000u128),      // twap_threshold
-        30,                         // amm_total_fee_bps (0.3%)
-        10,                         // max_outcomes
+        60000, // review_period_ms (1 min)
+        120000, // trading_period_ms (2 min)
+        1000, // min_asset_liquidity
+        1000, // min_stable_liquidity
+        30000, // twap_start_delay
+        1000000000000000000u128, // twap_initial_observation
+        10000, // twap_step_max
+        signed::from_u128(500000000000000000u128), // twap_threshold
+        30, // amm_total_fee_bps (0.3%)
+        10, // max_outcomes
         option::some(winning_outcome),
-        @0x4,                       // treasury_address
+        @0x4, // treasury_address
         intent_specs,
-        ctx
+        ctx,
     );
 
     if (is_finalized) {

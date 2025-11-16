@@ -5,9 +5,9 @@
 module futarchy_actions::liquidity_actions_tests;
 
 use futarchy_actions::liquidity_actions;
-use sui::test_utils::destroy;
 use sui::object;
 use sui::test_scenario::{Self as ts, Scenario};
+use sui::test_utils::destroy;
 
 // === Constants ===
 
@@ -46,11 +46,11 @@ fun token_id(): object::ID {
 /// Test creating a valid pool action
 fun test_new_create_pool_action() {
     let action = liquidity_actions::new_create_pool_action<TestAsset, TestStable>(
-        1000u64,       // initial_asset_amount
-        2000u64,       // initial_stable_amount
-        30u64,         // fee_bps (0.3%)
-        1000u64,       // minimum_liquidity
-        50u64,         // conditional_liquidity_ratio_percent
+        1000u64, // initial_asset_amount
+        2000u64, // initial_stable_amount
+        30u64, // fee_bps (0.3%)
+        1000u64, // minimum_liquidity
+        50u64, // conditional_liquidity_ratio_percent
     );
 
     // Verify getters
@@ -67,11 +67,11 @@ fun test_new_create_pool_action() {
 /// Test fails with zero asset amount
 fun test_new_create_pool_zero_asset_fails() {
     let action = liquidity_actions::new_create_pool_action<TestAsset, TestStable>(
-        0u64,          // zero asset amount
+        0u64, // zero asset amount
         2000u64,
         30u64,
         1000u64,
-        50u64,         // conditional_liquidity_ratio_percent
+        50u64, // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -82,10 +82,10 @@ fun test_new_create_pool_zero_asset_fails() {
 fun test_new_create_pool_zero_stable_fails() {
     let action = liquidity_actions::new_create_pool_action<TestAsset, TestStable>(
         1000u64,
-        0u64,          // zero stable amount
+        0u64, // zero stable amount
         30u64,
         1000u64,
-        50u64,         // conditional_liquidity_ratio_percent
+        50u64, // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -97,9 +97,9 @@ fun test_new_create_pool_invalid_fee_fails() {
     let action = liquidity_actions::new_create_pool_action<TestAsset, TestStable>(
         1000u64,
         2000u64,
-        10001u64,      // > 100%
+        10001u64, // > 100%
         1000u64,
-        50u64,         // conditional_liquidity_ratio_percent
+        50u64, // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -112,8 +112,8 @@ fun test_new_create_pool_zero_min_liquidity_fails() {
         1000u64,
         2000u64,
         30u64,
-        0u64,          // zero minimum_liquidity
-        50u64,         // conditional_liquidity_ratio_percent
+        0u64, // zero minimum_liquidity
+        50u64, // conditional_liquidity_ratio_percent
     );
     destroy(action);
 }
@@ -122,11 +122,11 @@ fun test_new_create_pool_zero_min_liquidity_fails() {
 /// Test with extreme values
 fun test_new_create_pool_extreme_values() {
     let action = liquidity_actions::new_create_pool_action<TestAsset, TestStable>(
-        18446744073709551615u64,  // max u64
-        18446744073709551615u64,  // max u64
-        10000u64,                  // max fee (100%)
-        1u64,                      // min liquidity
-        50u64,                     // conditional_liquidity_ratio_percent
+        18446744073709551615u64, // max u64
+        18446744073709551615u64, // max u64
+        10000u64, // max fee (100%)
+        1u64, // min liquidity
+        50u64, // conditional_liquidity_ratio_percent
     );
 
     destroy(action);
@@ -139,8 +139,8 @@ fun test_new_create_pool_extreme_values() {
 fun test_new_update_pool_params_action() {
     let action = liquidity_actions::new_update_pool_params_action(
         pool_id(),
-        50u64,         // new_fee_bps (0.5%)
-        2000u64,       // new_minimum_liquidity
+        50u64, // new_fee_bps (0.5%)
+        2000u64, // new_minimum_liquidity
     );
 
     // Verify getters
@@ -157,7 +157,7 @@ fun test_new_update_pool_params_action() {
 fun test_new_update_pool_params_invalid_fee_fails() {
     let action = liquidity_actions::new_update_pool_params_action(
         pool_id(),
-        10001u64,      // > 100%
+        10001u64, // > 100%
         2000u64,
     );
     destroy(action);
@@ -170,7 +170,7 @@ fun test_new_update_pool_params_zero_min_liquidity_fails() {
     let action = liquidity_actions::new_update_pool_params_action(
         pool_id(),
         50u64,
-        0u64,          // zero minimum_liquidity
+        0u64, // zero minimum_liquidity
     );
     destroy(action);
 }
@@ -182,9 +182,9 @@ fun test_new_update_pool_params_zero_min_liquidity_fails() {
 fun test_new_add_liquidity_action() {
     let action = liquidity_actions::new_add_liquidity_action<TestAsset, TestStable>(
         pool_id(),
-        1000u64,       // asset_amount
-        2000u64,       // stable_amount
-        500u64,        // min_lp_out
+        1000u64, // asset_amount
+        2000u64, // stable_amount
+        500u64, // min_lp_out
     );
 
     // Verify getters
@@ -202,7 +202,7 @@ fun test_new_add_liquidity_action() {
 fun test_new_add_liquidity_zero_asset_fails() {
     let action = liquidity_actions::new_add_liquidity_action<TestAsset, TestStable>(
         pool_id(),
-        0u64,          // zero asset
+        0u64, // zero asset
         2000u64,
         500u64,
     );
@@ -216,7 +216,7 @@ fun test_new_add_liquidity_zero_stable_fails() {
     let action = liquidity_actions::new_add_liquidity_action<TestAsset, TestStable>(
         pool_id(),
         1000u64,
-        0u64,          // zero stable
+        0u64, // zero stable
         500u64,
     );
     destroy(action);
@@ -230,7 +230,7 @@ fun test_new_add_liquidity_zero_min_lp_fails() {
         pool_id(),
         1000u64,
         2000u64,
-        0u64,          // zero min_lp_out
+        0u64, // zero min_lp_out
     );
     destroy(action);
 }
@@ -260,9 +260,9 @@ fun test_new_remove_liquidity_action() {
     let action = liquidity_actions::new_remove_liquidity_action<TestAsset, TestStable>(
         pool_id(),
         token_id(),
-        1000u64,       // lp_amount
-        500u64,        // min_asset_amount
-        600u64,        // min_stable_amount
+        1000u64, // lp_amount
+        500u64, // min_asset_amount
+        600u64, // min_stable_amount
     );
 
     // Verify getters
@@ -283,7 +283,7 @@ fun test_new_remove_liquidity_zero_lp_fails() {
     let action = liquidity_actions::new_remove_liquidity_action<TestAsset, TestStable>(
         pool_id(),
         token_id(),
-        0u64,          // zero lp_amount
+        0u64, // zero lp_amount
         500u64,
         600u64,
     );
@@ -297,8 +297,8 @@ fun test_new_remove_liquidity_zero_minimums() {
         pool_id(),
         token_id(),
         1000u64,
-        0u64,          // zero min_asset (high slippage tolerance)
-        0u64,          // zero min_stable (high slippage tolerance)
+        0u64, // zero min_asset (high slippage tolerance)
+        0u64, // zero min_stable (high slippage tolerance)
     );
 
     assert!(liquidity_actions::get_min_asset_amount(&action) == 0, 0);
@@ -314,9 +314,9 @@ fun test_new_remove_liquidity_zero_minimums() {
 fun test_new_swap_action_asset_to_stable() {
     let action = liquidity_actions::new_swap_action<TestAsset, TestStable>(
         pool_id(),
-        true,          // swap_asset = true (asset → stable)
-        1000u64,       // amount_in
-        900u64,        // min_amount_out
+        true, // swap_asset = true (asset → stable)
+        1000u64, // amount_in
+        900u64, // min_amount_out
     );
 
     destroy(action);
@@ -327,9 +327,9 @@ fun test_new_swap_action_asset_to_stable() {
 fun test_new_swap_action_stable_to_asset() {
     let action = liquidity_actions::new_swap_action<TestAsset, TestStable>(
         pool_id(),
-        false,         // swap_asset = false (stable → asset)
-        2000u64,       // amount_in
-        1800u64,       // min_amount_out
+        false, // swap_asset = false (stable → asset)
+        2000u64, // amount_in
+        1800u64, // min_amount_out
     );
 
     destroy(action);
@@ -342,7 +342,7 @@ fun test_new_swap_action_zero_amount_in_fails() {
     let action = liquidity_actions::new_swap_action<TestAsset, TestStable>(
         pool_id(),
         true,
-        0u64,          // zero amount_in
+        0u64, // zero amount_in
         900u64,
     );
     destroy(action);
@@ -356,7 +356,7 @@ fun test_new_swap_action_zero_min_out_fails() {
         pool_id(),
         true,
         1000u64,
-        0u64,          // zero min_amount_out
+        0u64, // zero min_amount_out
     );
     destroy(action);
 }
@@ -380,8 +380,8 @@ fun test_new_collect_fees_action() {
 fun test_new_withdraw_fees_action_both() {
     let action = liquidity_actions::new_withdraw_fees_action<TestAsset, TestStable>(
         pool_id(),
-        100u64,        // asset_amount
-        200u64,        // stable_amount
+        100u64, // asset_amount
+        200u64, // stable_amount
     );
 
     destroy(action);
@@ -392,8 +392,8 @@ fun test_new_withdraw_fees_action_both() {
 fun test_new_withdraw_fees_action_asset_only() {
     let action = liquidity_actions::new_withdraw_fees_action<TestAsset, TestStable>(
         pool_id(),
-        100u64,        // asset_amount
-        0u64,          // no stable
+        100u64, // asset_amount
+        0u64, // no stable
     );
 
     destroy(action);
@@ -404,8 +404,8 @@ fun test_new_withdraw_fees_action_asset_only() {
 fun test_new_withdraw_fees_action_stable_only() {
     let action = liquidity_actions::new_withdraw_fees_action<TestAsset, TestStable>(
         pool_id(),
-        0u64,          // no asset
-        200u64,        // stable_amount
+        0u64, // no asset
+        200u64, // stable_amount
     );
 
     destroy(action);
@@ -417,8 +417,8 @@ fun test_new_withdraw_fees_action_stable_only() {
 fun test_new_withdraw_fees_action_both_zero_fails() {
     let action = liquidity_actions::new_withdraw_fees_action<TestAsset, TestStable>(
         pool_id(),
-        0u64,          // zero asset
-        0u64,          // zero stable
+        0u64, // zero asset
+        0u64, // zero stable
     );
     destroy(action);
 }
@@ -429,42 +429,61 @@ fun test_new_withdraw_fees_action_both_zero_fails() {
 /// Test destroy functions work correctly
 fun test_destruction_functions() {
     let create_pool = liquidity_actions::new_create_pool_action<TestAsset, TestStable>(
-        1000u64, 2000u64, 30u64, 1000u64, 50u64
+        1000u64,
+        2000u64,
+        30u64,
+        1000u64,
+        50u64,
     );
     liquidity_actions::destroy_create_pool_action(create_pool);
 
     let update_params = liquidity_actions::new_update_pool_params_action(
-        pool_id(), 50u64, 2000u64
+        pool_id(),
+        50u64,
+        2000u64,
     );
     liquidity_actions::destroy_update_pool_params_action(update_params);
 
     let add_liq = liquidity_actions::new_add_liquidity_action<TestAsset, TestStable>(
-        pool_id(), 1000u64, 2000u64, 500u64
+        pool_id(),
+        1000u64,
+        2000u64,
+        500u64,
     );
     liquidity_actions::destroy_add_liquidity_action(add_liq);
 
     let remove_liq = liquidity_actions::new_remove_liquidity_action<TestAsset, TestStable>(
-        pool_id(), token_id(), 1000u64, 500u64, 600u64
+        pool_id(),
+        token_id(),
+        1000u64,
+        500u64,
+        600u64,
     );
     liquidity_actions::destroy_remove_liquidity_action(remove_liq);
 
     let withdraw_lp = liquidity_actions::new_withdraw_lp_token_action<TestAsset, TestStable>(
-        pool_id(), token_id()
+        pool_id(),
+        token_id(),
     );
     liquidity_actions::destroy_withdraw_lp_token_action(withdraw_lp);
 
     let swap = liquidity_actions::new_swap_action<TestAsset, TestStable>(
-        pool_id(), true, 1000u64, 900u64
+        pool_id(),
+        true,
+        1000u64,
+        900u64,
     );
     liquidity_actions::destroy_swap_action(swap);
 
     let collect = liquidity_actions::new_collect_fees_action<TestAsset, TestStable>(
-        pool_id()
+        pool_id(),
     );
     liquidity_actions::destroy_collect_fees_action(collect);
 
     let withdraw = liquidity_actions::new_withdraw_fees_action<TestAsset, TestStable>(
-        pool_id(), 100u64, 200u64
+        pool_id(),
+        100u64,
+        200u64,
     );
     liquidity_actions::destroy_withdraw_fees_action(withdraw);
 }
@@ -494,9 +513,9 @@ fun test_extreme_values() {
 fun test_minimum_values() {
     let action = liquidity_actions::new_add_liquidity_action<TestAsset, TestStable>(
         pool_id(),
-        1u64,          // minimum asset
-        1u64,          // minimum stable
-        1u64,          // minimum lp
+        1u64, // minimum asset
+        1u64, // minimum stable
+        1u64, // minimum lp
     );
 
     assert!(liquidity_actions::get_asset_amount(&action) == 1, 0);

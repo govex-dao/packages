@@ -60,7 +60,7 @@ public fun calculate_iteration_vested(
     if (cliff_time_opt.is_some()) {
         let cliff = *cliff_time_opt.borrow();
         if (current_time < cliff) {
-            return 0  // Nothing vested before cliff
+            return 0 // Nothing vested before cliff
         };
     };
 
@@ -97,7 +97,7 @@ public fun calculate_iteration_vested(
         let oldest_claimable = if (completed_iterations > window_in_iterations) {
             completed_iterations - window_in_iterations
         } else {
-            0  // All iterations still within window
+            0 // All iterations still within window
         };
 
         // Only iterations from oldest_claimable to completed_iterations are vested (not forfeited)
@@ -218,4 +218,3 @@ public fun validate_iteration_parameters(
 
     true
 }
-

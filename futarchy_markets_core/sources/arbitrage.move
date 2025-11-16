@@ -172,7 +172,9 @@ public fun execute_optimal_spot_arbitrage<AssetType, StableType>(
             option::extract(&mut existing_balance_opt)
         } else {
             let market_id = futarchy_markets_primitives::market_state::market_id(market_state);
-            let outcome_count = futarchy_markets_primitives::market_state::outcome_count(market_state);
+            let outcome_count = futarchy_markets_primitives::market_state::outcome_count(
+                market_state,
+            );
             conditional_balance::new<AssetType, StableType>(market_id, (outcome_count as u8), ctx)
         };
         option::destroy_none(existing_balance_opt);
@@ -288,7 +290,8 @@ fun execute_spot_arb_stable_to_asset_direction<AssetType, StableType>(
         input_stable: stable_amt,
         output_asset: profit_asset.value(),
         output_stable: 0,
-        profit_asset: if (profit_asset.value() >= asset_amt) { profit_asset.value() - asset_amt } else { 0 },
+        profit_asset: if (profit_asset.value() >= asset_amt) { profit_asset.value() - asset_amt }
+        else { 0 },
         profit_stable: 0,
     });
 
@@ -412,7 +415,9 @@ fun execute_spot_arb_asset_to_stable_direction<AssetType, StableType>(
         output_asset: 0,
         output_stable: profit_stable.value(),
         profit_asset: 0,
-        profit_stable: if (profit_stable.value() >= stable_amt) { profit_stable.value() - stable_amt } else { 0 },
+        profit_stable: if (profit_stable.value() >= stable_amt) {
+            profit_stable.value() - stable_amt
+        } else { 0 },
     });
 
     // 9. Merge dust into existing balance OR return new balance
@@ -477,7 +482,11 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
         let market_state = coin_escrow::get_market_state(escrow);
         let pools = market_state::borrow_amm_pools(market_state);
 
-        let (arb_amount, expected_profit, is_spot_to_cond) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+        let (
+            arb_amount,
+            expected_profit,
+            is_spot_to_cond,
+        ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
             spot_pool,
             pools,
             0, // No user swap hint - we want global optimal

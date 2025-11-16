@@ -2,19 +2,19 @@
 module futarchy_markets_operations::no_arb_guard_tests;
 
 use account_protocol::intents::ActionSpec;
+use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_operations::no_arb_guard;
 use futarchy_markets_operations::swap_entry;
-use futarchy_markets_core::proposal::{Self, Proposal};
-use futarchy_types::signed;
-use std::option;
-use std::string;
-use futarchy_markets_primitives::conditional_balance;
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm::{Self, LiquidityPool};
+use futarchy_markets_primitives::conditional_balance;
 use futarchy_markets_primitives::market_state;
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
+use futarchy_types::signed;
+use std::option;
+use std::string;
 use std::vector;
 use sui::clock::{Self, Clock};
 use sui::coin;
@@ -779,7 +779,8 @@ fun test_correct_bootstrap_ratio() {
     no_arb_guard::ensure_spot_in_band(&spot_pool, conditionals);
 
     // Verify the ratio matches: conditional price should equal spot price
-    let (cond_price_stable_per_asset) = ((c0_stable as u128) * 1_000_000_000_000u128) / (c0_asset as u128);
+    let (cond_price_stable_per_asset) =
+        ((c0_stable as u128) * 1_000_000_000_000u128) / (c0_asset as u128);
     std::debug::print(&b"\nConditional pool price (should match spot):");
     std::debug::print(&cond_price_stable_per_asset);
 
@@ -889,7 +890,7 @@ fun test_swap_with_auto_arb_using_entry_function() {
         option::none<u64>(), // winning_outcome
         @0xFEE, // treasury_address
         vector::empty<option::Option<vector<ActionSpec>>>(), // intent_specs
-        ctx
+        ctx,
     );
 
     // Set proposal to STATE_TRADING (value 2)
@@ -911,9 +912,15 @@ fun test_swap_with_auto_arb_using_entry_function() {
     std::debug::print(&spot_price_before);
 
     // Conditional pool state
-    let conditionals_before = market_state::borrow_amm_pools(coin_escrow::get_market_state(&escrow));
-    let (c0_asset_before, c0_stable_before) = conditional_amm::get_reserves(&conditionals_before[0]);
-    let (c1_asset_before, c1_stable_before) = conditional_amm::get_reserves(&conditionals_before[1]);
+    let conditionals_before = market_state::borrow_amm_pools(
+        coin_escrow::get_market_state(&escrow),
+    );
+    let (c0_asset_before, c0_stable_before) = conditional_amm::get_reserves(
+        &conditionals_before[0],
+    );
+    let (c1_asset_before, c1_stable_before) = conditional_amm::get_reserves(
+        &conditionals_before[1],
+    );
     std::debug::print(&b"Cond0 reserves:");
     std::debug::print(&c0_asset_before);
     std::debug::print(&c0_stable_before);
@@ -929,7 +936,10 @@ fun test_swap_with_auto_arb_using_entry_function() {
     std::debug::print(&c1_price_before);
 
     // Calculate no-arb band
-    let (floor_before, ceiling_before) = no_arb_guard::compute_noarb_band(&spot_pool, conditionals_before);
+    let (floor_before, ceiling_before) = no_arb_guard::compute_noarb_band(
+        &spot_pool,
+        conditionals_before,
+    );
     std::debug::print(&b"No-arb floor (1e12):");
     std::debug::print(&floor_before);
     std::debug::print(&b"No-arb ceiling (1e12):");
@@ -996,7 +1006,10 @@ fun test_swap_with_auto_arb_using_entry_function() {
     std::debug::print(&c1_price_after);
 
     // Calculate no-arb band
-    let (floor_after, ceiling_after) = no_arb_guard::compute_noarb_band(&spot_pool, conditionals_after);
+    let (floor_after, ceiling_after) = no_arb_guard::compute_noarb_band(
+        &spot_pool,
+        conditionals_after,
+    );
     std::debug::print(&b"No-arb floor (1e12):");
     std::debug::print(&floor_after);
     std::debug::print(&b"No-arb ceiling (1e12):");

@@ -10,7 +10,7 @@ use futarchy_markets_primitives::conditional_balance::{Self, ConditionalMarketBa
 use futarchy_markets_primitives::market_state::{Self, MarketState};
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
-use futarchy_types::signed::{Self as signed};
+use futarchy_types::signed as signed;
 use std::option;
 use std::string;
 use sui::clock::{Self, Clock};

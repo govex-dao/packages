@@ -137,9 +137,7 @@ fun add_liquidity_to_conditional_pools(
 }
 
 #[test_only]
-fun get_conditional_price_range(
-    escrow: &TokenEscrow<TEST_COIN_A, TEST_COIN_B>
-): (u128, u128) {
+fun get_conditional_price_range(escrow: &TokenEscrow<TEST_COIN_A, TEST_COIN_B>): (u128, u128) {
     let market_state = coin_escrow::get_market_state(escrow);
     let pools = market_state::borrow_amm_pools(market_state);
 

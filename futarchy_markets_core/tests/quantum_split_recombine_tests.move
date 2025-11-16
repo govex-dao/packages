@@ -257,7 +257,10 @@ fun test_recombine_includes_protocol_fees() {
     let (protocol_fee_asset, protocol_fee_stable) = {
         let market_state = coin_escrow::get_market_state(&escrow);
         let pool = market_state::get_pool_by_outcome(market_state, 0);
-        (conditional_amm::get_protocol_fees_asset(pool), conditional_amm::get_protocol_fees_stable(pool))
+        (
+            conditional_amm::get_protocol_fees_asset(pool),
+            conditional_amm::get_protocol_fees_stable(pool),
+        )
     };
 
     let (escrow_before_asset, escrow_before_stable) = coin_escrow::get_spot_balances(&escrow);

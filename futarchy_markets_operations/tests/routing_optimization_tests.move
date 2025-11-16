@@ -89,7 +89,7 @@ fun setup_proposal_for_testing(
         2, // outcome_count
         0, // winning_outcome
         false, // is_finalized
-        ctx
+        ctx,
     );
     proposal::set_state_for_testing(&mut proposal, STATE_TRADING);
     proposal::set_escrow_id_for_testing(&mut proposal, escrow_id);
@@ -313,7 +313,8 @@ fun test_routing_prefers_full_route_when_conditionals_large() {
     std::debug::print(&cond0_stable_after);
 
     // If routing happened, conditional pools should have changed
-    let routing_occurred = (cond0_asset_after != cond0_asset_before) ||
+    let routing_occurred =
+        (cond0_asset_after != cond0_asset_before) ||
                            (cond0_stable_after != cond0_stable_before);
 
     std::debug::print(&b"Routing occurred:");

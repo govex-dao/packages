@@ -3,11 +3,15 @@ module account_actions::currency_tests;
 
 use account_actions::currency::{Self, CurrencyMint, CurrencyBurn, CurrencyDisable};
 use account_actions::version;
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
 use account_protocol::intent_interface;
 use account_protocol::intents;
+use account_protocol::package_registry::{
+    Self as package_registry,
+    PackageRegistry,
+    PackageAdminCap
+};
 use std::option;
 use sui::bcs;
 use sui::clock::{Self, Clock};
@@ -47,11 +51,28 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     let mut extensions = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
     // add core deps
-    package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountActions".to_string(),
+        @account_actions,
+        1,
+    );
 
     let deps = deps::new_for_testing(&extensions);
-    let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let account = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
     destroy(cap);
@@ -324,7 +345,7 @@ fun test_disable_permissions() {
                 0x00, // update_symbol = false
                 0x00, // update_name = false
                 0x00, // update_description = false
-                0x00  // update_icon = false
+                0x00, // update_icon = false
             ];
             intents::add_typed_action(intent, currency::currency_disable(), action_data, iw);
         },
@@ -579,7 +600,12 @@ fun test_mint_to_coin_unshared() {
     currency::do_lock_cap_unshared(&mut account, &extensions, treasury_cap);
 
     // Mint and get coin object
-    let coin = currency::do_mint_to_coin_unshared<SUI>(&mut account, &extensions, 750, scenario.ctx());
+    let coin = currency::do_mint_to_coin_unshared<SUI>(
+        &mut account,
+        &extensions,
+        750,
+        scenario.ctx(),
+    );
 
     assert!(coin.value() == 750, 0);
 

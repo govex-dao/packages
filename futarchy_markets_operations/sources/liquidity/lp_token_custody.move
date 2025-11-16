@@ -478,7 +478,10 @@ public fun has_tokens_for_pool(account: &Account, registry: &PackageRegistry, po
 }
 
 /// Get summary statistics for all LP token holdings
-public fun get_custody_summary(account: &Account, registry: &PackageRegistry): (u64, u64, vector<ID>) {
+public fun get_custody_summary(
+    account: &Account,
+    registry: &PackageRegistry,
+): (u64, u64, vector<ID>) {
     if (!has_custody(account)) {
         return (0, 0, vector::empty())
     };

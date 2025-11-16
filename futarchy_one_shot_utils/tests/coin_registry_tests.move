@@ -639,14 +639,14 @@ fun test_reject_coin_with_all_metadata() {
 #[expected_failure(abort_code = 8)] // EFeeExceedsMaximum
 fun test_deposit_fee_exceeds_maximum() {
     let mut scenario = ts::begin(@0x1);
-    
+
     // Initialize test coins
     futarchy_one_shot_utils::test_coin_b::init_for_testing(ts::ctx(&mut scenario));
     ts::next_tx(&mut scenario, @0x1);
-    
+
     let treasury_cap = ts::take_from_sender<TreasuryCap<TEST_COIN_B>>(&scenario);
     let metadata = ts::take_from_sender<CoinMetadata<TEST_COIN_B>>(&scenario);
-    
+
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));
     let mut registry = coin_registry::create_registry(ts::ctx(&mut scenario));
 
@@ -669,16 +669,16 @@ fun test_deposit_fee_exceeds_maximum() {
 #[test]
 fun test_deposit_coin_set_entry() {
     let mut scenario = ts::begin(@0x1);
-    
+
     // Initialize test coins
     futarchy_one_shot_utils::test_coin_b::init_for_testing(ts::ctx(&mut scenario));
-    
+
     // Create and share registry
     let registry = coin_registry::create_registry(ts::ctx(&mut scenario));
     coin_registry::share_registry(registry);
 
     ts::next_tx(&mut scenario, @0x1);
-    
+
     let treasury_cap = ts::take_from_sender<TreasuryCap<TEST_COIN_B>>(&scenario);
     let metadata = ts::take_from_sender<CoinMetadata<TEST_COIN_B>>(&scenario);
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));

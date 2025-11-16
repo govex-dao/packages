@@ -3,11 +3,15 @@ module account_actions::access_control_tests;
 
 use account_actions::access_control;
 use account_actions::version;
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
 use account_protocol::intent_interface;
 use account_protocol::intents;
+use account_protocol::package_registry::{
+    Self as package_registry,
+    PackageRegistry,
+    PackageAdminCap
+};
 use sui::clock::{Self, Clock};
 use sui::test_scenario::{Self as ts, Scenario};
 use sui::test_utils::destroy;
@@ -48,11 +52,28 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     let mut extensions = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
     // add core deps
-    package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountActions".to_string(),
+        @account_actions,
+        1,
+    );
 
     let deps = deps::new_for_testing(&extensions);
-    let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let account = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
     destroy(cap);
@@ -122,9 +143,19 @@ fun test_borrow_and_return_cap() {
         scenario.ctx(),
         |intent, iw| {
             let action_data = vector[];
-            intents::add_typed_action(intent, access_control::access_control_borrow(), action_data, iw);
+            intents::add_typed_action(
+                intent,
+                access_control::access_control_borrow(),
+                action_data,
+                iw,
+            );
             let action_data = vector[];
-            intents::add_typed_action(intent, access_control::access_control_return(), action_data, iw);
+            intents::add_typed_action(
+                intent,
+                access_control::access_control_return(),
+                action_data,
+                iw,
+            );
         },
     );
 
@@ -204,7 +235,12 @@ fun test_borrow_without_return_fails() {
         scenario.ctx(),
         |intent, iw| {
             let action_data = vector[];
-            intents::add_typed_action(intent, access_control::access_control_borrow(), action_data, iw);
+            intents::add_typed_action(
+                intent,
+                access_control::access_control_borrow(),
+                action_data,
+                iw,
+            );
             // Missing add_typed_action for return - should fail at execution
         },
     );
@@ -280,9 +316,19 @@ fun test_delete_borrow_action() {
         scenario.ctx(),
         |intent, iw| {
             let action_data = vector[];
-            intents::add_typed_action(intent, access_control::access_control_borrow(), action_data, iw);
+            intents::add_typed_action(
+                intent,
+                access_control::access_control_borrow(),
+                action_data,
+                iw,
+            );
             let action_data = vector[];
-            intents::add_typed_action(intent, access_control::access_control_return(), action_data, iw);
+            intents::add_typed_action(
+                intent,
+                access_control::access_control_return(),
+                action_data,
+                iw,
+            );
         },
     );
 

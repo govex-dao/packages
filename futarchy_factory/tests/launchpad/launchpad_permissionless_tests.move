@@ -50,37 +50,37 @@ fun setup_test(sender: address): Scenario {
             &mut registry,
             b"AccountProtocol".to_string(),
             @account_protocol,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyCore".to_string(),
             @futarchy_core,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"AccountActions".to_string(),
             @account_actions,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyActions".to_string(),
             @futarchy_actions,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyGovernanceActions".to_string(),
             @0xb1054e9a9b316e105c908be2cddb7f64681a63f0ae80e9e5922bf461589c4bc7,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyOracleActions".to_string(),
             @futarchy_oracle,
-            1
+            1,
         );
 
         ts::return_to_sender(&scenario, admin_cap);
@@ -98,7 +98,7 @@ fun setup_test(sender: address): Scenario {
             &mut factory,
             &owner_cap,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         clock::destroy_for_testing(clock);
@@ -184,9 +184,20 @@ fun test_permissionless_completion_after_delay() {
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET, TEST_STABLE>>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
         let factory = ts::take_shared<factory::Factory>(&scenario);
-        let contribution = coin::mint_for_testing<TEST_STABLE>(20_000_000_000, ts::ctx(&mut scenario));
+        let contribution = coin::mint_for_testing<TEST_STABLE>(
+            20_000_000_000,
+            ts::ctx(&mut scenario),
+        );
         let crank_fee = create_payment(100_000_000, &mut scenario);
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
         ts::return_shared(factory);
@@ -286,9 +297,20 @@ fun test_permissionless_completion_requires_settlement() {
         let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET, TEST_STABLE>>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
         let factory = ts::take_shared<factory::Factory>(&scenario);
-        let contribution = coin::mint_for_testing<TEST_STABLE>(20_000_000_000, ts::ctx(&mut scenario));
+        let contribution = coin::mint_for_testing<TEST_STABLE>(
+            20_000_000_000,
+            ts::ctx(&mut scenario),
+        );
         let crank_fee = create_payment(100_000_000, &mut scenario);
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
         ts::return_shared(factory);
@@ -297,7 +319,10 @@ fun test_permissionless_completion_requires_settlement() {
     // Advance past deadline + 24 hours but DON'T settle
     ts::next_tx(&mut scenario, creator);
     let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
-    clock::increment_for_testing(&mut clock, constants::launchpad_duration_ms() + (24 * 60 * 60 * 1000) + 1);
+    clock::increment_for_testing(
+        &mut clock,
+        constants::launchpad_duration_ms() + (24 * 60 * 60 * 1000) + 1,
+    );
 
     // Try permissionless completion without settlement - should fail
     ts::next_tx(&mut scenario, random_completer);
@@ -311,7 +336,7 @@ fun test_permissionless_completion_requires_settlement() {
             &mut factory,
             &registry,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         clock::destroy_for_testing(clock);

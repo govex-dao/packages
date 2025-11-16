@@ -76,7 +76,7 @@ public fun new_for_testing(registry: &PackageRegistry): Deps {
 public fun new_for_testing_with_config_and_registry(
     _config_name: String,
     _config_addr: address,
-    registry: &PackageRegistry
+    registry: &PackageRegistry,
 ): Deps {
     Deps {
         registry_id: sui::object::id(registry),
@@ -90,7 +90,12 @@ fun test_new_and_check(ctx: &mut TxContext) {
     let mut registry = package_registry::new_for_testing(ctx);
 
     // Add AccountProtocol to registry
-    package_registry::add_for_testing(&mut registry, b"AccountProtocol".to_string(), @account_protocol, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
 
     let deps = new_for_testing(&registry);
     let witness = version_witness::new_for_testing(@account_protocol);

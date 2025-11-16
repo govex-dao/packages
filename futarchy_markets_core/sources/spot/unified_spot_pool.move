@@ -23,8 +23,8 @@
 
 module futarchy_markets_core::unified_spot_pool;
 
-use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::PCW_TWAP_oracle::{Self, SimpleTWAP};
+use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::fee_scheduler::{Self, FeeSchedule};
 use std::option::{Self, Option};
 use std::type_name::TypeName;
@@ -69,7 +69,7 @@ public struct UnifiedSpotPool<phantom AssetType, phantom StableType> has key, st
     fee_schedule: Option<FeeSchedule>,
     fee_schedule_activation_time: u64, // When fee decay starts (usually pool creation)
     // Proposal tracking - blocks LP operations during proposals, enforces 6hr gap
-    active_proposal_id: Option<ID>,      // Currently active proposal (Some = LP ops blocked)
+    active_proposal_id: Option<ID>, // Currently active proposal (Some = LP ops blocked)
     last_proposal_end_time: Option<u64>, // When last proposal ended (for 6hr gap check)
     // Optional aggregator configuration
     aggregator_config: Option<AggregatorConfig<AssetType, StableType>>,
@@ -231,7 +231,14 @@ public fun new_with_aggregator<AssetType, StableType>(
     ctx: &mut TxContext,
 ): UnifiedSpotPool<AssetType, StableType> {
     // Just forward to new() - they're now identical
-    new(fee_bps, fee_schedule, oracle_conditional_threshold_bps, conditional_liquidity_ratio_percent, clock, ctx)
+    new(
+        fee_bps,
+        fee_schedule,
+        oracle_conditional_threshold_bps,
+        conditional_liquidity_ratio_percent,
+        clock,
+        ctx,
+    )
 }
 
 /// Upgrade existing pool to add aggregator support
@@ -241,9 +248,7 @@ public fun enable_aggregator<AssetType, StableType>(
     oracle_conditional_threshold_bps: u64,
     clock: &Clock,
     _ctx: &mut TxContext,
-) {
-    // No-op: all pools already have full features enabled at creation
-}
+) {}
 
 // === Escrow Management Functions (Aggregator Only) ===
 
@@ -349,8 +354,10 @@ public fun add_liquidity_and_return<AssetType, StableType>(
         let lp_to_mint = lp_from_asset.min(lp_from_stable);
 
         // Calculate optimal amounts that maintain exact pool ratio
-        let optimal_asset = (lp_to_mint * (asset_reserve as u128) / (pool.lp_supply as u128)) as u64;
-        let optimal_stable = (lp_to_mint * (stable_reserve as u128) / (pool.lp_supply as u128)) as u64;
+        let optimal_asset =
+            (lp_to_mint * (asset_reserve as u128) / (pool.lp_supply as u128)) as u64;
+        let optimal_stable =
+            (lp_to_mint * (stable_reserve as u128) / (pool.lp_supply as u128)) as u64;
 
         ((lp_to_mint as u64), optimal_asset, optimal_stable)
     };
@@ -473,22 +480,20 @@ public fun remove_liquidity<AssetType, StableType>(
 
 // Bucket-specific LP withdrawal functions removed - LP operations now blocked during proposals
 
-
-
 // === Fee Calculation ===
 
 /// Get current fee for this pool based on fee schedule or static fee
 fun get_current_fee_bps<AssetType, StableType>(
     pool: &UnifiedSpotPool<AssetType, StableType>,
-    clock: &Clock
+    clock: &Clock,
 ): u64 {
     if (pool.fee_schedule.is_some()) {
         // Use dynamic fee schedule with pool's base fee as final target
         fee_scheduler::get_current_fee(
             pool.fee_schedule.borrow(),
-            pool.fee_bps,  // Final fee = pool's base spot fee
+            pool.fee_bps, // Final fee = pool's base spot fee
             pool.fee_schedule_activation_time,
-            clock.timestamp_ms()
+            clock.timestamp_ms(),
         )
     } else {
         // Use static fee
@@ -501,11 +506,11 @@ fun get_current_fee_bps<AssetType, StableType>(
 /// After fee schedule ends, fee_bps will equal the final static fee
 public(package) fun update_cached_fee_if_needed<AssetType, StableType>(
     pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    clock: &Clock
+    clock: &Clock,
 ) {
     if (pool.fee_schedule.is_some()) {
         let current_fee = get_current_fee_bps(pool, clock);
-        pool.fee_bps = current_fee;  // Cache current fee for pure functions
+        pool.fee_bps = current_fee; // Cache current fee for pure functions
     }
     // If no schedule, fee_bps already has the static fee
 }
@@ -515,7 +520,7 @@ public(package) fun update_cached_fee_if_needed<AssetType, StableType>(
 /// CRITICAL: Prevents proposals from starting while fees are high (would break arbitrage)
 public fun can_create_proposals<AssetType, StableType>(
     pool: &UnifiedSpotPool<AssetType, StableType>,
-    clock: &Clock
+    clock: &Clock,
 ): bool {
     if (pool.fee_schedule.is_some()) {
         // If fee schedule exists, check if decay period has ended
@@ -563,7 +568,11 @@ public fun swap_stable_for_asset<AssetType, StableType>(
     let (lp_share, protocol_share) = if (pool.aggregator_config.is_some()) {
         use futarchy_one_shot_utils::constants;
         use futarchy_one_shot_utils::math;
-        let lp_fee = math::mul_div_to_64(total_fee, constants::spot_lp_fee_share_bps(), constants::total_fee_bps());
+        let lp_fee = math::mul_div_to_64(
+            total_fee,
+            constants::spot_lp_fee_share_bps(),
+            constants::total_fee_bps(),
+        );
         let protocol_fee = total_fee - lp_fee;
         (lp_fee, protocol_fee)
     } else {
@@ -586,7 +595,10 @@ public fun swap_stable_for_asset<AssetType, StableType>(
 
         // Collect protocol fee in stable token
         if (protocol_share > 0) {
-            let protocol_fee_balance = balance::split(coin::balance_mut(&mut stable_in), protocol_share);
+            let protocol_fee_balance = balance::split(
+                coin::balance_mut(&mut stable_in),
+                protocol_share,
+            );
             balance::join(&mut config.protocol_fees_stable, protocol_fee_balance);
         };
     };
@@ -625,7 +637,11 @@ public fun swap_asset_for_stable<AssetType, StableType>(
     let (lp_share, protocol_share) = if (pool.aggregator_config.is_some()) {
         use futarchy_one_shot_utils::constants;
         use futarchy_one_shot_utils::math;
-        let lp_fee = math::mul_div_to_64(total_fee, constants::spot_lp_fee_share_bps(), constants::total_fee_bps());
+        let lp_fee = math::mul_div_to_64(
+            total_fee,
+            constants::spot_lp_fee_share_bps(),
+            constants::total_fee_bps(),
+        );
         let protocol_fee = total_fee - lp_fee;
         (lp_fee, protocol_fee)
     } else {
@@ -648,7 +664,10 @@ public fun swap_asset_for_stable<AssetType, StableType>(
 
         // Collect protocol fee in asset token
         if (protocol_share > 0) {
-            let protocol_fee_balance = balance::split(coin::balance_mut(&mut asset_in), protocol_share);
+            let protocol_fee_balance = balance::split(
+                coin::balance_mut(&mut asset_in),
+                protocol_share,
+            );
             balance::join(&mut config.protocol_fees_asset, protocol_fee_balance);
         };
     };
@@ -748,7 +767,6 @@ public fun get_oracle_conditional_threshold_bps<AssetType, StableType>(
     let config = pool.aggregator_config.borrow();
     config.oracle_conditional_threshold_bps
 }
-
 
 // === Quantum Liquidity Functions ===
 
@@ -1184,7 +1202,7 @@ public fun new_for_testing<AssetType, StableType>(
             8000, // oracle_conditional_threshold_bps (80%)
             50, // conditional_liquidity_ratio_percent (50%)
             &clock,
-            ctx
+            ctx,
         )
     } else {
         new<AssetType, StableType>(
@@ -1193,7 +1211,7 @@ public fun new_for_testing<AssetType, StableType>(
             5000, // oracle_conditional_threshold_bps (50%)
             50, // conditional_liquidity_ratio_percent (50%)
             &clock,
-            ctx
+            ctx,
         )
     };
     clock::destroy_for_testing(clock);

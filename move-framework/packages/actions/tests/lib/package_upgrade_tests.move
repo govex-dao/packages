@@ -3,9 +3,13 @@ module account_actions::package_upgrade_tests;
 
 use account_actions::package_upgrade as pkg_upgrade;
 use account_actions::version;
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
+use account_protocol::package_registry::{
+    Self as package_registry,
+    PackageRegistry,
+    PackageAdminCap
+};
 use std::option;
 use sui::clock::{Self, Clock};
 use sui::package::{Self, UpgradeCap};
@@ -38,11 +42,28 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     let mut extensions = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
     // add core deps
-    package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @account_actions, 1);
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountActions".to_string(),
+        @account_actions,
+        1,
+    );
 
     let deps = deps::new_for_testing(&extensions);
-    let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let account = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
     destroy(cap);
@@ -77,7 +98,15 @@ fun test_lock_cap_stores_in_account() {
     // Lock it in the account
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
     let six_months_ms = 15552000000; // 6 months
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // Verify cap is stored
     assert!(pkg_upgrade::has_cap(&account, package_name));
@@ -97,12 +126,28 @@ fun test_cannot_lock_same_package_twice() {
     // Lock first cap
     let upgrade_cap1 = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap1, package_name, 1000, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap1,
+        package_name,
+        1000,
+        15552000000,
+    );
 
     // Try to lock second cap with same name - should fail
     let upgrade_cap2 = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap2, package_name, 1000, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap2,
+        package_name,
+        1000,
+        15552000000,
+    );
 
     end(scenario, extensions, account, clock);
 }
@@ -114,15 +159,39 @@ fun test_multiple_packages() {
     // Lock multiple packages
     let cap1 = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, cap1, b"package1".to_string(), 100, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        cap1,
+        b"package1".to_string(),
+        100,
+        15552000000,
+    );
 
     let cap2 = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, cap2, b"package2".to_string(), 200, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        cap2,
+        b"package2".to_string(),
+        200,
+        15552000000,
+    );
 
     let cap3 = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, cap3, b"package3".to_string(), 300, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        cap3,
+        b"package3".to_string(),
+        300,
+        15552000000,
+    );
 
     // Verify all caps are stored with correct delays
     assert!(pkg_upgrade::has_cap(&account, b"package1".to_string()));
@@ -148,7 +217,15 @@ fun test_get_cap_info() {
     let policy_num = upgrade_cap.policy();
 
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        15552000000,
+    );
 
     // Verify we can retrieve cap info
     assert!(pkg_upgrade::get_cap_package(&account, &extensions, package_name) == package_addr);
@@ -168,7 +245,15 @@ fun test_package_index() {
     let package_name = b"test_package".to_string();
 
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        15552000000,
+    );
 
     // Verify package is in index
     assert!(pkg_upgrade::is_package_managed(&account, &extensions, package_addr));
@@ -195,7 +280,15 @@ fun test_auth_required_for_lock() {
     // Locking requires auth
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, b"test".to_string(), 1000, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        b"test".to_string(),
+        1000,
+        15552000000,
+    );
 
     // Verify it was locked
     assert!(pkg_upgrade::has_cap(&account, b"test".to_string()));
@@ -214,7 +307,15 @@ fun test_lock_commit_cap() {
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
     let six_months_ms = 15552000000; // 6 months
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // Now lock commit cap
     let auth2 = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
@@ -235,20 +336,38 @@ fun test_borrow_and_return_commit_cap() {
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
     let six_months_ms = 15552000000; // 6 months
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // Now lock commit cap
     let auth2 = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
     pkg_upgrade::lock_commit_cap(auth2, &mut account, &extensions, package_name, scenario.ctx());
 
     // Borrow it
-    let commit_cap = pkg_upgrade::borrow_commit_cap<Config>(&mut account, &extensions, package_name, version::current());
+    let commit_cap = pkg_upgrade::borrow_commit_cap<Config>(
+        &mut account,
+        &extensions,
+        package_name,
+        version::current(),
+    );
 
     // Verify it matches
     assert!(pkg_upgrade::commit_cap_package_name(&commit_cap) == package_name);
 
     // Return it
-    pkg_upgrade::return_commit_cap<Config>(&mut account, &extensions, commit_cap, version::current());
+    pkg_upgrade::return_commit_cap<Config>(
+        &mut account,
+        &extensions,
+        commit_cap,
+        version::current(),
+    );
 
     // Verify it's back
     assert!(pkg_upgrade::has_commit_cap(&account, package_name));
@@ -265,10 +384,23 @@ fun test_init_lock_commit_cap() {
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
     let six_months_ms = 15552000000; // 6 months
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // Use init function (unshared)
-    pkg_upgrade::do_lock_commit_cap_unshared(&mut account, &extensions, package_name, scenario.ctx());
+    pkg_upgrade::do_lock_commit_cap_unshared(
+        &mut account,
+        &extensions,
+        package_name,
+        scenario.ctx(),
+    );
 
     // Verify cap is stored
     assert!(pkg_upgrade::has_commit_cap(&account, package_name));
@@ -308,11 +440,25 @@ fun test_request_and_finalize_reclaim() {
     // Lock upgrade cap with reclaim delay
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // DAO requests reclaim (nonce bumps, invalidating any external caps)
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::request_reclaim_commit_cap<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::request_reclaim_commit_cap<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // Verify request is pending
     assert!(pkg_upgrade::has_reclaim_request(&account, &extensions, package_name));
@@ -322,7 +468,13 @@ fun test_request_and_finalize_reclaim() {
 
     // Now finalize reclaim (cleanup)
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::clear_reclaim_request<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::clear_reclaim_request<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // Verify request is cleared
     assert!(!pkg_upgrade::has_reclaim_request(&account, &extensions, package_name));
@@ -340,15 +492,35 @@ fun test_finalize_reclaim_too_early_fails() {
     // Setup
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // Request reclaim
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::request_reclaim_commit_cap<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::request_reclaim_commit_cap<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // Try to finalize immediately (should fail)
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::clear_reclaim_request<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::clear_reclaim_request<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     end(scenario, extensions, account, clock);
 }
@@ -365,17 +537,37 @@ fun test_get_reclaim_available_time() {
     // Setup
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // No request yet
-    assert!(option::is_none(&pkg_upgrade::get_reclaim_available_time(&account, &extensions, package_name)));
+    assert!(
+        option::is_none(
+            &pkg_upgrade::get_reclaim_available_time(&account, &extensions, package_name),
+        ),
+    );
 
     // Request reclaim
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::request_reclaim_commit_cap<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::request_reclaim_commit_cap<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // Should return available time
-    let available_time = option::destroy_some(pkg_upgrade::get_reclaim_available_time(&account, &extensions, package_name));
+    let available_time = option::destroy_some(
+        pkg_upgrade::get_reclaim_available_time(&account, &extensions, package_name),
+    );
     assert!(available_time == start_time + six_months_ms);
 
     end(scenario, extensions, account, clock);
@@ -391,20 +583,44 @@ fun test_nonce_increments_on_reclaim_request() {
     // Lock upgrade cap
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        15552000000,
+    );
 
     // Create commit cap with nonce=0
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
     pkg_upgrade::lock_commit_cap(auth, &mut account, &extensions, package_name, scenario.ctx());
 
     // Borrow to check initial nonce
-    let commit_cap = pkg_upgrade::borrow_commit_cap<Config>(&mut account, &extensions, package_name, version::current());
+    let commit_cap = pkg_upgrade::borrow_commit_cap<Config>(
+        &mut account,
+        &extensions,
+        package_name,
+        version::current(),
+    );
     assert!(pkg_upgrade::commit_cap_valid_nonce(&commit_cap) == 0);
-    pkg_upgrade::return_commit_cap<Config>(&mut account, &extensions, commit_cap, version::current());
+    pkg_upgrade::return_commit_cap<Config>(
+        &mut account,
+        &extensions,
+        commit_cap,
+        version::current(),
+    );
 
     // Request reclaim - this should increment nonce to 1
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::request_reclaim_commit_cap<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::request_reclaim_commit_cap<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // Old cap (nonce=0) should now be invalid
     // New caps created would have nonce=1
@@ -422,11 +638,25 @@ fun test_create_cap_with_current_nonce() {
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
     let six_months_ms = 15552000000; // 6 months
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, six_months_ms);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        six_months_ms,
+    );
 
     // Request reclaim (nonce -> 1)
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::request_reclaim_commit_cap<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::request_reclaim_commit_cap<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // Fast forward past reclaim delay
     let reclaim_time = clock.timestamp_ms() + six_months_ms + 1;
@@ -434,11 +664,24 @@ fun test_create_cap_with_current_nonce() {
 
     // Clear reclaim request to allow creating new caps
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::clear_reclaim_request<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::clear_reclaim_request<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // Create new cap - should have nonce=1
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::create_and_transfer_commit_cap<Config>(auth, &account, &extensions, package_name, recipient, scenario.ctx());
+    pkg_upgrade::create_and_transfer_commit_cap<Config>(
+        auth,
+        &account,
+        &extensions,
+        package_name,
+        recipient,
+        scenario.ctx(),
+    );
 
     // Retrieve and verify nonce
     scenario.next_tx(recipient);
@@ -457,7 +700,15 @@ fun test_revoked_cap_validation() {
     // Setup
     let upgrade_cap = create_test_upgrade_cap(&mut scenario);
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::lock_cap(auth, &mut account, &extensions, upgrade_cap, package_name, 1000, 15552000000);
+    pkg_upgrade::lock_cap(
+        auth,
+        &mut account,
+        &extensions,
+        upgrade_cap,
+        package_name,
+        1000,
+        15552000000,
+    );
 
     // Create commit cap (nonce=0)
     let old_cap = pkg_upgrade::create_commit_cap_for_transfer(package_name, scenario.ctx());
@@ -465,7 +716,13 @@ fun test_revoked_cap_validation() {
 
     // Request reclaim (nonce -> 1, invalidating old_cap)
     let auth = account.new_auth<Config, Witness>(&extensions, version::current(), Witness());
-    pkg_upgrade::request_reclaim_commit_cap<Config>(auth, &mut account, &extensions, package_name, &clock);
+    pkg_upgrade::request_reclaim_commit_cap<Config>(
+        auth,
+        &mut account,
+        &extensions,
+        package_name,
+        &clock,
+    );
 
     // old_cap is now revoked (nonce=0 but current nonce is 1)
     // Using it in do_commit_with_cap would fail with ECapRevoked
@@ -473,4 +730,3 @@ fun test_revoked_cap_validation() {
     destroy(old_cap);
     end(scenario, extensions, account, clock);
 }
-

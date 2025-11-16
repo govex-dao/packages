@@ -8,7 +8,8 @@ use sui::coin;
 public struct TEST_ASSET has drop {}
 
 #[test_only]
-#[allow(deprecated_usage)]public fun init_for_testing(ctx: &mut TxContext) {
+#[allow(deprecated_usage)]
+public fun init_for_testing(ctx: &mut TxContext) {
     let witness = TEST_ASSET {};
     let (treasury_cap, deny_cap, metadata) = coin::create_regulated_currency_v2(
         witness,
@@ -18,7 +19,7 @@ public struct TEST_ASSET has drop {}
         b"",
         option::none(),
         false,
-        ctx
+        ctx,
     );
     transfer::public_freeze_object(deny_cap);
     transfer::public_transfer(treasury_cap, ctx.sender());

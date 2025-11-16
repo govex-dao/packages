@@ -1264,8 +1264,18 @@ fun ternary_search_optimal_routing_stable_to_asset<AssetType, StableType>(
     };
 
     // Check endpoints
-    let output_left = evaluate_split_routing_stable_to_asset(spot, conditionals, stable_input, left);
-    let output_right = evaluate_split_routing_stable_to_asset(spot, conditionals, stable_input, right);
+    let output_left = evaluate_split_routing_stable_to_asset(
+        spot,
+        conditionals,
+        stable_input,
+        left,
+    );
+    let output_right = evaluate_split_routing_stable_to_asset(
+        spot,
+        conditionals,
+        stable_input,
+        right,
+    );
 
     if (output_left > best_output) {
         best_output = output_left;
@@ -1420,7 +1430,12 @@ fun ternary_search_optimal_routing_asset_to_stable<AssetType, StableType>(
 
     // Check endpoints
     let output_left = evaluate_split_routing_asset_to_stable(spot, conditionals, asset_input, left);
-    let output_right = evaluate_split_routing_asset_to_stable(spot, conditionals, asset_input, right);
+    let output_right = evaluate_split_routing_asset_to_stable(
+        spot,
+        conditionals,
+        asset_input,
+        right,
+    );
 
     if (output_left > best_output) {
         best_output = output_left;

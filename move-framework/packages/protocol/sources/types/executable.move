@@ -135,7 +135,6 @@ fun test_new_executable() {
     test_destroy(clock);
 }
 
-
 #[test]
 fun test_destroy_executable() {
     let ctx = &mut tx_context::dummy();

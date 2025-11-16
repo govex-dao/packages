@@ -5,21 +5,21 @@
 /// These can be staged in intents for proposals or launchpad initialization.
 module futarchy_oracle::oracle_init_actions;
 
-use std::string::String;
-use sui::bcs;
-use std::type_name;
 use account_protocol::intents;
+use std::string::String;
+use std::type_name;
+use sui::bcs;
 
 // === Layer 1: Action Structs ===
 
 /// Recipient allocation for a grant tier
-public struct RecipientMint has store, copy, drop {
+public struct RecipientMint has copy, drop, store {
     recipient: address,
     amount: u64,
 }
 
 /// Tier specification for oracle grant creation
-public struct TierSpec has store, drop, copy {
+public struct TierSpec has copy, drop, store {
     price_threshold: u128,
     is_above: bool,
     recipients: vector<RecipientMint>,
@@ -27,7 +27,7 @@ public struct TierSpec has store, drop, copy {
 }
 
 /// Action to create an oracle grant with price-based unlocks
-public struct CreateOracleGrantAction<phantom AssetType, phantom StableType> has store, drop, copy {
+public struct CreateOracleGrantAction<phantom AssetType, phantom StableType> has copy, drop, store {
     tier_specs: vector<TierSpec>,
     use_relative_pricing: bool,
     launchpad_multiplier: u64,
@@ -39,7 +39,7 @@ public struct CreateOracleGrantAction<phantom AssetType, phantom StableType> has
 
 /// Action to cancel an existing oracle grant
 /// The grant object is passed as a shared object parameter in the PTB
-public struct CancelGrantAction has store, drop, copy {
+public struct CancelGrantAction has copy, drop, store {
     grant_id: ID,
 }
 
@@ -92,7 +92,7 @@ public fun add_create_oracle_grant_spec<AssetType, StableType>(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_oracle::oracle_actions::CreateOracleGrant>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -112,7 +112,7 @@ public fun add_cancel_grant_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_oracle::oracle_actions::CancelGrant>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

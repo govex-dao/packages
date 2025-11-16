@@ -115,10 +115,7 @@ public fun length(metadata: &Table<String, String>): u64 {
 /// for temporary uniqueness checking. For 50 keys:
 /// - Old (Bag): 1 object creation + 50 dynamic field writes + 50 deletions
 /// - New (VecSet): 50 in-memory insertions (O(log N) each)
-public fun validate_metadata_vectors(
-    keys: &vector<String>,
-    values: &vector<String>,
-) {
+public fun validate_metadata_vectors(keys: &vector<String>, values: &vector<String>) {
     let keys_len = keys.length();
     let values_len = values.length();
 

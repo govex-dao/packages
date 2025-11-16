@@ -193,7 +193,12 @@ fun init(witness: FEE, ctx: &mut TxContext) {
 
 // === Package Functions ===
 // Generic internal fee collection function
-fun deposit_payment(fee_manager: &mut FeeManager, fee_amount: u64, payment: Coin<SUI>, clock: &Clock): u64 {
+fun deposit_payment(
+    fee_manager: &mut FeeManager,
+    fee_amount: u64,
+    payment: Coin<SUI>,
+    clock: &Clock,
+): u64 {
     // Verify payment
     let payment_amount = payment.value();
     assert!(payment_amount == fee_amount, EInvalidPayment);
@@ -308,10 +313,7 @@ public fun withdraw_fees_as_coin<CoinType>(
 
     // Check if this coin type exists in the fee registry
     if (
-        !dynamic_field::exists_with_type<
-            FeeRegistry<CoinType>,
-            Balance<CoinType>,
-        >(
+        !dynamic_field::exists_with_type<FeeRegistry<CoinType>, Balance<CoinType>>(
             &fee_manager.id,
             FeeRegistry<CoinType> {},
         )
@@ -320,10 +322,10 @@ public fun withdraw_fees_as_coin<CoinType>(
         return coin::zero<CoinType>(ctx)
     };
 
-    let fee_balance = dynamic_field::borrow_mut<
-        FeeRegistry<CoinType>,
-        Balance<CoinType>,
-    >(&mut fee_manager.id, FeeRegistry<CoinType> {});
+    let fee_balance = dynamic_field::borrow_mut<FeeRegistry<CoinType>, Balance<CoinType>>(
+        &mut fee_manager.id,
+        FeeRegistry<CoinType> {},
+    );
 
     let withdrawal_amount = if (amount == 0) {
         fee_balance.value()
@@ -497,15 +499,15 @@ public fun deposit_fees_with_proposal<CoinType>(
     let amount = fees.value();
 
     if (
-        dynamic_field::exists_with_type<
-            FeeRegistry<CoinType>,
-            Balance<CoinType>,
-        >(&fee_manager.id, FeeRegistry<CoinType> {})
+        dynamic_field::exists_with_type<FeeRegistry<CoinType>, Balance<CoinType>>(
+            &fee_manager.id,
+            FeeRegistry<CoinType> {},
+        )
     ) {
-        let fee_balance = dynamic_field::borrow_mut<
-            FeeRegistry<CoinType>,
-            Balance<CoinType>,
-        >(&mut fee_manager.id, FeeRegistry<CoinType> {});
+        let fee_balance = dynamic_field::borrow_mut<FeeRegistry<CoinType>, Balance<CoinType>>(
+            &mut fee_manager.id,
+            FeeRegistry<CoinType> {},
+        );
         fee_balance.join(fees);
     } else {
         dynamic_field::add(&mut fee_manager.id, FeeRegistry<CoinType> {}, fees);
@@ -550,15 +552,15 @@ public fun get_sui_balance(fee_manager: &FeeManager): u64 {
 /// Generic function to get fee balance for any coin type
 public fun get_fee_balance<CoinType>(fee_manager: &FeeManager): u64 {
     if (
-        dynamic_field::exists_with_type<
-            FeeRegistry<CoinType>,
-            Balance<CoinType>,
-        >(&fee_manager.id, FeeRegistry<CoinType> {})
+        dynamic_field::exists_with_type<FeeRegistry<CoinType>, Balance<CoinType>>(
+            &fee_manager.id,
+            FeeRegistry<CoinType> {},
+        )
     ) {
-        let fee_balance = dynamic_field::borrow<
-            FeeRegistry<CoinType>,
-            Balance<CoinType>,
-        >(&fee_manager.id, FeeRegistry<CoinType> {});
+        let fee_balance = dynamic_field::borrow<FeeRegistry<CoinType>, Balance<CoinType>>(
+            &fee_manager.id,
+            FeeRegistry<CoinType> {},
+        );
         fee_balance.value()
     } else {
         0

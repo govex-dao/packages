@@ -121,7 +121,7 @@ public struct GovernanceConfig has copy, drop, store {
     // Categories: true (show proposal details in UI), false (hide details, show only intents)
     // WARNING: Proposal details are unverified text that may not match actual intent execution
     // Recommended: false (hide details by default for security)
-    show_proposal_details: bool,  // show per outcome description in UI if true
+    show_proposal_details: bool, // show per outcome description in UI if true
 }
 
 /// Metadata configuration
@@ -375,7 +375,10 @@ public fun new_sponsorship_config(
 
         // If negative, magnitude must be ≤ 5%
         if (is_negative) {
-            assert!(magnitude <= PROTOCOL_MAX_THRESHOLD_NEGATIVE, ESponsoredThresholdExceedsProtocolMax);
+            assert!(
+                magnitude <= PROTOCOL_MAX_THRESHOLD_NEGATIVE,
+                ESponsoredThresholdExceedsProtocolMax,
+            );
         };
     };
 
@@ -386,7 +389,6 @@ public fun new_sponsorship_config(
         default_sponsor_quota_amount,
     }
 }
-
 
 /// Create a complete DAO configuration
 public fun new_dao_config(
@@ -596,11 +598,17 @@ public fun sponsorship_config_mut(config: &mut DaoConfig): &mut SponsorshipConfi
 
 public fun sponsorship_enabled(sponsorship: &SponsorshipConfig): bool { sponsorship.enabled }
 
-public fun sponsored_threshold(sponsorship: &SponsorshipConfig): SignedU128 { sponsorship.sponsored_threshold }
+public fun sponsored_threshold(sponsorship: &SponsorshipConfig): SignedU128 {
+    sponsorship.sponsored_threshold
+}
 
-public fun waive_advancement_fees(sponsorship: &SponsorshipConfig): bool { sponsorship.waive_advancement_fees }
+public fun waive_advancement_fees(sponsorship: &SponsorshipConfig): bool {
+    sponsorship.waive_advancement_fees
+}
 
-public fun default_sponsor_quota_amount(sponsorship: &SponsorshipConfig): u64 { sponsorship.default_sponsor_quota_amount }
+public fun default_sponsor_quota_amount(sponsorship: &SponsorshipConfig): u64 {
+    sponsorship.default_sponsor_quota_amount
+}
 
 // === Update Functions ===
 
@@ -771,10 +779,7 @@ public(package) fun set_enable_premarket_reservation_lock(
     gov.enable_premarket_reservation_lock = enabled;
 }
 
-public(package) fun set_show_proposal_details(
-    gov: &mut GovernanceConfig,
-    show: bool,
-) {
+public(package) fun set_show_proposal_details(gov: &mut GovernanceConfig, show: bool) {
     gov.show_proposal_details = show;
 }
 
@@ -847,7 +852,10 @@ public fun set_sponsored_threshold(sponsorship: &mut SponsorshipConfig, threshol
 
     // If negative, magnitude must be ≤ 5%
     if (is_negative) {
-        assert!(magnitude <= PROTOCOL_MAX_THRESHOLD_NEGATIVE, ESponsoredThresholdExceedsProtocolMax);
+        assert!(
+            magnitude <= PROTOCOL_MAX_THRESHOLD_NEGATIVE,
+            ESponsoredThresholdExceedsProtocolMax,
+        );
     };
 
     sponsorship.sponsored_threshold = threshold;
@@ -959,7 +967,10 @@ public fun update_quota_config(config: &DaoConfig, new_quota: QuotaConfig): DaoC
 }
 
 /// Update sponsorship configuration (returns new config)
-public fun update_sponsorship_config(config: &DaoConfig, new_sponsorship: SponsorshipConfig): DaoConfig {
+public fun update_sponsorship_config(
+    config: &DaoConfig,
+    new_sponsorship: SponsorshipConfig,
+): DaoConfig {
     DaoConfig {
         trading_params: config.trading_params,
         twap_config: config.twap_config,

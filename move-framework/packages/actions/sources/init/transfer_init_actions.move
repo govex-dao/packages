@@ -14,7 +14,7 @@ use std::string::String;
 // === Action Structs (for staging) ===
 
 /// Action to withdraw from vault and transfer to recipient
-public struct WithdrawAndTransferAction has store, copy, drop {
+public struct WithdrawAndTransferAction has copy, drop, store {
     vault_name: String,
     amount: u64,
     recipient: address,
@@ -22,13 +22,13 @@ public struct WithdrawAndTransferAction has store, copy, drop {
 
 /// Action to transfer an object to a recipient
 /// Used for direct object transfers (not vault withdrawals)
-public struct TransferObjectAction has store, copy, drop {
+public struct TransferObjectAction has copy, drop, store {
     recipient: address,
 }
 
 /// Action to transfer an object to the transaction sender (cranker)
 /// This is an empty struct - the recipient is determined at execution time
-public struct TransferToSenderAction has store, copy, drop {
+public struct TransferToSenderAction has copy, drop, store {
     // Empty struct - no fields to serialize
 }
 
@@ -61,7 +61,7 @@ public fun add_withdraw_and_transfer_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::Withdraw>(),
         action_data,
-        1  // version
+        1, // version
     );
     builder::add(builder, action_spec);
 }
@@ -83,7 +83,7 @@ public fun add_transfer_object_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::transfer::TransferObject>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -102,7 +102,7 @@ public fun add_transfer_to_sender_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::transfer::TransferObject>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

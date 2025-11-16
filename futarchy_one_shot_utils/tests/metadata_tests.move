@@ -407,12 +407,12 @@ fun test_duplicate_key_rejected() {
 fun test_mismatched_key_value_lengths() {
     let mut scenario = test_scenario::begin(@0x1);
     let ctx = test_scenario::ctx(&mut scenario);
-    
+
     // Create vectors with mismatched lengths
     // This should hit line 35: assert!(keys_len == values_len, EInvalidMetadataLength);
     let keys = vector[string::utf8(b"key1"), string::utf8(b"key2"), string::utf8(b"key3")];
     let values = vector[string::utf8(b"value1"), string::utf8(b"value2")]; // Only 2 values for 3 keys
-    
+
     let table = metadata::new_from_vectors(keys, values, ctx);
     sui::table::drop(table);
     test_scenario::end(scenario);
@@ -423,18 +423,19 @@ fun test_mismatched_key_value_lengths() {
 fun test_too_many_entries() {
     let mut scenario = test_scenario::begin(@0x1);
     let ctx = test_scenario::ctx(&mut scenario);
-    
+
     // Create more than MAX_ENTRIES (100)
     // This should hit line 36: assert!(keys_len <= MAX_ENTRIES, EInvalidMetadataLength);
     let mut keys = vector[];
     let mut values = vector[];
     let mut i = 0;
-    while (i < 101) {  // MAX_ENTRIES is 100
+    while (i < 101) {
+        // MAX_ENTRIES is 100
         keys.push_back(string::utf8(b"key"));
         values.push_back(string::utf8(b"value"));
         i = i + 1;
     };
-    
+
     let table = metadata::new_from_vectors(keys, values, ctx);
     sui::table::drop(table);
     test_scenario::end(scenario);
@@ -445,11 +446,11 @@ fun test_too_many_entries() {
 fun test_empty_key() {
     let mut scenario = test_scenario::begin(@0x1);
     let ctx = test_scenario::ctx(&mut scenario);
-    
+
     // This should hit line 46: assert!(key.length() > 0, EEmptyKey);
     let keys = vector[string::utf8(b"")]; // Empty key
     let values = vector[string::utf8(b"value")];
-    
+
     let table = metadata::new_from_vectors(keys, values, ctx);
     sui::table::drop(table);
     test_scenario::end(scenario);
@@ -465,7 +466,8 @@ fun test_key_too_long_256() {
     // This should hit line 47: assert!(key.length() <= MAX_KEY_LENGTH, EKeyTooLong);
     let mut long_key_bytes = vector[];
     let mut i = 0;
-    while (i < 257) {  // MAX_KEY_LENGTH is 256
+    while (i < 257) {
+        // MAX_KEY_LENGTH is 256
         long_key_bytes.push_back(65); // 'A'
         i = i + 1;
     };
@@ -487,7 +489,8 @@ fun test_value_too_long_2048() {
     // This should hit line 48: assert!(value.length() <= MAX_VALUE_LENGTH, EValueTooLong);
     let mut long_value_bytes = vector[];
     let mut i = 0;
-    while (i < 2049) {  // MAX_VALUE_LENGTH is 2048
+    while (i < 2049) {
+        // MAX_VALUE_LENGTH is 2048
         long_value_bytes.push_back(65); // 'A'
         i = i + 1;
     };
@@ -504,12 +507,12 @@ fun test_value_too_long_2048() {
 fun test_duplicate_key_in_vector() {
     let mut scenario = test_scenario::begin(@0x1);
     let ctx = test_scenario::ctx(&mut scenario);
-    
+
     // This should hit line 51 (duplicate check in new_from_vectors)
     // OR line 141 if using validate_metadata_vectors
     let keys = vector[string::utf8(b"key1"), string::utf8(b"key1")]; // Duplicate!
     let values = vector[string::utf8(b"value1"), string::utf8(b"value2")];
-    
+
     let table = metadata::new_from_vectors(keys, values, ctx);
     sui::table::drop(table);
     test_scenario::end(scenario);
@@ -520,7 +523,7 @@ fun test_duplicate_key_in_vector() {
 fun test_add_entry_max_entries_exceeded() {
     let mut scenario = test_scenario::begin(@0x1);
     let ctx = test_scenario::ctx(&mut scenario);
-    
+
     // Create table with MAX_ENTRIES (100) entries
     let mut keys = vector[];
     let mut values = vector[];
@@ -531,13 +534,13 @@ fun test_add_entry_max_entries_exceeded() {
         values.push_back(string::utf8(b"value"));
         i = i + 1;
     };
-    
+
     let mut table = metadata::new_from_vectors(keys, values, ctx);
-    
+
     // Try to add one more entry
     // This should hit line 66: assert!(table::length(metadata) < MAX_ENTRIES, EInvalidMetadataLength);
     metadata::add_entry(&mut table, string::utf8(b"extra_key"), string::utf8(b"extra_value"));
-    
+
     sui::table::drop(table);
     test_scenario::end(scenario);
 }

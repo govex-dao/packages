@@ -6,8 +6,8 @@ module futarchy_factory::launchpad_dust_tests;
 
 use account_protocol::account::Account;
 use account_protocol::package_registry::{Self as package_registry, PackageRegistry};
-use futarchy_factory::dust_token::{Self as dust_token, DUST_TOKEN};
 use futarchy_factory::dust_stable::{Self as dust_stable, DUST_STABLE};
+use futarchy_factory::dust_token::{Self as dust_token, DUST_TOKEN};
 use futarchy_factory::factory;
 use futarchy_factory::launchpad;
 use futarchy_markets_core::fee;
@@ -51,37 +51,37 @@ fun setup_test(sender: address): Scenario {
             &mut registry,
             b"AccountProtocol".to_string(),
             @account_protocol,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyCore".to_string(),
             @futarchy_core,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"AccountActions".to_string(),
             @account_actions,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyActions".to_string(),
             @futarchy_actions,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyGovernanceActions".to_string(),
             @0xb1054e9a9b316e105c908be2cddb7f64681a63f0ae80e9e5922bf461589c4bc7,
-            1
+            1,
         );
         package_registry::add_for_testing(
             &mut registry,
             b"FutarchyOracleActions".to_string(),
             @futarchy_oracle,
-            1
+            1,
         );
 
         ts::return_to_sender(&scenario, admin_cap);
@@ -99,7 +99,7 @@ fun setup_test(sender: address): Scenario {
             &mut factory,
             &owner_cap,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         clock::destroy_for_testing(clock);
@@ -185,9 +185,20 @@ fun test_sweep_dust_after_claim_period() {
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
         let factory = ts::take_shared<factory::Factory>(&scenario);
-        let contribution = coin::mint_for_testing<DUST_STABLE>(15_000_000_000, ts::ctx(&mut scenario));
+        let contribution = coin::mint_for_testing<DUST_STABLE>(
+            15_000_000_000,
+            ts::ctx(&mut scenario),
+        );
         let crank_fee = create_payment(100_000_000, &mut scenario);
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
         ts::return_shared(factory);
@@ -198,9 +209,20 @@ fun test_sweep_dust_after_claim_period() {
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
         let factory = ts::take_shared<factory::Factory>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let contribution = coin::mint_for_testing<DUST_STABLE>(5_000_000_000, ts::ctx(&mut scenario));
+        let contribution = coin::mint_for_testing<DUST_STABLE>(
+            5_000_000_000,
+            ts::ctx(&mut scenario),
+        );
         let crank_fee = create_payment(100_000_000, &mut scenario);
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
         ts::return_shared(factory);
@@ -224,8 +246,20 @@ fun test_sweep_dust_after_claim_period() {
         let mut factory = ts::take_shared<factory::Factory>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
-        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
-        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
+        let unshared_dao = launchpad::begin_dao_creation(
+            &mut raise,
+            &mut factory,
+            &registry,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+        launchpad::finalize_and_share_dao(
+            &mut raise,
+            unshared_dao,
+            &registry,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
 
         ts::return_shared(raise);
         ts::return_shared(factory);
@@ -255,7 +289,14 @@ fun test_sweep_dust_after_claim_period() {
         let mut dao_account = ts::take_shared<Account>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
-        launchpad::sweep_dust(&mut raise, &creator_cap, &mut dao_account, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::sweep_dust(
+            &mut raise,
+            &creator_cap,
+            &mut dao_account,
+            &registry,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
 
         ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(dao_account);
@@ -347,9 +388,20 @@ fun test_sweep_dust_fails_before_claim_period() {
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
         let factory = ts::take_shared<factory::Factory>(&scenario);
-        let contribution = coin::mint_for_testing<DUST_STABLE>(20_000_000_000, ts::ctx(&mut scenario));
+        let contribution = coin::mint_for_testing<DUST_STABLE>(
+            20_000_000_000,
+            ts::ctx(&mut scenario),
+        );
         let crank_fee = create_payment(100_000_000, &mut scenario);
-        launchpad::contribute(&mut raise, &factory, contribution, launchpad::unlimited_cap(), crank_fee, &clock, ts::ctx(&mut scenario));
+        launchpad::contribute(
+            &mut raise,
+            &factory,
+            contribution,
+            launchpad::unlimited_cap(),
+            crank_fee,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
         clock::destroy_for_testing(clock);
         ts::return_shared(raise);
         ts::return_shared(factory);
@@ -373,8 +425,20 @@ fun test_sweep_dust_fails_before_claim_period() {
         let mut factory = ts::take_shared<factory::Factory>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
-        let unshared_dao = launchpad::begin_dao_creation(&mut raise, &mut factory, &registry, &clock, ts::ctx(&mut scenario));
-        launchpad::finalize_and_share_dao(&mut raise, unshared_dao, &registry, &clock, ts::ctx(&mut scenario));
+        let unshared_dao = launchpad::begin_dao_creation(
+            &mut raise,
+            &mut factory,
+            &registry,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+        launchpad::finalize_and_share_dao(
+            &mut raise,
+            unshared_dao,
+            &registry,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
 
         ts::return_shared(raise);
         ts::return_shared(factory);
@@ -389,7 +453,14 @@ fun test_sweep_dust_fails_before_claim_period() {
         let mut dao_account = ts::take_shared<Account>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
-        launchpad::sweep_dust(&mut raise, &creator_cap, &mut dao_account, &registry, &clock, ts::ctx(&mut scenario));
+        launchpad::sweep_dust(
+            &mut raise,
+            &creator_cap,
+            &mut dao_account,
+            &registry,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
 
         clock::destroy_for_testing(clock);
         ts::return_to_sender(&scenario, creator_cap);

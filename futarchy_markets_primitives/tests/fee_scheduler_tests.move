@@ -23,7 +23,7 @@ const TWENTY_FOUR_HOURS_MS: u64 = 86_400_000;
 #[expected_failure(abort_code = fee_scheduler::EInitialFeeTooHigh)]
 fun test_new_schedule_fails_initial_fee_exceeds_99_percent() {
     fee_scheduler::new_schedule(
-        10000,   // INVALID: 100% (max is 9900 = 99%)
+        10000, // INVALID: 100% (max is 9900 = 99%)
         TWO_HOURS_MS,
     );
 }
@@ -33,14 +33,14 @@ fun test_new_schedule_fails_initial_fee_exceeds_99_percent() {
 fun test_new_schedule_fails_duration_exceeds_24_hours() {
     fee_scheduler::new_schedule(
         9900,
-        86_400_001,  // INVALID: > 24 hours
+        86_400_001, // INVALID: > 24 hours
     );
 }
 
 #[test]
 fun test_new_schedule_valid() {
     let schedule = fee_scheduler::new_schedule(
-        9900,        // 99%
+        9900, // 99%
         TWO_HOURS_MS,
     );
 
@@ -53,7 +53,7 @@ fun test_new_schedule_zero_duration_allowed() {
     // 0 duration is allowed (skips MEV protection)
     let schedule = fee_scheduler::new_schedule(
         9900,
-        0,  // 0 duration = skip MEV
+        0, // 0 duration = skip MEV
     );
 
     assert!(fee_scheduler::duration_ms(&schedule) == 0, 0);
@@ -63,7 +63,7 @@ fun test_new_schedule_zero_duration_allowed() {
 fun test_new_schedule_zero_initial_fee_allowed() {
     // 0 initial fee is allowed (effectively no MEV protection)
     let schedule = fee_scheduler::new_schedule(
-        0,  // 0 initial fee
+        0, // 0 initial fee
         TWO_HOURS_MS,
     );
 
@@ -73,8 +73,8 @@ fun test_new_schedule_zero_initial_fee_allowed() {
 #[test]
 fun test_new_schedule_max_values() {
     let schedule = fee_scheduler::new_schedule(
-        9900,              // Max: 99%
-        TWENTY_FOUR_HOURS_MS,  // Max: 24 hours
+        9900, // Max: 99%
+        TWENTY_FOUR_HOURS_MS, // Max: 24 hours
     );
 
     assert!(fee_scheduler::initial_fee_bps(&schedule) == 9900, 0);
@@ -89,7 +89,7 @@ fun test_get_current_fee_before_start() {
     let final_fee = 30;
 
     let start_time = 1000;
-    let current_time = 999;  // Before start
+    let current_time = 999; // Before start
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, start_time, current_time);
     assert!(fee == 9900, 0); // Should return initial_fee_bps
@@ -101,7 +101,7 @@ fun test_get_current_fee_at_exact_start() {
     let final_fee = 30;
 
     let start_time = 1000;
-    let current_time = 1000;  // Exactly at start
+    let current_time = 1000; // Exactly at start
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, start_time, current_time);
     assert!(fee == 9900, 0); // Should return initial_fee_bps
@@ -113,7 +113,7 @@ fun test_get_current_fee_after_duration_ends() {
     let final_fee = 30;
 
     let start_time = 0;
-    let current_time = TWO_HOURS_MS;  // Exactly at end
+    let current_time = TWO_HOURS_MS; // Exactly at end
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, start_time, current_time);
     assert!(fee == 30, 0); // Should return final_fee_bps
@@ -125,7 +125,7 @@ fun test_get_current_fee_way_after_duration_ends() {
     let final_fee = 30;
 
     let start_time = 0;
-    let current_time = TWENTY_FOUR_HOURS_MS;  // Way after end
+    let current_time = TWENTY_FOUR_HOURS_MS; // Way after end
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, start_time, current_time);
     assert!(fee == 30, 0); // Should return final_fee_bps
@@ -133,7 +133,7 @@ fun test_get_current_fee_way_after_duration_ends() {
 
 #[test]
 fun test_get_current_fee_zero_duration() {
-    let schedule = fee_scheduler::new_schedule(9900, 0);  // 0 duration
+    let schedule = fee_scheduler::new_schedule(9900, 0); // 0 duration
     let final_fee = 30;
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, 0, 1000);
@@ -148,7 +148,7 @@ fun test_linear_decay_at_halfway() {
     let final_fee = 30;
 
     let start_time = 0;
-    let current_time = ONE_HOUR_MS;  // 50% through duration
+    let current_time = ONE_HOUR_MS; // 50% through duration
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, start_time, current_time);
 
@@ -163,7 +163,7 @@ fun test_linear_decay_at_quarter() {
     let final_fee = 30;
 
     let start_time = 0;
-    let current_time = ONE_HOUR_MS / 2;  // 25% through duration
+    let current_time = ONE_HOUR_MS / 2; // 25% through duration
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, start_time, current_time);
 
@@ -177,7 +177,7 @@ fun test_linear_decay_at_three_quarters() {
     let final_fee = 30;
 
     let start_time = 0;
-    let current_time = (ONE_HOUR_MS * 3) / 2;  // 75% through duration
+    let current_time = (ONE_HOUR_MS * 3) / 2; // 75% through duration
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, start_time, current_time);
 
@@ -189,7 +189,7 @@ fun test_linear_decay_at_three_quarters() {
 fun test_linear_decay_continuous() {
     // Test that decay updates smoothly every millisecond
     // Use 1000ms for clean 1 bps/ms math
-    let schedule = fee_scheduler::new_schedule(1000, 1000);  // 10% → 0% over 1 second
+    let schedule = fee_scheduler::new_schedule(1000, 1000); // 10% → 0% over 1 second
     let final_fee = 0;
 
     let fee_0 = fee_scheduler::get_current_fee(&schedule, final_fee, 0, 0);
@@ -210,8 +210,8 @@ fun test_linear_decay_continuous() {
 fun test_default_schedule() {
     let schedule = fee_scheduler::default_launch_schedule();
 
-    assert!(fee_scheduler::initial_fee_bps(&schedule) == 9900, 0);  // 99%
-    assert!(fee_scheduler::duration_ms(&schedule) == TWO_HOURS_MS, 1);  // 2 hours
+    assert!(fee_scheduler::initial_fee_bps(&schedule) == 9900, 0); // 99%
+    assert!(fee_scheduler::duration_ms(&schedule) == TWO_HOURS_MS, 1); // 2 hours
 }
 
 // === Different Final Fee Tests ===
@@ -239,10 +239,10 @@ fun test_different_final_fees() {
 
 #[test]
 fun test_precision_very_small_duration() {
-    let schedule = fee_scheduler::new_schedule(1000, 100);  // 100ms duration
+    let schedule = fee_scheduler::new_schedule(1000, 100); // 100ms duration
     let final_fee = 0;
 
-    let fee_50 = fee_scheduler::get_current_fee(&schedule, final_fee, 0, 50);  // 50% through
+    let fee_50 = fee_scheduler::get_current_fee(&schedule, final_fee, 0, 50); // 50% through
 
     // Should be close to 500 (1000 * 0.5)
     assert!(fee_50 >= 490 && fee_50 <= 510, 0);
@@ -298,7 +298,7 @@ fun test_small_fee_drop() {
 #[test]
 fun test_equal_initial_and_final() {
     let schedule = fee_scheduler::new_schedule(300, TWO_HOURS_MS);
-    let final_fee = 300;  // Same as initial
+    let final_fee = 300; // Same as initial
 
     let fee = fee_scheduler::get_current_fee(&schedule, final_fee, 0, ONE_HOUR_MS);
 
@@ -352,7 +352,7 @@ fun test_final_fee_equals_initial() {
 #[expected_failure(abort_code = fee_scheduler::EInitialFeeTooHigh)]
 fun test_new_schedule_fails_initial_exceeds_100_percent() {
     fee_scheduler::new_schedule(
-        10001,   // INVALID: > 100%
+        10001, // INVALID: > 100%
         TWO_HOURS_MS,
     );
 }

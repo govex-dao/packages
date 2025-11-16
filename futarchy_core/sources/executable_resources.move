@@ -44,10 +44,7 @@ public fun provide_coin<T, CoinType>(
 
 /// Take a coin from executable's resource bag
 /// Actions call this to get resources they need
-public fun take_coin<T, CoinType>(
-    executable_uid: &mut UID,
-    name: String,
-): Coin<CoinType> {
+public fun take_coin<T, CoinType>(executable_uid: &mut UID, name: String): Coin<CoinType> {
     let bag = borrow_bag_mut(executable_uid);
     let key = coin_key<CoinType>(name);
     assert!(bag::contains(bag, key), EResourceNotFound);
@@ -55,10 +52,7 @@ public fun take_coin<T, CoinType>(
 }
 
 /// Check if a coin resource exists
-public fun has_coin<T, CoinType>(
-    executable_uid: &UID,
-    name: String,
-): bool {
+public fun has_coin<T, CoinType>(executable_uid: &UID, name: String): bool {
     if (!df::exists_(executable_uid, ResourceBagKey {})) return false;
     let bag: &Bag = df::borrow(executable_uid, ResourceBagKey {});
     let key = coin_key<CoinType>(name);

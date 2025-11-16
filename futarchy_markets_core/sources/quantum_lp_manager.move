@@ -125,7 +125,11 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
 
     // Calculate how much to quantum split
     let asset_to_split = math::mul_div_to_64(total_asset, conditional_liquidity_ratio_percent, 100);
-    let stable_to_split = math::mul_div_to_64(total_stable, conditional_liquidity_ratio_percent, 100);
+    let stable_to_split = math::mul_div_to_64(
+        total_stable,
+        conditional_liquidity_ratio_percent,
+        100,
+    );
 
     if (asset_to_split == 0 || stable_to_split == 0) {
         // Nothing to split - clear active proposal and return
@@ -190,7 +194,10 @@ public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
         let pool_mut = market_state::get_pool_mut_by_outcome(market_state, (winning_outcome as u8));
 
         // Get AMM reserves (original liquidity + LP fees)
-        let (asset_reserves, stable_reserves) = conditional_amm::empty_all_amm_liquidity(pool_mut, ctx);
+        let (asset_reserves, stable_reserves) = conditional_amm::empty_all_amm_liquidity(
+            pool_mut,
+            ctx,
+        );
 
         // Get protocol fees before resetting
         let asset_fees = conditional_amm::get_protocol_fees_asset(pool_mut);

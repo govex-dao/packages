@@ -27,7 +27,7 @@
 
 module futarchy_markets_operations::swap_entry;
 
-use futarchy_markets_core::arbitrage; // Used for routing through conditionals + complete set operations
+use futarchy_markets_core::arbitrage;
 use futarchy_markets_core::arbitrage_math;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_core::swap_core;
@@ -91,7 +91,10 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
     return_balance: bool,
     clock: &Clock,
     ctx: &mut TxContext,
-): (option::Option<Coin<AssetType>>, option::Option<ConditionalMarketBalance<AssetType, StableType>>) {
+): (
+    option::Option<Coin<AssetType>>,
+    option::Option<ConditionalMarketBalance<AssetType, StableType>>,
+) {
     let amount_in = stable_in.value();
     assert!(amount_in > 0, EZeroAmount);
 
@@ -186,13 +189,14 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
         // CRITICAL: Automatic arbitrage to bring spot price back into conditional range
         // After spot swaps with routing, spot can be outside the safe range. This atomically
         // arbitrages using pool liquidity to rebalance prices without requiring user coins.
-        existing_balance_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
-            spot_pool,
-            escrow,
-            existing_balance_opt,
-            clock,
-            ctx,
-        );
+        existing_balance_opt =
+            arbitrage::auto_rebalance_spot_after_conditional_swaps(
+                spot_pool,
+                escrow,
+                existing_balance_opt,
+                clock,
+                ctx,
+            );
 
         // Check no-arb guard (ensures swap didn't violate price constraints)
         {
@@ -286,7 +290,10 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
     return_balance: bool,
     clock: &Clock,
     ctx: &mut TxContext,
-): (option::Option<Coin<StableType>>, option::Option<ConditionalMarketBalance<AssetType, StableType>>) {
+): (
+    option::Option<Coin<StableType>>,
+    option::Option<ConditionalMarketBalance<AssetType, StableType>>,
+) {
     let amount_in = asset_in.value();
     assert!(amount_in > 0, EZeroAmount);
 
@@ -381,13 +388,14 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
         // CRITICAL: Automatic arbitrage to bring spot price back into conditional range
         // After spot swaps with routing, spot can be outside the safe range. This atomically
         // arbitrages using pool liquidity to rebalance prices without requiring user coins.
-        existing_balance_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
-            spot_pool,
-            escrow,
-            existing_balance_opt,
-            clock,
-            ctx,
-        );
+        existing_balance_opt =
+            arbitrage::auto_rebalance_spot_after_conditional_swaps(
+                spot_pool,
+                escrow,
+                existing_balance_opt,
+                clock,
+                ctx,
+            );
 
         // Check no-arb guard (ensures swap didn't violate price constraints)
         {

@@ -332,7 +332,12 @@ fun count_expired_intents(account: &Account, registry: &PackageRegistry, clock: 
 }
 
 /// Remove an intent from the index after deletion
-fun remove_from_index(account: &mut Account, registry: &PackageRegistry, key: String, ctx: &mut TxContext) {
+fun remove_from_index(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    key: String,
+    ctx: &mut TxContext,
+) {
     let index = get_or_init_intent_index(account, registry, ctx);
 
     // Remove from expiration times table

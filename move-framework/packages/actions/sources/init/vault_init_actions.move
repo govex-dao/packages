@@ -5,8 +5,8 @@
 /// These can be staged in intents for proposals or launchpad initialization.
 module account_actions::vault_init_actions;
 
-use account_protocol::intents;
 use account_actions::action_spec_builder;
+use account_protocol::intents;
 use std::string::String;
 use std::type_name;
 use sui::bcs;
@@ -15,30 +15,30 @@ use sui::object::ID;
 // === Layer 1: Action Structs ===
 
 /// Action to deposit coins to a vault
-public struct DepositAction has store, copy, drop {
+public struct DepositAction has copy, drop, store {
     vault_name: String,
     amount: u64,
 }
 
 /// Action to spend/withdraw coins from a vault
-public struct SpendAction has store, copy, drop {
+public struct SpendAction has copy, drop, store {
     vault_name: String,
     amount: u64,
     spend_all: bool,
 }
 
 /// Action to approve a coin type for permissionless deposits
-public struct ApproveCoinTypeAction has store, copy, drop {
+public struct ApproveCoinTypeAction has copy, drop, store {
     vault_name: String,
 }
 
 /// Action to remove coin type approval
-public struct RemoveApprovedCoinTypeAction has store, copy, drop {
+public struct RemoveApprovedCoinTypeAction has copy, drop, store {
     vault_name: String,
 }
 
 /// Action to cancel a vesting stream
-public struct CancelStreamAction has store, copy, drop {
+public struct CancelStreamAction has copy, drop, store {
     vault_name: String,
     stream_id: ID,
 }
@@ -61,7 +61,7 @@ public fun add_deposit_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::VaultDeposit>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -84,7 +84,7 @@ public fun add_spend_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::VaultSpend>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -103,7 +103,7 @@ public fun add_approve_coin_type_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::VaultApproveCoinType>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -122,7 +122,7 @@ public fun add_remove_approved_coin_type_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::VaultRemoveApprovedCoinType>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -143,7 +143,7 @@ public fun add_cancel_stream_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::CancelStream>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

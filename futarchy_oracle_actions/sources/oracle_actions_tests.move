@@ -23,7 +23,7 @@ fun test_relative_to_absolute_threshold() {
 
     let result = oracle_actions::relative_to_absolute_threshold(
         launchpad_price,
-        multiplier_2x
+        multiplier_2x,
     );
 
     // Expected: 1.5 * 2.0 = 3.0
@@ -33,7 +33,7 @@ fun test_relative_to_absolute_threshold() {
     let multiplier_half = 500_000_000u64;
     let result2 = oracle_actions::relative_to_absolute_threshold(
         launchpad_price,
-        multiplier_half
+        multiplier_half,
     );
 
     // Expected: 1.5 * 0.5 = 0.75
@@ -46,13 +46,13 @@ fun test_create_price_conditions() {
     // Above condition
     let above = oracle_actions::absolute_price_condition(
         1_000_000_000_000,
-        true
+        true,
     );
 
     // Below condition
     let below = oracle_actions::absolute_price_condition(
         500_000_000_000,
-        false
+        false,
     );
 
     // Just verify they can be created
@@ -74,15 +74,13 @@ fun test_create_recipient_mint() {
 #[test]
 /// Test new_tier_spec construction with single recipient
 fun test_new_tier_spec_single_recipient() {
-    let recipients = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT1, 1000),
-    ];
+    let recipients = vector[oracle_actions::new_recipient_mint(RECIPIENT1, 1000)];
 
     let tier_spec = oracle_actions::new_tier_spec(
         2_000_000_000_000u128, // 2.0 price threshold
         true, // unlock above
         recipients,
-        string::utf8(b"Single Recipient Tier")
+        string::utf8(b"Single Recipient Tier"),
     );
 
     destroy(tier_spec);
@@ -100,7 +98,7 @@ fun test_new_tier_spec_multi_recipient() {
         5_000_000_000_000u128, // 5.0 price threshold
         false, // unlock below
         recipients,
-        string::utf8(b"Multi Recipient Tier")
+        string::utf8(b"Multi Recipient Tier"),
     );
 
     destroy(tier_spec);
@@ -138,15 +136,13 @@ fun test_relative_threshold_edge_cases() {
 #[test]
 /// Test new_create_oracle_grant action construction
 fun test_new_create_oracle_grant_action() {
-    let recipients = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT1, 100),
-    ];
+    let recipients = vector[oracle_actions::new_recipient_mint(RECIPIENT1, 100)];
 
     let tier_spec = oracle_actions::new_tier_spec(
         1_000_000_000_000u128,
         true,
         recipients,
-        string::utf8(b"Test Tier")
+        string::utf8(b"Test Tier"),
     );
 
     let action = oracle_actions::new_create_oracle_grant<u64, u64>(
@@ -156,7 +152,7 @@ fun test_new_create_oracle_grant_action() {
         0, // earliest execution
         1, // expiry years
         true, // cancelable
-        string::utf8(b"Test Grant")
+        string::utf8(b"Test Grant"),
     );
 
     destroy(action);

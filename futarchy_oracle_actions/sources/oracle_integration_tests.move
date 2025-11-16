@@ -1,17 +1,17 @@
 #[test_only]
 module futarchy_oracle::oracle_integration_tests;
 
-use futarchy_oracle::oracle_actions::{Self, PriceBasedMintGrant};
-use account_protocol::package_registry::{Self, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
-use futarchy_core::futarchy_config::{Self};
+use account_protocol::package_registry::{Self, PackageRegistry, PackageAdminCap};
 use futarchy_core::dao_config;
+use futarchy_core::futarchy_config;
+use futarchy_oracle::oracle_actions::{Self, PriceBasedMintGrant};
+use std::string;
 use sui::clock::{Self, Clock};
 use sui::test_scenario::{Self as ts, Scenario};
 use sui::test_utils::destroy;
 use sui::url;
-use std::string;
 
 // === Test Coin Types ===
 
@@ -35,10 +35,30 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     let mut registry = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
 
-    package_registry::add_for_testing(&mut registry, b"account_protocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut registry, b"account_actions".to_string(), @account_actions, 1);
-    package_registry::add_for_testing(&mut registry, b"futarchy_core".to_string(), @futarchy_core, 1);
-    package_registry::add_for_testing(&mut registry, b"futarchy_oracle".to_string(), @futarchy_oracle, 1);
+    package_registry::add_for_testing(
+        &mut registry,
+        b"account_protocol".to_string(),
+        @account_protocol,
+        1,
+    );
+    package_registry::add_for_testing(
+        &mut registry,
+        b"account_actions".to_string(),
+        @account_actions,
+        1,
+    );
+    package_registry::add_for_testing(
+        &mut registry,
+        b"futarchy_core".to_string(),
+        @futarchy_core,
+        1,
+    );
+    package_registry::add_for_testing(
+        &mut registry,
+        b"futarchy_oracle".to_string(),
+        @futarchy_oracle,
+        1,
+    );
 
     let deps = deps::new_for_testing(&registry);
 
@@ -64,7 +84,14 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     // Set launchpad price so oracle grants can read it
     futarchy_config::set_launchpad_initial_price(&mut config, 1_000_000_000_000u128); // 1.0 price
 
-    let mut account = account::new(config, deps, &registry, futarchy_core::version::current(), futarchy_config::witness(), scenario.ctx());
+    let mut account = account::new(
+        config,
+        deps,
+        &registry,
+        futarchy_core::version::current(),
+        futarchy_config::witness(),
+        scenario.ctx(),
+    );
 
     // Initialize DAO state
     let dao_state = futarchy_config::new_dao_state();
@@ -73,7 +100,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
         &registry,
         futarchy_config::new_dao_state_key(),
         dao_state,
-        futarchy_core::version::current()
+        futarchy_core::version::current(),
     );
 
     let clock = clock::create_for_testing(scenario.ctx());
@@ -97,15 +124,13 @@ fun test_create_grant_single_tier() {
     clock.set_for_testing(1000);
 
     // Create tier with single recipient
-    let recipients = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT1, 1000),
-    ];
+    let recipients = vector[oracle_actions::new_recipient_mint(RECIPIENT1, 1000)];
 
     let tier_spec = oracle_actions::new_tier_spec(
         2_000_000_000_000u128, // 2.0 price
         true, // unlock above
         recipients,
-        string::utf8(b"Tier 1")
+        string::utf8(b"Tier 1"),
     );
 
     let tiers = oracle_actions::convert_tier_specs_for_testing(vector[tier_spec]);
@@ -125,7 +150,7 @@ fun test_create_grant_single_tier() {
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     // Verify grant was created
@@ -135,7 +160,7 @@ fun test_create_grant_single_tier() {
     let grant_ids = oracle_actions::get_all_grant_ids(
         &account,
         &registry,
-        futarchy_core::version::current()
+        futarchy_core::version::current(),
     );
     assert!(grant_ids.length() == 1, 1);
     assert!(*grant_ids.borrow(0) == grant_id, 2);
@@ -150,14 +175,12 @@ fun test_create_multiple_grants() {
     clock.set_for_testing(2000);
 
     // Create first grant
-    let recipients1 = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT1, 500),
-    ];
+    let recipients1 = vector[oracle_actions::new_recipient_mint(RECIPIENT1, 500)];
     let tier1 = oracle_actions::new_tier_spec(
         1_000_000_000_000u128,
         true,
         recipients1,
-        string::utf8(b"Grant 1 Tier")
+        string::utf8(b"Grant 1 Tier"),
     );
     let tiers1 = oracle_actions::convert_tier_specs_for_testing(vector[tier1]);
 
@@ -167,23 +190,24 @@ fun test_create_multiple_grants() {
         &registry,
         tiers1,
         false, // use_relative_pricing (absolute prices)
-        0, 0, 0, true,
+        0,
+        0,
+        0,
+        true,
         string::utf8(b"Grant 1"),
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     // Create second grant
-    let recipients2 = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT2, 1000),
-    ];
+    let recipients2 = vector[oracle_actions::new_recipient_mint(RECIPIENT2, 1000)];
     let tier2 = oracle_actions::new_tier_spec(
         3_000_000_000_000u128,
         false,
         recipients2,
-        string::utf8(b"Grant 2 Tier")
+        string::utf8(b"Grant 2 Tier"),
     );
     let tiers2 = oracle_actions::convert_tier_specs_for_testing(vector[tier2]);
 
@@ -192,19 +216,22 @@ fun test_create_multiple_grants() {
         &registry,
         tiers2,
         false, // use_relative_pricing (absolute prices)
-        0, 0, 0, false,
+        0,
+        0,
+        0,
+        false,
         string::utf8(b"Grant 2"),
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     // Verify both grants exist in registry
     let grant_ids = oracle_actions::get_all_grant_ids(
         &account,
         &registry,
-        futarchy_core::version::current()
+        futarchy_core::version::current(),
     );
     assert!(grant_ids.length() == 2, 0);
     assert!(*grant_ids.borrow(0) == grant_id1, 1);
@@ -229,7 +256,7 @@ fun test_create_grant_multi_tier() {
         2_000_000_000_000u128,
         true,
         tier1_recipients,
-        string::utf8(b"Low Tier")
+        string::utf8(b"Low Tier"),
     );
 
     // Tier 2: Different recipients
@@ -241,7 +268,7 @@ fun test_create_grant_multi_tier() {
         5_000_000_000_000u128,
         true,
         tier2_recipients,
-        string::utf8(b"High Tier")
+        string::utf8(b"High Tier"),
     );
 
     let tiers = oracle_actions::convert_tier_specs_for_testing(vector[tier1, tier2]);
@@ -260,7 +287,7 @@ fun test_create_grant_multi_tier() {
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     assert!(grant_id != object::id_from_address(@0x0), 0);
@@ -282,7 +309,7 @@ fun test_grant_view_functions() {
         2_000_000_000_000u128,
         true,
         recipients,
-        string::utf8(b"Test Tier")
+        string::utf8(b"Test Tier"),
     );
     let tiers = oracle_actions::convert_tier_specs_for_testing(vector[tier]);
 
@@ -292,12 +319,15 @@ fun test_grant_view_functions() {
         &registry,
         tiers,
         false, // use_relative_pricing (absolute prices)
-        0, 0, 0, true,
+        0,
+        0,
+        0,
+        true,
         string::utf8(b"View Test Grant"),
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     // Advance transaction to retrieve the shared grant
@@ -330,14 +360,12 @@ fun test_cancel_grant_success() {
     let (mut scenario, registry, mut account, mut clock) = start();
     clock.set_for_testing(5000);
 
-    let recipients = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT1, 1000),
-    ];
+    let recipients = vector[oracle_actions::new_recipient_mint(RECIPIENT1, 1000)];
     let tier = oracle_actions::new_tier_spec(
         2_000_000_000_000u128,
         true,
         recipients,
-        string::utf8(b"Cancel Test")
+        string::utf8(b"Cancel Test"),
     );
     let tiers = oracle_actions::convert_tier_specs_for_testing(vector[tier]);
 
@@ -347,13 +375,15 @@ fun test_cancel_grant_success() {
         &registry,
         tiers,
         false, // use_relative_pricing (absolute prices)
-        0, 0, 0,
+        0,
+        0,
+        0,
         true, // cancelable = true
         string::utf8(b"Cancelable Grant"),
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     scenario.next_tx(OWNER);
@@ -382,14 +412,12 @@ fun test_cancel_non_cancelable_grant_fails() {
     let (mut scenario, registry, mut account, mut clock) = start();
     clock.set_for_testing(6000);
 
-    let recipients = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT1, 1000),
-    ];
+    let recipients = vector[oracle_actions::new_recipient_mint(RECIPIENT1, 1000)];
     let tier = oracle_actions::new_tier_spec(
         2_000_000_000_000u128,
         true,
         recipients,
-        string::utf8(b"Non-Cancelable")
+        string::utf8(b"Non-Cancelable"),
     );
     let tiers = oracle_actions::convert_tier_specs_for_testing(vector[tier]);
 
@@ -399,13 +427,15 @@ fun test_cancel_non_cancelable_grant_fails() {
         &registry,
         tiers,
         false, // use_relative_pricing (absolute prices)
-        0, 0, 0,
+        0,
+        0,
+        0,
         false, // cancelable = false
         string::utf8(b"Non-Cancelable Grant"),
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     scenario.next_tx(OWNER);
@@ -428,14 +458,12 @@ fun test_cancel_already_canceled_fails() {
     let (mut scenario, registry, mut account, mut clock) = start();
     clock.set_for_testing(7000);
 
-    let recipients = vector[
-        oracle_actions::new_recipient_mint(RECIPIENT1, 1000),
-    ];
+    let recipients = vector[oracle_actions::new_recipient_mint(RECIPIENT1, 1000)];
     let tier = oracle_actions::new_tier_spec(
         2_000_000_000_000u128,
         true,
         recipients,
-        string::utf8(b"Double Cancel Test")
+        string::utf8(b"Double Cancel Test"),
     );
     let tiers = oracle_actions::convert_tier_specs_for_testing(vector[tier]);
 
@@ -445,12 +473,15 @@ fun test_cancel_already_canceled_fails() {
         &registry,
         tiers,
         false, // use_relative_pricing (absolute prices)
-        0, 0, 0, true,
+        0,
+        0,
+        0,
+        true,
         string::utf8(b"Grant"),
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     scenario.next_tx(OWNER);
@@ -485,12 +516,15 @@ fun test_create_grant_empty_tiers_fails() {
         &registry,
         empty_tiers,
         false, // use_relative_pricing (absolute prices)
-        0, 0, 0, true,
+        0,
+        0,
+        0,
+        true,
         string::utf8(b"Empty Grant"),
         dao_id,
         futarchy_core::version::current(),
         &clock,
-        scenario.ctx()
+        scenario.ctx(),
     );
 
     end(scenario, registry, account, clock);
@@ -504,7 +538,7 @@ fun test_empty_grant_registry() {
     let grant_ids = oracle_actions::get_all_grant_ids(
         &account,
         &registry,
-        futarchy_core::version::current()
+        futarchy_core::version::current(),
     );
 
     assert!(grant_ids.is_empty(), 0);

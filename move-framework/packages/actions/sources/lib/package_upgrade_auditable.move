@@ -4,30 +4,28 @@
 /// Enhanced auditable upgrade proposal with source verification
 module account_actions::package_upgrade_auditable;
 
-use std::string::String;
-use sui::clock::Clock;
+use account_actions::package_upgrade;
+use account_actions::version;
 use account_protocol::account::{Account, Auth};
 use account_protocol::package_registry::PackageRegistry;
-use account_actions::{version, package_upgrade};
+use std::string::String;
+use sui::clock::Clock;
 
 // === Structs ===
 
 /// Comprehensive audit metadata for upgrade proposals
-public struct AuditMetadata has store, copy, drop {
+public struct AuditMetadata has copy, drop, store {
     // Source code verification
-    source_code_hash: vector<u8>,      // SHA256 of all source files
-    move_toml_hash: vector<u8>,        // SHA256 of Move.toml
-
+    source_code_hash: vector<u8>, // SHA256 of all source files
+    move_toml_hash: vector<u8>, // SHA256 of Move.toml
     // Build verification
-    compiler_version: String,          // e.g., "sui-move 1.18.0"
-    build_timestamp_ms: u64,           // When built
-    dependencies_hash: vector<u8>,     // Hash of all dependency versions
-
+    compiler_version: String, // e.g., "sui-move 1.18.0"
+    build_timestamp_ms: u64, // When built
+    dependencies_hash: vector<u8>, // Hash of all dependency versions
     // Audit trail
-    git_commit_hash: String,           // Git SHA of source
-    github_release_tag: String,        // e.g., "v3.0.0"
-    audit_report_url: String,          // Link to audit report
-
+    git_commit_hash: String, // Git SHA of source
+    github_release_tag: String, // e.g., "v3.0.0"
+    audit_report_url: String, // Link to audit report
     // Verifier attestations (optional)
     verifier_signatures: vector<vector<u8>>, // Independent verifiers who checked
 }
@@ -35,8 +33,8 @@ public struct AuditMetadata has store, copy, drop {
 /// Enhanced proposal with full audit metadata
 public struct AuditableUpgradeProposal has store {
     package_name: String,
-    bytecode_digest: vector<u8>,       // What Sui runtime validates
-    audit_metadata: AuditMetadata,     // All verification data
+    bytecode_digest: vector<u8>, // What Sui runtime validates
+    audit_metadata: AuditMetadata, // All verification data
     proposed_time_ms: u64,
     execution_time_ms: u64,
     approved: bool,
@@ -125,7 +123,7 @@ public fun add_verifier_attestation<Config: store>(
     registry: &PackageRegistry,
     package_name: String,
     bytecode_digest: vector<u8>,
-    signature: vector<u8>,  // Verifier's signature over digest
+    signature: vector<u8>, // Verifier's signature over digest
     clock: &Clock,
 ) {
     use account_protocol::account as acc;
@@ -135,7 +133,7 @@ public fun add_verifier_attestation<Config: store>(
     let proposal: &mut AuditableUpgradeProposal = account.borrow_managed_data_mut(
         registry,
         auditable_key(package_name, bytecode_digest),
-        version::current()
+        version::current(),
     );
 
     proposal.audit_metadata.verifier_signatures.push_back(signature);
@@ -159,7 +157,7 @@ public fun get_audit_metadata<Config: store>(
     let proposal: &AuditableUpgradeProposal = account.borrow_managed_data(
         registry,
         auditable_key(package_name, bytecode_digest),
-        version::current()
+        version::current(),
     );
     proposal.audit_metadata
 }

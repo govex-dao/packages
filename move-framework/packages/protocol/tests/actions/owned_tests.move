@@ -1,11 +1,15 @@
 #[test_only]
 module account_protocol::owned_tests;
 
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry, PackageAdminCap};
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
 use account_protocol::intents::{Self, Intent};
 use account_protocol::owned;
+use account_protocol::package_registry::{
+    Self as package_registry,
+    PackageRegistry,
+    PackageAdminCap
+};
 use account_protocol::version;
 use std::type_name;
 use sui::clock::{Self, Clock};
@@ -41,12 +45,24 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     let mut extensions = scenario.take_shared<PackageRegistry>();
     let cap = scenario.take_from_sender<PackageAdminCap>();
     // add core deps
-    package_registry::add_for_testing(&mut extensions,  b"AccountProtocol".to_string(), @account_protocol, 1);
-    package_registry::add_for_testing(&mut extensions,  b"AccountMultisig".to_string(), @0x1, 1);
-    package_registry::add_for_testing(&mut extensions,  b"AccountActions".to_string(), @0x2, 1);
+    package_registry::add_for_testing(
+        &mut extensions,
+        b"AccountProtocol".to_string(),
+        @account_protocol,
+        1,
+    );
+    package_registry::add_for_testing(&mut extensions, b"AccountMultisig".to_string(), @0x1, 1);
+    package_registry::add_for_testing(&mut extensions, b"AccountActions".to_string(), @0x2, 1);
     // Account generic types are dummy types (bool, bool)
     let deps = deps::new(&extensions);
-    let account = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let account = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
     let clock = clock::create_for_testing(scenario.ctx());
     // create world
     destroy(cap);
@@ -114,7 +130,13 @@ fun test_withdraw_flow() {
 
     let mut intent = create_dummy_intent(&mut scenario, &account, &extensions, &clock);
     let coin_type = type_name::with_defining_ids<SUI>().into_string().to_string();
-    owned::new_withdraw_coin<Outcome, DummyIntent>(&mut intent, &account, coin_type, 5, DummyIntent());
+    owned::new_withdraw_coin<Outcome, DummyIntent>(
+        &mut intent,
+        &account,
+        coin_type,
+        5,
+        DummyIntent(),
+    );
     account.insert_intent(&extensions, intent, version::current(), DummyIntent());
 
     let (_, mut executable) = account.create_executable<Config, Outcome, Witness>(
@@ -148,7 +170,13 @@ fun test_withdraw_expired() {
 
     let mut intent = create_dummy_intent(&mut scenario, &account, &extensions, &clock);
     let coin_type = type_name::with_defining_ids<SUI>().into_string().to_string();
-    owned::new_withdraw_coin<Outcome, DummyIntent>(&mut intent, &account, coin_type, 5, DummyIntent());
+    owned::new_withdraw_coin<Outcome, DummyIntent>(
+        &mut intent,
+        &account,
+        coin_type,
+        5,
+        DummyIntent(),
+    );
     account.insert_intent(&extensions, intent, version::current(), DummyIntent());
 
     let mut expired = account.delete_expired_intent<Outcome>(key, &clock, scenario.ctx());
@@ -228,7 +256,14 @@ fun test_error_do_withdraw_from_wrong_account() {
     let (mut scenario, extensions, mut account, clock) = start();
 
     let deps = deps::new(&extensions);
-    let mut account2 = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let mut account2 = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
     let key = b"dummy".to_string();
 
     let id = send_coin(account.addr(), 5, &mut scenario);
@@ -236,7 +271,13 @@ fun test_error_do_withdraw_from_wrong_account() {
     // intent is submitted to other account
     let mut intent = create_dummy_intent(&mut scenario, &account2, &extensions, &clock);
     let coin_type = type_name::with_defining_ids<SUI>().into_string().to_string();
-    owned::new_withdraw_coin<Outcome, DummyIntent>(&mut intent, &account, coin_type, 5, DummyIntent());
+    owned::new_withdraw_coin<Outcome, DummyIntent>(
+        &mut intent,
+        &account,
+        coin_type,
+        5,
+        DummyIntent(),
+    );
     account2.insert_intent(&extensions, intent, version::current(), DummyIntent());
 
     let (_, mut executable) = account2.create_executable<Config, Outcome, Witness>(
@@ -265,7 +306,14 @@ fun test_error_do_withdraw_from_wrong_account() {
 fun test_error_delete_withdraw_from_wrong_account() {
     let (mut scenario, extensions, mut account, mut clock) = start();
     let deps = deps::new(&extensions);
-    let mut account2 = account::new(Config {}, deps, &extensions, version::current(), Witness(), scenario.ctx());
+    let mut account2 = account::new(
+        Config {},
+        deps,
+        &extensions,
+        version::current(),
+        Witness(),
+        scenario.ctx(),
+    );
 
     clock.increment_for_testing(1);
     let key = b"dummy".to_string();
@@ -274,7 +322,13 @@ fun test_error_delete_withdraw_from_wrong_account() {
 
     let mut intent = create_dummy_intent(&mut scenario, &account, &extensions, &clock);
     let coin_type = type_name::with_defining_ids<SUI>().into_string().to_string();
-    owned::new_withdraw_coin<Outcome, DummyIntent>(&mut intent, &account, coin_type, 5, DummyIntent());
+    owned::new_withdraw_coin<Outcome, DummyIntent>(
+        &mut intent,
+        &account,
+        coin_type,
+        5,
+        DummyIntent(),
+    );
     account.insert_intent(&extensions, intent, version::current(), DummyIntent());
 
     let mut expired = account.delete_expired_intent<Outcome>(key, &clock, scenario.ctx());

@@ -5,43 +5,45 @@
 /// These can be staged in intents for proposals.
 module futarchy_governance_actions::package_registry_init_actions;
 
-use std::{string::String, vector, type_name};
-use sui::bcs;
 use account_protocol::intents;
+use std::string::String;
+use std::type_name;
+use std::vector;
+use sui::bcs;
 
 // === Layer 1: Action Structs ===
 
-public struct AddPackageAction has store, drop {
+public struct AddPackageAction has drop, store {
     name: String,
     addr: address,
     version: u64,
-    action_types: vector<String>,  // Action types as strings (e.g., "package_name::ActionType")
+    action_types: vector<String>, // Action types as strings (e.g., "package_name::ActionType")
     category: String,
     description: String,
 }
 
-public struct RemovePackageAction has store, drop {
+public struct RemovePackageAction has drop, store {
     name: String,
 }
 
-public struct UpdatePackageVersionAction has store, drop {
+public struct UpdatePackageVersionAction has drop, store {
     name: String,
     addr: address,
     version: u64,
 }
 
-public struct UpdatePackageMetadataAction has store, drop {
+public struct UpdatePackageMetadataAction has drop, store {
     name: String,
     new_action_types: vector<String>,
     new_category: String,
     new_description: String,
 }
 
-public struct PauseAccountCreationAction has store, drop {
+public struct PauseAccountCreationAction has drop, store {
     // No fields needed - this action just sets a flag
 }
 
-public struct UnpauseAccountCreationAction has store, drop {
+public struct UnpauseAccountCreationAction has drop, store {
     // No fields needed - this action just sets a flag
 }
 
@@ -69,9 +71,11 @@ public fun add_add_package_spec(
     };
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_governance_actions::package_registry_actions::AddPackage>(),
+        type_name::with_defining_ids<
+            futarchy_governance_actions::package_registry_actions::AddPackage,
+        >(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -86,9 +90,11 @@ public fun add_remove_package_spec(
     let action = RemovePackageAction { name };
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_governance_actions::package_registry_actions::RemovePackage>(),
+        type_name::with_defining_ids<
+            futarchy_governance_actions::package_registry_actions::RemovePackage,
+        >(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -109,9 +115,11 @@ public fun add_update_package_version_spec(
     };
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_governance_actions::package_registry_actions::UpdatePackageVersion>(),
+        type_name::with_defining_ids<
+            futarchy_governance_actions::package_registry_actions::UpdatePackageVersion,
+        >(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -134,9 +142,11 @@ public fun add_update_package_metadata_spec(
     };
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_governance_actions::package_registry_actions::UpdatePackageMetadata>(),
+        type_name::with_defining_ids<
+            futarchy_governance_actions::package_registry_actions::UpdatePackageMetadata,
+        >(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -150,9 +160,11 @@ public fun add_pause_account_creation_spec(
     let action = PauseAccountCreationAction {};
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_governance_actions::package_registry_actions::PauseAccountCreation>(),
+        type_name::with_defining_ids<
+            futarchy_governance_actions::package_registry_actions::PauseAccountCreation,
+        >(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -166,9 +178,11 @@ public fun add_unpause_account_creation_spec(
     let action = UnpauseAccountCreationAction {};
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_governance_actions::package_registry_actions::UnpauseAccountCreation>(),
+        type_name::with_defining_ids<
+            futarchy_governance_actions::package_registry_actions::UnpauseAccountCreation,
+        >(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

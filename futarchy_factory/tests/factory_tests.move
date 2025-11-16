@@ -43,10 +43,30 @@ fun setup_test(sender: address): Scenario {
     ts::next_tx(&mut scenario, sender);
     {
         let mut registry = ts::take_shared<package_registry::PackageRegistry>(&scenario);
-        package_registry::add_for_testing(&mut registry, b"account_protocol".to_string(), @account_protocol, 1);
-        package_registry::add_for_testing(&mut registry, b"account_actions".to_string(), @account_actions, 1);
-        package_registry::add_for_testing(&mut registry, b"futarchy_core".to_string(), @futarchy_core, 1);
-        package_registry::add_for_testing(&mut registry, b"futarchy_factory".to_string(), @futarchy_factory, 1);
+        package_registry::add_for_testing(
+            &mut registry,
+            b"account_protocol".to_string(),
+            @account_protocol,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"account_actions".to_string(),
+            @account_actions,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"futarchy_core".to_string(),
+            @futarchy_core,
+            1,
+        );
+        package_registry::add_for_testing(
+            &mut registry,
+            b"futarchy_factory".to_string(),
+            @futarchy_factory,
+            1,
+        );
         ts::return_shared(registry);
     };
 
@@ -61,7 +81,7 @@ fun setup_test(sender: address): Scenario {
             &mut factory,
             &owner_cap,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         clock::destroy_for_testing(clock);
@@ -127,7 +147,7 @@ fun test_basic_dao_creation() {
             treasury_cap,
             coin_metadata,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         // Verify DAO was created
@@ -167,21 +187,26 @@ fun test_multiple_dao_creation() {
             &registry,
             &mut fee_manager,
             payment,
-            100_000, 100_000,
+            100_000,
+            100_000,
             b"DAO 1".to_ascii_string(),
             b"https://example.com/icon1.png".to_ascii_string(),
-            86400000, 259200000, 60000, 10,
+            86400000,
+            259200000,
+            60000,
+            10,
             1_000_000_000_000,
             500_000, // twap_threshold_magnitude
             false, // twap_threshold_negative
             30,
             b"First DAO".to_string(),
             3,
-            vector::empty(), vector::empty(),
+            vector::empty(),
+            vector::empty(),
             treasury_cap,
             coin_metadata,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         assert!(factory::dao_count(&factory) == 1, 0);
@@ -212,21 +237,26 @@ fun test_multiple_dao_creation() {
             &registry,
             &mut fee_manager,
             payment,
-            200_000, 200_000,
+            200_000,
+            200_000,
             b"DAO 2".to_ascii_string(),
             b"https://example.com/icon2.png".to_ascii_string(),
-            172800000, 432000000, 120000, 20,
+            172800000,
+            432000000,
+            120000,
+            20,
             2_000_000_000_000,
             750_000, // twap_threshold_magnitude
             false, // twap_threshold_negative
             50,
             b"Second DAO".to_string(),
             5,
-            vector::empty(), vector::empty(),
+            vector::empty(),
+            vector::empty(),
             treasury_cap,
             coin_metadata,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         assert!(factory::dao_count(&factory) == 2, 1);
@@ -267,21 +297,26 @@ fun test_dao_creation_with_unallowed_stable() {
             &registry,
             &mut fee_manager,
             payment,
-            100_000, 100_000,
+            100_000,
+            100_000,
             b"Invalid DAO".to_ascii_string(),
             b"https://example.com/icon.png".to_ascii_string(),
-            86400000, 259200000, 60000, 10,
+            86400000,
+            259200000,
+            60000,
+            10,
             1_000_000_000_000,
             500_000, // twap_threshold_magnitude
             false, // twap_threshold_negative
             30,
             b"Should fail".to_string(),
             3,
-            vector::empty(), vector::empty(),
+            vector::empty(),
+            vector::empty(),
             treasury_cap,
             coin_metadata,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         clock::destroy_for_testing(clock);
@@ -350,14 +385,14 @@ fun test_permanent_disable_prevents_dao_creation() {
             b"https://example.com/icon.png".to_ascii_string(),
             86_400_000, // 1 day review
             86_400_000, // 1 day trading
-            60_000,     // 1 minute delay
-            10,         // twap_step_max
+            60_000, // 1 minute delay
+            10, // twap_step_max
             1_000_000_000_000, // twap_initial_observation
-            100_000,    // twap_threshold_magnitude (0.1 = 10%)
-            false,      // twap_threshold_negative
-            30,         // 0.3% AMM fee
+            100_000, // twap_threshold_magnitude (0.1 = 10%)
+            false, // twap_threshold_negative
+            30, // 0.3% AMM fee
             b"Test DAO Description".to_string(),
-            2,          // max_outcomes
+            2, // max_outcomes
             vector::empty(),
             vector::empty(),
             treasury_cap,
@@ -457,7 +492,7 @@ fun test_otw_coin_compatibility() {
             treasury_cap,
             coin_metadata,
             &clock,
-            ts::ctx(&mut scenario)
+            ts::ctx(&mut scenario),
         );
 
         // Verify DAO was created successfully

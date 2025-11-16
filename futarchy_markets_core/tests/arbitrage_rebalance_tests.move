@@ -140,9 +140,7 @@ fun add_liquidity_to_conditional_pools(
 }
 
 #[test_only]
-fun get_conditional_price_range(
-    escrow: &TokenEscrow<TEST_COIN_A, TEST_COIN_B>
-): (u128, u128) {
+fun get_conditional_price_range(escrow: &TokenEscrow<TEST_COIN_A, TEST_COIN_B>): (u128, u128) {
     let market_state = coin_escrow::get_market_state(escrow);
     let pools = market_state::borrow_amm_pools(market_state);
 
@@ -274,7 +272,12 @@ fun test_auto_rebalance_no_op_when_in_range() {
     let clock = create_test_clock(1000000, ctx);
 
     // Create spot pool: 10,000 asset, 10,000 stable (price = 1.0)
-    let mut spot_pool = create_test_spot_pool(INITIAL_SPOT_RESERVE, INITIAL_SPOT_RESERVE, &clock, ctx);
+    let mut spot_pool = create_test_spot_pool(
+        INITIAL_SPOT_RESERVE,
+        INITIAL_SPOT_RESERVE,
+        &clock,
+        ctx,
+    );
     let initial_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
 
     // Create escrow with conditional pools at similar prices (around 1.0)

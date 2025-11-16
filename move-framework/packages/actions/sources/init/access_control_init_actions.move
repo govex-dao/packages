@@ -8,8 +8,8 @@
 /// to be serialized as empty BCS structs for the 3-layer pattern to work correctly.
 module account_actions::access_control_init_actions;
 
-use account_protocol::intents;
 use account_actions::action_spec_builder;
+use account_protocol::intents;
 use std::type_name;
 use sui::bcs;
 
@@ -18,14 +18,14 @@ use sui::bcs;
 /// Action to borrow a capability from the account
 /// This is an empty struct - the capability type is determined by the type parameter
 /// when calling do_borrow<Config, Outcome, Cap, IW>
-public struct BorrowAction has store, copy, drop {
+public struct BorrowAction has copy, drop, store {
     // Empty struct - no fields to serialize
 }
 
 /// Action to return a borrowed capability to the account
 /// This is an empty struct - the capability type is determined by the type parameter
 /// when calling do_return<Config, Outcome, Cap, IW>
-public struct ReturnAction has store, copy, drop {
+public struct ReturnAction has copy, drop, store {
     // Empty struct - no fields to serialize
 }
 
@@ -33,9 +33,7 @@ public struct ReturnAction has store, copy, drop {
 
 /// Add a borrow action to the spec builder
 /// Note: Even though BorrowAction is empty, we still serialize it as an empty BCS struct
-public fun add_borrow_spec(
-    builder: &mut action_spec_builder::Builder,
-) {
+public fun add_borrow_spec(builder: &mut action_spec_builder::Builder) {
     use account_actions::action_spec_builder as builder_mod;
 
     let action = BorrowAction {};
@@ -43,7 +41,7 @@ public fun add_borrow_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::access_control::AccessControlBorrow>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }
@@ -51,9 +49,7 @@ public fun add_borrow_spec(
 /// Add a return action to the spec builder
 /// Note: Even though ReturnAction is empty, we still serialize it as an empty BCS struct
 /// IMPORTANT: A BorrowAction MUST have a matching ReturnAction later in the same intent
-public fun add_return_spec(
-    builder: &mut action_spec_builder::Builder,
-) {
+public fun add_return_spec(builder: &mut action_spec_builder::Builder) {
     use account_actions::action_spec_builder as builder_mod;
 
     let action = ReturnAction {};
@@ -61,7 +57,7 @@ public fun add_return_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::access_control::AccessControlReturn>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

@@ -5,9 +5,9 @@
 module futarchy_actions::dissolution_actions_tests;
 
 use futarchy_actions::dissolution_actions;
-use sui::test_utils::destroy;
 use sui::object;
 use sui::test_scenario::{Self as ts, Scenario};
+use sui::test_utils::destroy;
 
 // === Constants ===
 

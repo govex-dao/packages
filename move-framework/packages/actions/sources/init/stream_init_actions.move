@@ -22,10 +22,10 @@ use sui::tx_context::TxContext;
 
 /// Action to create an iteration-based vesting stream
 /// Stored in InitActionSpecs with BCS serialization
-public struct CreateStreamAction has store, copy, drop {
+public struct CreateStreamAction has copy, drop, store {
     vault_name: String,
     beneficiary: address,
-    amount_per_iteration: u64,  // Tokens per iteration (NO DIVISION)
+    amount_per_iteration: u64, // Tokens per iteration (NO DIVISION)
     start_time: u64,
     iterations_total: u64,
     iteration_period_ms: u64,
@@ -80,7 +80,7 @@ public fun add_create_stream_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::vault::CreateStream>(),
         action_data,
-        1  // version
+        1, // version
     );
     builder::add(builder, action_spec);
 }

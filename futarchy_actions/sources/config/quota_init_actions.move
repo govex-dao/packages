@@ -5,16 +5,16 @@
 /// These can be staged in intents for proposals.
 module futarchy_actions::quota_init_actions;
 
-use std::vector;
-use std::type_name;
-use sui::bcs;
 use account_protocol::intents;
+use std::type_name;
+use std::vector;
+use sui::bcs;
 
 // === Layer 1: Action Structs ===
 
 /// Action to set quotas for multiple addresses (batch operation)
 /// Set quota_amount to 0 to remove quotas
-public struct SetQuotasAction has store, drop {
+public struct SetQuotasAction has drop, store {
     /// Addresses to set quota for
     users: vector<address>,
     /// N proposals per period (0 to remove)
@@ -52,7 +52,7 @@ public fun add_set_quotas_spec(
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::quota_actions::SetQuotas>(),
         action_data,
-        1
+        1,
     );
     builder_mod::add(builder, action_spec);
 }

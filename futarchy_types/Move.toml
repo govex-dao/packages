@@ -6,4 +6,4 @@ edition = "2024.beta"
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
 
 [addresses]
-futarchy_types = "0xa64ab2edf3506ba2e252e8b9f7fb6d726cb1ae1a0a67ba992a675dda9bf240f0"
+futarchy_types = "0xbb37dff8691a336889f1f47c7fe525760f5360868b92fb3bdfed6da9138dacb5"

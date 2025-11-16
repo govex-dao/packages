@@ -5,6 +5,7 @@ use futarchy_markets_core::arbitrage;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm::{Self, LiquidityPool};
+use futarchy_markets_primitives::conditional_balance;
 use futarchy_markets_primitives::market_state::{Self, MarketState};
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
@@ -189,12 +190,18 @@ fun test_auto_rebalance_when_spot_too_high() {
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
 
     // Execute auto-rebalance
-    arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     // After rebalancing, spot price should have moved down toward conditional range
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
@@ -233,12 +240,18 @@ fun test_auto_rebalance_when_spot_too_low() {
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
 
     // Execute auto-rebalance
-    arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     // After rebalancing, spot price should have moved up toward conditional range
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
@@ -276,12 +289,18 @@ fun test_auto_rebalance_no_op_when_in_range() {
     // Spot price (1.0) is within conditional range, so no rebalancing needed
 
     // Execute auto-rebalance
-    arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     // Spot price should be virtually unchanged (within rounding)
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
@@ -322,12 +341,18 @@ fun test_auto_rebalance_three_outcomes() {
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
 
     // Execute auto-rebalance
-    arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
 
@@ -362,12 +387,18 @@ fun test_auto_rebalance_small_adjustments() {
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
 
     // Execute auto-rebalance
-    arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
 

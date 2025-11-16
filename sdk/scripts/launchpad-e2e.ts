@@ -458,7 +458,7 @@ async function main() {
       builder, // &mut Builder
       stageTx.pure.option("u64", null), // min_asset_amount (keep default)
       stageTx.pure.option("u64", null), // min_stable_amount (keep default)
-      stageTx.pure.option("u64", null), // review_period_ms (keep default)
+      stageTx.pure.option("u64", 1000), // review_period_ms = 1 second (minimum for e2e testing)
       stageTx.pure.option("u64", 60_000), // trading_period_ms = 1 minute
       stageTx.pure.option("u64", null), // amm_total_fee_bps (keep default)
     ],

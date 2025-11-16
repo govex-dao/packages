@@ -1,45 +1,31 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
-import { bcs } from "@mysten/sui/bcs";
 import { TransactionBuilder, TransactionUtils } from "./transaction";
 
 /**
  * Configuration for creating a proposal
+ *
+ * SECURITY NOTE: All governance parameters (review/trading periods, fees, TWAP config, etc.)
+ * are now READ FROM DAO CONFIG and cannot be overridden by callers.
+ * This prevents governance bypass attacks.
  */
 export interface CreateProposalConfig {
-    // DAO  configuration
-    daoId: string; // DAO Account ID
+    // DAO configuration
+    daoAccountId: string; // DAO Account ID - ALL governance config read from here
     assetType: string; // Full type path for DAO asset token
     stableType: string; // Full type path for stable token
 
     // Proposal content
     title: string;
-    introduction: string;
-    outcomeMessages: string[]; // E.g., ["Accept", "Reject"]
+    introduction: string; // Introduction/description
+    outcomeMessages: string[]; // E.g., ["Reject", "Accept"]
     outcomeDetails: string[]; // Details for each outcome (must match outcomeMessages length)
     metadata: string; // JSON or additional metadata
 
     // Proposal settings
     proposer: string; // Address of proposal creator
     treasuryAddress: string; // DAO treasury address
-    maxOutcomes: bigint | number; // DAO's configured max outcomes
-    usesDaoLiquidity: boolean; // If true, uses DAO's spot pool liquidity
     usedQuota: boolean; // Track if proposal used admin budget
-
-    // Timing (in milliseconds)
-    reviewPeriodMs: bigint | number;
-    tradingPeriodMs: bigint | number;
-    twapStartDelayMs?: bigint | number; // Optional, defaults to 0
-
-    // Market configuration
-    minAssetLiquidity: bigint | number;
-    minStableLiquidity: bigint | number;
-    ammFeeBps: bigint | number; // AMM fee in basis points (e.g., 30 for 0.3%)
-
-    // TWAP configuration
-    twapInitialObservation: bigint; // Initial TWAP observation value
-    twapStepMax: bigint | number;
-    twapThreshold: bigint; // Signed threshold for determining winner
 
     // Actions for YES/Accept outcome (optional)
     intentSpecForYes?: any; // Optional vector<ActionSpec> for outcome 1 (YES/Accept) - outcome 0 = Reject/No
@@ -108,12 +94,16 @@ export class GovernanceOperations {
     /**
      * Create a new proposal in PREMARKET state
      *
+     * SECURITY: All governance parameters (review period, trading period, fees, TWAP config, etc.)
+     * are now read from DAO config. Callers can only control proposal-specific content.
+     * This prevents governance bypass attacks where attackers could override DAO settings.
+     *
      * This creates the proposal object and allows outcomes to be added.
      * After creation, you'll need to:
      * 1. Add init action specs to outcomes (optional)
      * 2. Initialize the market (transitions to REVIEW state)
      *
-     * @param config - Proposal configuration
+     * @param config - Proposal configuration (governance params read from DAO)
      * @param clock - Clock object ID (usually "0x6")
      * @returns Transaction for creating the proposal
      */
@@ -127,23 +117,21 @@ export class GovernanceOperations {
             "new_premarket"
         );
 
-        // Create the proposal
+        // Create Option::None for intent_spec_for_yes if not provided
+        // TODO: Support actual ActionSpec when intentSpecForYes is provided
+        const intentSpec = tx.moveCall({
+            target: '0x1::option::none',
+            typeArguments: [`vector<0x1::string::String>`], // Placeholder - should be ActionSpec
+            arguments: [],
+        });
+
+        // NEW SECURE SIGNATURE: All governance params read from DAO config
         tx.moveCall({
             target,
             typeArguments: [config.assetType, config.stableType],
             arguments: [
-                tx.object(config.referenceProposalId), // proposal_id_from_queue (vestigial)
-                tx.object(config.daoId), // dao_id
-                tx.pure.u64(config.reviewPeriodMs), // review_period_ms
-                tx.pure.u64(config.tradingPeriodMs), // trading_period_ms
-                tx.pure.u64(config.minAssetLiquidity), // min_asset_liquidity
-                tx.pure.u64(config.minStableLiquidity), // min_stable_liquidity
-                tx.pure.u64(config.twapStartDelayMs || 0), // twap_start_delay
-                tx.pure.u128(config.twapInitialObservation), // twap_initial_observation
-                tx.pure.u64(config.twapStepMax), // twap_step_max
-                tx.pure.u128(config.twapThreshold), // twap_threshold (SignedU128)
-                tx.pure.u64(config.ammFeeBps), // amm_total_fee_bps
-                tx.pure.u64(config.maxOutcomes), // max_outcomes
+                tx.object(config.referenceProposalId), // proposal_id_from_queue
+                tx.object(config.daoAccountId), // dao_account (ALL config read from here)
                 tx.pure.address(config.treasuryAddress), // treasury_address
                 tx.pure.string(config.title), // title
                 tx.pure.string(config.introduction), // introduction_details
@@ -151,11 +139,8 @@ export class GovernanceOperations {
                 tx.pure.vector("string", config.outcomeMessages), // outcome_messages
                 tx.pure.vector("string", config.outcomeDetails), // outcome_details
                 tx.pure.address(config.proposer), // proposer
-                tx.pure.bool(config.usesDaoLiquidity), // uses_dao_liquidity
                 tx.pure.bool(config.usedQuota), // used_quota
-                config.intentSpecForYes
-                    ? tx.pure(bcs.option(bcs.vector(bcs.u8())).serialize(config.intentSpecForYes).toBytes())
-                    : tx.pure(bcs.option(bcs.vector(bcs.u8())).serialize(null).toBytes()), // intent_spec_for_yes
+                intentSpec, // intent_spec_for_yes
                 tx.sharedObjectRef({
                     objectId: clock,
                     initialSharedVersion: 1,

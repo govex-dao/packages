@@ -5,6 +5,7 @@ use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm::{Self, LiquidityPool};
+use futarchy_markets_primitives::conditional_balance;
 use futarchy_markets_primitives::market_state::{Self, MarketState};
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
@@ -195,12 +196,18 @@ fun test_spot_swap_scenario_price_too_high() {
     // Simulate what happens in spot swap entry point:
     // 1. Swap executes (we skip this as it would make price even worse)
     // 2. Auto-rebalance is called
-    futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     // 3. Verify spot price moved toward conditional range
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
@@ -240,12 +247,18 @@ fun test_spot_swap_scenario_price_too_low() {
     assert!(initial_spot_price < min_cond_price, 0);
 
     // Simulate spot swap entry point: auto-rebalance
-    futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     // Verify spot price moved UP toward conditional range
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
@@ -285,12 +298,18 @@ fun test_spot_swap_scenario_already_in_range() {
     assert!(initial_spot_price >= min_cond_price && initial_spot_price <= max_cond_price, 0);
 
     // Auto-rebalance should do nothing
-    futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     // Spot price should be virtually unchanged
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
@@ -354,12 +373,18 @@ fun test_post_quantum_split_spot_swap() {
     let (min_cond_price, max_cond_price) = get_conditional_price_range(&escrow);
 
     // Auto-rebalance should fix this
-    futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut dust_opt = futarchy_markets_core::arbitrage::auto_rebalance_spot_after_conditional_swaps(
         &mut spot_pool,
         &mut escrow,
+        option::none(),
         &clock,
         ctx,
     );
+    // Destroy if exists
+    if (option::is_some(&dust_opt)) {
+        conditional_balance::destroy_for_testing(option::extract(&mut dust_opt));
+    };
+    option::destroy_none(dust_opt);
 
     // Verify price moved significantly toward target range
     let final_spot_price = unified_spot_pool::get_spot_price(&spot_pool);

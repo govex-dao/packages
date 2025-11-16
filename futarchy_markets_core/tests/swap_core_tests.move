@@ -1,6 +1,7 @@
 #[test_only]
 module futarchy_markets_core::swap_core_tests;
 
+use account_protocol::intents::ActionSpec;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_core::swap_core::{Self, SwapSession};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
@@ -164,9 +165,10 @@ fun create_test_proposal_trading(
         100000, // twap_step_max
         signed::from_u64(500000), // twap_threshold
         30, // amm_total_fee_bps
-        option::none(), // winning_outcome
+        10, // max_outcomes
+        option::none<u64>(), // winning_outcome
         @0xC, // treasury_address
-        vector[option::none(), option::none()],
+        vector[option::none<vector<ActionSpec>>(), option::none<vector<ActionSpec>>()],
         ctx,
     );
 

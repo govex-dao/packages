@@ -436,12 +436,37 @@ fun execute_spot_arb_asset_to_stable_direction<AssetType, StableType>(
 ///
 /// The function iterates, executing small arb operations until spot price is within the
 /// conditional price range (min_cond_price ≤ spot_price ≤ max_cond_price).
+/// Automatic arbitrage after conditional swaps to bring spot price back into safe range
+///
+/// **PTB-COMPATIBLE!** Returns balance for chaining in programmable transactions.
+/// **DCA PLATFORM READY!** Supports isolated balances per user with auto-merge.
+///
+/// # Arguments
+/// * `existing_balance_opt` - Optional existing balance to merge into
+///   - None = Create new balance object (call 1)
+///   - Some(balance) = Merge dust into existing balance (calls 2-N)
+///
+/// # Returns
+/// * Option<ConditionalMarketBalance> - Some(balance) if iterations ran or existing balance provided, None otherwise
+/// * Use in PTB: Pass return value to next call's `existing_balance_opt`
+///
+/// # Example - DCA Platform PTB
+/// ```typescript
+/// const tx = new Transaction();
+/// // Call 1: may return None if no arb needed
+/// let bal = autoRebalance(pool, escrow, option::none(), clock);
+/// // Call 2-N: merge if Some
+/// bal = autoRebalance(pool, escrow, bal, clock);
+/// // Transfer final if exists
+/// if (bal.isSome()) tx.transferObjects([bal], user);
+/// ```
 public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
     spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
+    mut existing_balance_opt: option::Option<ConditionalMarketBalance<AssetType, StableType>>,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): option::Option<ConditionalMarketBalance<AssetType, StableType>> {
     // Note: We limit iterations to prevent infinite loops
     let mut iterations = 0;
     let max_iterations = 20; // Safety guard - increased for better convergence with large price gaps
@@ -490,18 +515,20 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
                 stable_coin,
                 0, // min_profit
                 @0x0, // dummy recipient
-                option::none(),
+                existing_balance_opt,
                 clock,
                 ctx,
             );
-            // Destroy returned coins and balance
+            // Store merged balance for next iteration
+            existing_balance_opt = option::some(balance);
+
+            // Destroy returned coins
             coin::destroy_zero(stable_out);
             if (asset_out.value() > 0) {
                 coin_escrow::deposit_spot_coins(escrow, asset_out, coin::zero<StableType>(ctx));
             } else {
                 coin::destroy_zero(asset_out);
             };
-            conditional_balance::destroy_empty(balance);
         } else {
             // Conditional → Spot (sell to spot, pushes spot price DOWN)
             // This is optimal when spot price is too HIGH
@@ -518,23 +545,29 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
                 asset_coin,
                 0, // min_profit
                 @0x0, // dummy recipient
-                option::none(),
+                existing_balance_opt,
                 clock,
                 ctx,
             );
-            // Destroy returned coins and balance
+            // Store merged balance for next iteration
+            existing_balance_opt = option::some(balance);
+
+            // Destroy returned coins
             coin::destroy_zero(asset_out);
             if (stable_out.value() > 0) {
                 coin_escrow::deposit_spot_coins(escrow, coin::zero<AssetType>(ctx), stable_out);
             } else {
                 coin::destroy_zero(stable_out);
             };
-            conditional_balance::destroy_empty(balance);
         };
 
         swap_core::finalize_swap_session(session, escrow);
         iterations = iterations + 1;
     };
+
+    // Return balance if exists (merged or original), otherwise None
+    // This avoids creating unnecessary empty balance objects
+    existing_balance_opt
 }
 
 // === Helper Functions ===

@@ -1,20 +1,20 @@
 {
   "packageName": "futarchy_factory",
-  "transactionDigest": "FHCuPX36jmHE2FuptRED83fVbWdXRFLfuLs5LPWvRGNm",
-  "packageId": "0x4be6aba9f6c5109fe5c18b8e3fe29aed0f0f839759b40b8119f83931a95dceaa",
+  "transactionDigest": "CDVLSjYdyeXceopALy84tVT8ecHztF498UR1uzc3FS5G",
+  "packageId": "0xb89d066297f2a09a49d20be41625d9e3f292a709e8081763e0e7fc3a07a02e54",
   "adminCaps": [
     {
       "name": "ValidatorAdminCap",
-      "objectId": "0xb6836b205677f058296ca7ad85f7e339045991cd65baa93e4bb6c206200324dc",
-      "objectType": "0x4be6aba9f6c5109fe5c18b8e3fe29aed0f0f839759b40b8119f83931a95dceaa::factory::ValidatorAdminCap",
+      "objectId": "0x459f7a038f23e9f6eb7fdffa581a6417201f1e33d2d3a76eff10ccb7040a55e0",
+      "objectType": "0xb89d066297f2a09a49d20be41625d9e3f292a709e8081763e0e7fc3a07a02e54::factory::ValidatorAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
     },
     {
       "name": "FactoryOwnerCap",
-      "objectId": "0xbca3b895329489fa50ddb826128e5c4e4aefd841430031f9efb8532b2373d92f",
-      "objectType": "0x4be6aba9f6c5109fe5c18b8e3fe29aed0f0f839759b40b8119f83931a95dceaa::factory::FactoryOwnerCap",
+      "objectId": "0x7e5f940cfdcff60181101c80f547b843ecd3b378a1555b3a69fe88c0050b1aaa",
+      "objectType": "0xb89d066297f2a09a49d20be41625d9e3f292a709e8081763e0e7fc3a07a02e54::factory::FactoryOwnerCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -23,19 +23,19 @@
   "sharedObjects": [
     {
       "name": "Factory",
-      "objectId": "0xe461c2a5ac47db1d9e4a4a7cc434d8ce59023a60a838ab93df37e38ae9e22841",
-      "objectType": "0x4be6aba9f6c5109fe5c18b8e3fe29aed0f0f839759b40b8119f83931a95dceaa::factory::Factory",
+      "objectId": "0x87c7fcebc88e4cd944075fa99e45115717043c5c4038f2d464de1111197fa0c2",
+      "objectType": "0xb89d066297f2a09a49d20be41625d9e3f292a709e8081763e0e7fc3a07a02e54::factory::Factory",
       "owner": {
         "Shared": {
-          "initial_shared_version": 6635019
+          "initial_shared_version": 6802211
         }
       },
-      "initialSharedVersion": 6635019
+      "initialSharedVersion": 6802211
     }
   ],
   "ownedObjects": [],
   "upgradeCap": {
-    "objectId": "0xe95717914bb11a497c3b8026f0ba8ae89213c9cb8ea8ad07de6a1e646ecf215d",
+    "objectId": "0x9b31df05c31714679e0281ba55b25198cc3d23fc6ae905156388d06d572c03e2",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

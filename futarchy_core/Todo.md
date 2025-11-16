@@ -159,7 +159,7 @@ XXXXXX
 - [X] Linting and test script pipeline and E2E test pipeline / stop commiting to main / coverage
 - [x] update all actions to use new format streams use. get LLMs to check streams patterm
 - [x] tightly couple intent / action registry with init actions??? (registry action tpye marker and package id)
-- [ ] remove conditional coin thing???????? 
+- [nah] remove conditional coin thing???????? 
 
 
 > so this makes me think\

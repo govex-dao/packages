@@ -1,6 +1,7 @@
 #[test_only]
 module futarchy_markets_operations::no_arb_guard_tests;
 
+use account_protocol::intents::ActionSpec;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_operations::no_arb_guard;
 use futarchy_markets_operations::swap_entry;
@@ -884,9 +885,10 @@ fun test_swap_with_auto_arb_using_entry_function() {
         100, // twap_step_max
         signed::from_u128(500_000_000_000_000_000u128), // twap_threshold
         30, // amm_total_fee_bps
-        option::none(), // winning_outcome
+        10, // max_outcomes
+        option::none<u64>(), // winning_outcome
         @0xFEE, // treasury_address
-        vector[], // intent_specs
+        vector::empty<option::Option<vector<ActionSpec>>>(), // intent_specs
         ctx
     );
 

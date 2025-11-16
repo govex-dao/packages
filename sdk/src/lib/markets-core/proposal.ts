@@ -62,55 +62,57 @@ export class Proposal {
   // Creation Functions
   // ============================================================================
 
+  /**
+   * Create a PREMARKET proposal without market/escrow/liquidity.
+   * ALL governance parameters (review period, trading period, fees, TWAP config, etc.)
+   * are now read from DAO config stored in the dao_account.
+   *
+   * SECURITY NOTE: This prevents governance bypass attacks where callers could
+   * previously control critical parameters like review periods and fee rates.
+   */
   static newPremarket(
     tx: Transaction,
     config: {
       marketsCorePackageId: string;
+      protocolPackageId: string; // For ActionSpec type
       assetType: string;
       stableType: string;
-      daoId: string;
-      proposer: string;
+      proposalIdFromQueue: string;
+      daoAccountId: string; // ALL governance config read from here
+      treasuryAddress: string;
+      title: string;
+      introductionDetails: string;
       metadata: string;
-      reviewPeriodMs: bigint;
-      tradingPeriodMs: bigint;
-      twapThreshold: bigint;
-      twapStartDelay: bigint;
-      twapInitialObservation: bigint;
-      twapStepMax: bigint;
-      ammTotalFeeBps: bigint;
       outcomeMessages: string[];
-      assetAmounts: bigint[];
-      stableAmounts: bigint[];
-      introductionMarkdown: string;
-      outcomeCreatorFees: bigint[];
-      liquidityProvider: string | null;
-      proposalType: string;
+      outcomeDetails: string[];
+      proposer: string;
       usedQuota: boolean;
+      intentSpecForYes?: ReturnType<Transaction['moveCall']>; // Option<vector<ActionSpec>>
       clock?: string;
     }
   ): ReturnType<Transaction['moveCall']> {
+    // Create Option::None for intent_spec_for_yes if not provided
+    const intentSpec = config.intentSpecForYes || tx.moveCall({
+      target: '0x1::option::none',
+      typeArguments: [`vector<${config.protocolPackageId}::intents::ActionSpec>`],
+      arguments: [],
+    });
+
     return tx.moveCall({
       target: TransactionUtils.buildTarget(config.marketsCorePackageId, 'proposal', 'new_premarket'),
       typeArguments: [config.assetType, config.stableType],
       arguments: [
-        tx.object(config.daoId),
-        tx.pure.address(config.proposer),
+        tx.object(config.proposalIdFromQueue),
+        tx.object(config.daoAccountId),
+        tx.pure.address(config.treasuryAddress),
+        tx.pure.string(config.title),
+        tx.pure.string(config.introductionDetails),
         tx.pure.string(config.metadata),
-        tx.pure.u64(config.reviewPeriodMs),
-        tx.pure.u64(config.tradingPeriodMs),
-        tx.pure.u64(config.twapThreshold),
-        tx.pure.u64(config.twapStartDelay),
-        tx.pure.u128(config.twapInitialObservation),
-        tx.pure.u64(config.twapStepMax),
-        tx.pure.u64(config.ammTotalFeeBps),
         tx.pure.vector('string', config.outcomeMessages),
-        tx.pure.vector('u64', config.assetAmounts.map(a => Number(a))),
-        tx.pure.vector('u64', config.stableAmounts.map(s => Number(s))),
-        tx.pure.string(config.introductionMarkdown),
-        tx.pure.vector('u64', config.outcomeCreatorFees.map(f => Number(f))),
-        config.liquidityProvider ? tx.pure.address(config.liquidityProvider) : tx.object('0x0'),
-        tx.pure.string(config.proposalType),
+        tx.pure.vector('string', config.outcomeDetails),
+        tx.pure.address(config.proposer),
         tx.pure.bool(config.usedQuota),
+        intentSpec,
         tx.object(config.clock || '0x6'),
       ],
     });

@@ -217,39 +217,24 @@ async function main() {
     arguments: [],
   });
 
-  // Create SignedU128 for twap_threshold (0 = no threshold)
-  const twapThresholdSigned = createTx.moveCall({
-    target: `${typesPackageId}::signed::from_u128`,
-    arguments: [createTx.pure.u128(0n)], // Zero threshold
-  });
-
   const referenceProposalId = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
+  // NEW SECURE SIGNATURE: All governance params now read from DAO config
   createTx.moveCall({
     target: `${marketsPackageId}::proposal::new_premarket`,
     typeArguments: [assetType, stableType],
     arguments: [
-      createTx.object(referenceProposalId),
-      createTx.object(daoAccountId),
-      createTx.pure.u64(30 * 1000), // 30 sec review period
-      createTx.pure.u64(60 * 1000), // 60 sec trading period (1 minute)
-      createTx.pure.u64(50_000), // min_asset_liquidity
-      createTx.pure.u64(50_000), // min_stable_liquidity
-      createTx.pure.u64(0), // twap_start_delay_ms
-      createTx.pure.u128(BigInt("1000000000000000000")), // twap_initial_observation
-      createTx.pure.u64(1000), // twap_step_max
-      twapThresholdSigned, // twap_threshold
-      createTx.pure.u64(30), // amm_fee_bps
-      createTx.pure.u64(10), // max_outcomes
+      createTx.object(referenceProposalId), // proposal_id_from_queue
+      createTx.object(daoAccountId), // dao_account (reads ALL config from here)
       createTx.pure.address(activeAddress), // treasury_address
-      createTx.pure.string("Fund Team Development with Conditional Trading"),
-      createTx.pure.string("This proposal will test swaps and demonstrate winning outcome execution"),
-      createTx.pure.string(JSON.stringify({ category: "test", impact: "high" })),
-      createTx.pure.vector("string", ["Reject", "Accept"]),
+      createTx.pure.string("Fund Team Development with Conditional Trading"), // title
+      createTx.pure.string("This proposal will test swaps and demonstrate winning outcome execution"), // introduction_details
+      createTx.pure.string(JSON.stringify({ category: "test", impact: "high" })), // metadata
+      createTx.pure.vector("string", ["Reject", "Accept"]), // outcome_messages
       createTx.pure.vector("string", [
         "Reject: Do nothing (status quo)",
         "Accept: Execute stream + allow trading"
-      ]),
+      ]), // outcome_details
       createTx.pure.address(activeAddress), // proposer
       createTx.pure.bool(false), // used_quota
       noneOption, // intent_spec_for_yes
@@ -257,7 +242,7 @@ async function main() {
         objectId: "0x6",
         initialSharedVersion: 1,
         mutable: false,
-      }),
+      }), // clock
     ],
   });
 
@@ -626,6 +611,12 @@ async function main() {
   console.log("✅ Proposal state: TRADING");
   console.log("   - 100% quantum split complete: all spot liquidity → conditional AMMs");
   console.log("   - active_proposal_id set: LP add/remove operations now blocked");
+  console.log();
+
+  // Wait for review period to elapse (DAO config sets 1 second minimum)
+  console.log("⏳ Waiting 2 seconds for review period to elapse...");
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  console.log("✅ Review period elapsed - trading is now active");
   console.log();
 
   // ============================================================================

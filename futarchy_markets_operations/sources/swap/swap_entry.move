@@ -186,9 +186,10 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
         // CRITICAL: Automatic arbitrage to bring spot price back into conditional range
         // After spot swaps with routing, spot can be outside the safe range. This atomically
         // arbitrages using pool liquidity to rebalance prices without requiring user coins.
-        arbitrage::auto_rebalance_spot_after_conditional_swaps(
+        existing_balance_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
             spot_pool,
             escrow,
+            existing_balance_opt,
             clock,
             ctx,
         );
@@ -380,9 +381,10 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
         // CRITICAL: Automatic arbitrage to bring spot price back into conditional range
         // After spot swaps with routing, spot can be outside the safe range. This atomically
         // arbitrages using pool liquidity to rebalance prices without requiring user coins.
-        arbitrage::auto_rebalance_spot_after_conditional_swaps(
+        existing_balance_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
             spot_pool,
             escrow,
+            existing_balance_opt,
             clock,
             ctx,
         );
@@ -690,12 +692,16 @@ public fun finalize_conditional_swaps<AssetType, StableType>(
     // CRITICAL: Automatic arbitrage to bring spot price back into conditional range
     // After conditional swaps, spot can be outside the safe range. This atomically
     // arbitrages using pool liquidity to rebalance prices without requiring user coins.
-    arbitrage::auto_rebalance_spot_after_conditional_swaps(
+    let mut balance_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
         spot_pool,
         escrow,
+        option::some(balance),
         _clock,
         ctx,
     );
+    // Extract balance (must exist since we passed Some)
+    balance = option::extract(&mut balance_opt);
+    option::destroy_none(balance_opt);
 
     // Ensure no-arb band is respected after batch swaps + auto-arb
     let market_state = coin_escrow::get_market_state(escrow);

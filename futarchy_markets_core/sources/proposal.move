@@ -51,6 +51,8 @@ const ESupplyNotZero: u64 = 19;
 const EInsufficientBalance: u64 = 20;
 const EPriceVerificationFailed: u64 = 21;
 const ECannotSetActionsForRejectOutcome: u64 = 22;
+const EInvalidAssetType: u64 = 23;
+const EInvalidStableType: u64 = 24;
 
 // === Constants ===
 
@@ -149,8 +151,12 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     
     // Fee-related fields
     amm_total_fee_bps: u64,
+    conditional_liquidity_ratio_percent: u64, // Ratio of spot liquidity to split to conditional markets (base 100, not bps!)
     fee_escrow: Balance<StableType>, // DAO-level fees held for refund to losing outcome creators
     treasury_address: address,
+
+    // Governance parameters (read from DAO config during creation)
+    max_outcomes: u64, // Maximum number of outcomes allowed (prevents governance bypass when adding outcomes)
 }
 
 /// A scoped witness proving that a particular (proposal, outcome) had an IntentSpec.
@@ -221,21 +227,12 @@ public struct ProposalOutcomeAdded has copy, drop {
 
 /// Create a PREMARKET proposal without market/escrow/liquidity.
 /// This reserves the proposal "as next" without consuming DAO/proposer liquidity.
+/// ALL trading/governance parameters come from DAO config (governance-controlled).
 #[allow(lint(share_owned))]
 public fun new_premarket<AssetType, StableType>(
     // Proposal ID originating from queue
     proposal_id_from_queue: ID,
-    dao_id: ID,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    min_asset_liquidity: u64,
-    min_stable_liquidity: u64,
-    twap_start_delay: u64,
-    twap_initial_observation: u128,
-    twap_step_max: u64,
-    twap_threshold: SignedU128,
-    amm_total_fee_bps: u64,
-    max_outcomes: u64, // DAO's configured max outcomes
+    dao_account: &account::Account, // Read ALL DAO config from this
     treasury_address: address,
     title: String,
     introduction_details: String,
@@ -251,7 +248,35 @@ public fun new_premarket<AssetType, StableType>(
     let id = object::new(ctx);
     let actual_proposal_id = object::uid_to_inner(&id);
     let outcome_count = outcome_messages.length();
-    
+
+    // Read ALL parameters from DAO config (governance-controlled)
+    let futarchy_cfg = account::config<futarchy_config::FutarchyConfig>(dao_account);
+
+    // Validate that proposal types match DAO config types (prevent governance bypass)
+    let expected_asset_type = futarchy_config::asset_type(futarchy_cfg);
+    let expected_stable_type = futarchy_config::stable_type(futarchy_cfg);
+    let actual_asset_type = type_name::with_original_ids<AssetType>().into_string().to_string();
+    let actual_stable_type = type_name::with_original_ids<StableType>().into_string().to_string();
+    assert!(actual_asset_type == *expected_asset_type, EInvalidAssetType);
+    assert!(actual_stable_type == *expected_stable_type, EInvalidStableType);
+
+    // Trading parameters
+    let review_period_ms = futarchy_config::review_period_ms(futarchy_cfg);
+    let trading_period_ms = futarchy_config::trading_period_ms(futarchy_cfg);
+    let min_asset_liquidity = futarchy_config::min_asset_amount(futarchy_cfg);
+    let min_stable_liquidity = futarchy_config::min_stable_amount(futarchy_cfg);
+    let amm_total_fee_bps = futarchy_config::conditional_amm_fee_bps(futarchy_cfg);
+    let conditional_liquidity_ratio_percent = futarchy_config::conditional_liquidity_ratio_percent(futarchy_cfg);
+
+    // TWAP parameters
+    let twap_start_delay = futarchy_config::amm_twap_start_delay(futarchy_cfg);
+    let twap_initial_observation = futarchy_config::amm_twap_initial_observation(futarchy_cfg);
+    let twap_step_max = futarchy_config::amm_twap_step_max(futarchy_cfg);
+    let twap_threshold = *futarchy_config::twap_threshold(futarchy_cfg);
+
+    // Governance parameters
+    let max_outcomes = futarchy_config::max_outcomes(futarchy_cfg);
+
     // Validate outcome count
     assert!(outcome_count <= max_outcomes, ETooManyOutcomes);
     
@@ -259,7 +284,7 @@ public fun new_premarket<AssetType, StableType>(
         id,
         queued_proposal_id: proposal_id_from_queue,
         state: STATE_PREMARKET,
-        dao_id,
+        dao_id: object::id(dao_account),
         proposer,
         liquidity_provider: option::none(),
         withdraw_only_mode: false,
@@ -304,8 +329,10 @@ public fun new_premarket<AssetType, StableType>(
             winning_outcome: option::none(),
         },
         amm_total_fee_bps,
+        conditional_liquidity_ratio_percent,
         fee_escrow: balance::zero(), // No DAO fees for premarket proposals yet
         treasury_address,
+        max_outcomes, // Stored from DAO config to prevent governance bypass
     };
 
     transfer::public_share_object(proposal);
@@ -460,32 +487,32 @@ public fun create_conditional_amm_pools<AssetType, StableType>(
 /// Called after create_escrow_for_market() and N calls to register_outcome_caps_with_escrow()
 #[allow(lint(share_owned, self_transfer))]
 /// Internal function: Adds a new outcome during the premarket phase.
-/// max_outcomes: The DAO's configured maximum number of outcomes allowed
 /// fee_paid: The fee paid by the outcome creator (for potential refund if their outcome wins)
 ///
-/// SECURITY: This is an internal function. Fee payment must be validated before calling.
-/// External callers MUST use entry functions that collect actual Coin<SUI> payments.
+/// SECURITY: max_outcomes is read from proposal (set from DAO config during creation).
+/// This prevents governance bypass where callers could override the DAO's max_outcomes limit.
+///
+/// SECURITY: asset_amount and stable_amount parameters REMOVED - these are calculated during
+/// market initialization from quantum split of spot pool (see create_conditional_amm_pools).
+/// Allowing callers to specify arbitrary amounts would be a governance bypass.
 public fun add_outcome<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     message: String,
     detail: String,
-    asset_amount: u64,
-    stable_amount: u64,
     creator: address,
     fee_paid: u64,
-    max_outcomes: u64,
     clock: &Clock,
 ) {
     // SECURITY: Only allow adding outcomes in PREMARKET state
     assert!(proposal.state == STATE_PREMARKET, EInvalidState);
 
-    // Check that we're not exceeding the maximum number of outcomes
-    assert!(proposal.outcome_data.outcome_count < max_outcomes, ETooManyOutcomes);
+    // Check that we're not exceeding the maximum number of outcomes (from DAO config)
+    assert!(proposal.outcome_data.outcome_count < proposal.max_outcomes, ETooManyOutcomes);
 
     proposal.outcome_data.outcome_messages.push_back(message);
     proposal.details.push_back(detail);
-    proposal.liquidity_config.asset_amounts.push_back(asset_amount);
-    proposal.liquidity_config.stable_amounts.push_back(stable_amount);
+    // NOTE: asset_amounts and stable_amounts are NOT stored here
+    // They are calculated during create_conditional_amm_pools() from spot pool reserves
     proposal.outcome_data.outcome_creators.push_back(creator);
     proposal.outcome_data.outcome_creator_fees.push_back(fee_paid);  // Track the fee paid
 
@@ -509,14 +536,15 @@ public fun add_outcome<AssetType, StableType>(
 
 /// Add an outcome to a PREMARKET proposal with DAO-level fee payment
 /// The fee is deposited into the proposal's escrow for potential refund if the outcome loses
+///
+/// SECURITY: max_outcomes is read from proposal (set from DAO config) to prevent governance bypass
+/// SECURITY: asset_amount and stable_amount parameters REMOVED to prevent governance bypass
+/// Liquidity amounts are calculated during market initialization from quantum split of spot pool
 public entry fun add_outcome_with_fee<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     fee_payment: Coin<StableType>,
     message: String,
     detail: String,
-    asset_amount: u64,
-    stable_amount: u64,
-    max_outcomes: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -526,16 +554,14 @@ public entry fun add_outcome_with_fee<AssetType, StableType>(
     // Deposit DAO-level fee into proposal's escrow
     proposal.fee_escrow.join(fee_payment.into_balance());
 
-    // Add the outcome with tracked fee
+    // Add the outcome with tracked fee (max_outcomes read from proposal)
+    // NOTE: No asset/stable amounts passed - calculated from spot pool during init
     add_outcome(
         proposal,
         message,
         detail,
-        asset_amount,
-        stable_amount,
         ctx.sender(),
         fee_paid,
-        max_outcomes,
         clock,
     );
 }
@@ -1358,6 +1384,7 @@ public fun new_for_testing<AssetType, StableType>(
     twap_step_max: u64,
     twap_threshold: SignedU128,
     amm_total_fee_bps: u64,
+    max_outcomes: u64,
     winning_outcome: Option<u64>,
     treasury_address: address,
     intent_specs: vector<Option<vector<ActionSpec>>>,
@@ -1415,6 +1442,7 @@ public fun new_for_testing<AssetType, StableType>(
         conditional_liquidity_ratio_percent: 50,  // 50% (base 100, not bps!)
         fee_escrow: balance::zero(), // No fees for test proposals
         treasury_address,
+        max_outcomes,
     }
 }
 
@@ -1783,6 +1811,7 @@ public fun create_test_proposal<AssetType, StableType>(
         10000,                      // twap_step_max
         signed::from_u128(500000000000000000u128),      // twap_threshold
         30,                         // amm_total_fee_bps (0.3%)
+        10,                         // max_outcomes
         option::some(winning_outcome),
         @0x4,                       // treasury_address
         intent_specs,
@@ -1851,6 +1880,7 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
         conditional_liquidity_ratio_percent: _,
         fee_escrow,
         treasury_address: _,
+        max_outcomes: _,
     } = proposal;
 
     // Destroy bags (must be empty for testing)

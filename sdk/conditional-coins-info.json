@@ -1,26 +1,26 @@
 {
-  "packageId": "0xeb7e8fc6f53023d6da3b21c019cce836092aa13d32618d3ff344d3c57cf2e5cf",
-  "registryId": "0x94946ddfebe5c3c29a90abee387d80de85c2f2db38232fd1aadb78f8c5daf2cb",
+  "packageId": "0x85d599fc1f46ba9f8b001f05e2422f7d4051a7a4010ecf27d797dd8bb3ef2fb4",
+  "registryId": "0xeea46d0aafb2f6fcf52792dcb4f4461ae3e61a04f088eab5f3c0492ddc443c45",
   "cond0_asset": {
-    "treasuryCapId": "0xa01b48911ba0364a0651a9a0b3d83f95f8d90a7ad4aaba9a4e3e7ae8641e30f6",
-    "metadataId": "0xcbcb316a20f55cb49586d1b683cb6272e6a4084a0741bf61114d71bcc56e658a",
-    "coinType": "0xeb7e8fc6f53023d6da3b21c019cce836092aa13d32618d3ff344d3c57cf2e5cf::cond0_asset::COND0_ASSET"
+    "treasuryCapId": "0x5acf9e88d7db0c59e6b008a7913ec4c1ab5aec57045850a83a2c1e797ff3494e",
+    "metadataId": "0x1499474789cfacade7ae38f4a148029de90620520bc3f72de61aefb40c4d3d39",
+    "coinType": "0x85d599fc1f46ba9f8b001f05e2422f7d4051a7a4010ecf27d797dd8bb3ef2fb4::cond0_asset::COND0_ASSET"
   },
   "cond0_stable": {
-    "treasuryCapId": "0x938c3f373911b38b790c7c6a9e9edaf0cd0f7ee3dcbe7eb6730c2a7ce43c86b5",
-    "metadataId": "0x2829928f7c7522999a52cf4a697071e6c25bcd5dc6b5080820320b1dc04aa6aa",
-    "coinType": "0xeb7e8fc6f53023d6da3b21c019cce836092aa13d32618d3ff344d3c57cf2e5cf::cond0_stable::COND0_STABLE"
+    "treasuryCapId": "0x60fd47165aa93ba2347536ddf670b7d719d2834775dd2e8bbaf6f35ea6b18933",
+    "metadataId": "0x085c0cd7509df5fc437ce6404eb69537fe41fd1de2e3b0a25b9053df2bc4b624",
+    "coinType": "0x85d599fc1f46ba9f8b001f05e2422f7d4051a7a4010ecf27d797dd8bb3ef2fb4::cond0_stable::COND0_STABLE"
   },
   "cond1_asset": {
-    "treasuryCapId": "0x26718cc2991e0f272314758370572f3e9633fff556765399e9faf7015047c35d",
-    "metadataId": "0x4a6c688582a172f317da88bef4fa7787c0027ca846b5dfcb402601f890cf365b",
-    "coinType": "0xeb7e8fc6f53023d6da3b21c019cce836092aa13d32618d3ff344d3c57cf2e5cf::cond1_asset::COND1_ASSET"
+    "treasuryCapId": "0x03caeaefa7d0b4fd5d1e5dd363814a38d796ad48719bf4c517b7814185bc7d57",
+    "metadataId": "0xd736575a49693bb9be56dd59b5e5b8ab02c2f65b8552f0176e96282da8d5cbac",
+    "coinType": "0x85d599fc1f46ba9f8b001f05e2422f7d4051a7a4010ecf27d797dd8bb3ef2fb4::cond1_asset::COND1_ASSET"
   },
   "cond1_stable": {
-    "treasuryCapId": "0x3710d99d7850e7adae6b8455bf47ab2423d61476809e5a20bb0105863c44115d",
-    "metadataId": "0x5791de03745760adb7cba0ef50edf80b2251f35681ad91c685d3722b8471630a",
-    "coinType": "0xeb7e8fc6f53023d6da3b21c019cce836092aa13d32618d3ff344d3c57cf2e5cf::cond1_stable::COND1_STABLE"
+    "treasuryCapId": "0x3369d9ad66d2633e10c83750647abe13facc6deccf8fd505257b1c9297dcdf85",
+    "metadataId": "0x466ea0063408158b892a35fbec85daf586054eb5198933b757060eb2da0a38d7",
+    "coinType": "0x85d599fc1f46ba9f8b001f05e2422f7d4051a7a4010ecf27d797dd8bb3ef2fb4::cond1_stable::COND1_STABLE"
   },
-  "timestamp": "2025-11-14T19:47:07.647Z",
+  "timestamp": "2025-11-16T12:36:12.875Z",
   "network": "devnet"
 }

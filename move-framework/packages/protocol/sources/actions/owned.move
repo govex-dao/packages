@@ -4,6 +4,7 @@
 // Portions of this file are derived from the account.tech Move Framework project.
 // Those portions remain licensed under the Apache License, Version 2.0.
 
+
 /// This module allows objects owned by the account to be accessed through intents in a
 /// secure way.
 /// The objects can be taken only via Actions which use Transfer to Object (TTO).

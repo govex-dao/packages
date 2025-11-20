@@ -162,6 +162,8 @@ XXXXXX
 - [nah] remove conditional coin thing???????? 
 
 
+- [ ] maybe use coin for AMM LP not NFT
+
 > so this makes me think\
 \
 i need to use actual intents right??\

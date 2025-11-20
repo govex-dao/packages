@@ -24,6 +24,7 @@
     "test:launchpad": "tsx scripts/launchpad-e2e.ts",
     "test:proposal-with-swaps": "tsx scripts/proposal-e2e-with-swaps.ts",
     "test:proposal-balance-swaps": "tsx scripts/proposal-e2e-balance-swaps.ts",
+    "test:arbitrage-challenge": "tsx scripts/proposal-e2e-arbitrage-challenge.ts",
     "launchpad-e2e-two-outcome": "tsx scripts/launchpad-e2e.ts"
   },
   "keywords": [

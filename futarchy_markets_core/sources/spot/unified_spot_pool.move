@@ -833,6 +833,45 @@ public(package) fun add_liquidity_from_quantum_redeem<AssetType, StableType>(
     // No need to update lp_supply or burn/mint tokens
 }
 
+// === Arbitrage Reserve Operations ===
+// Single-token operations for auto-arbitrage (escrow stays unchanged)
+
+/// Take stable from spot pool reserves for arbitrage
+public(package) fun take_stable_for_arbitrage<AssetType, StableType>(
+    pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    amount: u64,
+): Balance<StableType> {
+    assert!(amount > 0, EZeroAmount);
+    assert!(balance::value(&pool.stable_reserve) >= amount, EZeroAmount);
+    balance::split(&mut pool.stable_reserve, amount)
+}
+
+/// Take asset from spot pool reserves for arbitrage
+public(package) fun take_asset_for_arbitrage<AssetType, StableType>(
+    pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    amount: u64,
+): Balance<AssetType> {
+    assert!(amount > 0, EZeroAmount);
+    assert!(balance::value(&pool.asset_reserve) >= amount, EZeroAmount);
+    balance::split(&mut pool.asset_reserve, amount)
+}
+
+/// Return stable to spot pool reserves after arbitrage
+public(package) fun return_stable_from_arbitrage<AssetType, StableType>(
+    pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    stable: Balance<StableType>,
+) {
+    balance::join(&mut pool.stable_reserve, stable);
+}
+
+/// Return asset to spot pool reserves after arbitrage
+public(package) fun return_asset_from_arbitrage<AssetType, StableType>(
+    pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    asset: Balance<AssetType>,
+) {
+    balance::join(&mut pool.asset_reserve, asset);
+}
+
 // === Proposal State Management ===
 
 /// Set active proposal ID when quantum split starts

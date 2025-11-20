@@ -37,6 +37,7 @@ const EInvalidOutcomeCount: u64 = 4;
 const EOutcomeCountExceedsMax: u64 = 5;
 const EProposalMismatch: u64 = 6;
 const EOutcomeNotRegistered: u64 = 7;
+const EWrongMarket: u64 = 8;
 
 // === Constants ===
 const VERSION: u8 = 1;
@@ -534,6 +535,68 @@ public fun wrap_coin<AssetType, StableType, ConditionalCoinType>(
         is_asset,
         amount,
     });
+}
+
+/// Burn complete set from balance and withdraw spot tokens
+///
+/// QUANTUM MODEL: Allows risk-free exit BEFORE finalization by burning from ALL outcomes.
+/// Finds minimum balance across all outcomes and withdraws that amount.
+///
+/// # Arguments
+/// * `escrow` - The TokenEscrow containing spot tokens
+/// * `balance` - User's ConditionalMarketBalance (must belong to this market)
+/// * `is_asset` - true for asset tokens, false for stable tokens
+///
+/// # Returns
+/// * Amount withdrawn (minimum across all outcomes)
+/// * Coin with withdrawn spot tokens (asset or stable based on is_asset)
+///
+/// # Example
+/// If user has [100, 80, 90] asset across 3 outcomes, withdraws 80 asset.
+/// Balance becomes [20, 0, 10].
+public fun burn_complete_set_and_withdraw_from_balance<AssetType, StableType>(
+    escrow: &mut coin_escrow::TokenEscrow<AssetType, StableType>,
+    balance: &mut ConditionalMarketBalance<AssetType, StableType>,
+    is_asset: bool,
+    ctx: &mut TxContext,
+): (u64, sui::coin::Coin<AssetType>, sui::coin::Coin<StableType>) {
+    // Validate balance belongs to this market
+    let escrow_market_id = coin_escrow::market_state_id(escrow);
+    assert!(balance.market_id == escrow_market_id, EWrongMarket);
+
+    let outcome_count = balance.outcome_count;
+
+    // Find minimum balance across all outcomes (the complete set size)
+    let mut min_amount = get_balance(balance, 0, is_asset);
+    let mut i = 1u64;
+    while (i < (outcome_count as u64)) {
+        let amount = get_balance(balance, (i as u8), is_asset);
+        if (amount < min_amount) {
+            min_amount = amount;
+        };
+        i = i + 1;
+    };
+
+    // If no complete set, return zero
+    if (min_amount == 0) {
+        return (0, sui::coin::zero<AssetType>(ctx), sui::coin::zero<StableType>(ctx))
+    };
+
+    // Subtract min_amount from each outcome
+    i = 0;
+    while (i < (outcome_count as u64)) {
+        sub_from_balance(balance, (i as u8), is_asset, min_amount);
+        i = i + 1;
+    };
+
+    // Withdraw from escrow
+    if (is_asset) {
+        let asset_coin = coin_escrow::withdraw_asset_balance(escrow, min_amount, ctx);
+        (min_amount, asset_coin, sui::coin::zero<StableType>(ctx))
+    } else {
+        let stable_coin = coin_escrow::withdraw_stable_balance(escrow, min_amount, ctx);
+        (min_amount, sui::coin::zero<AssetType>(ctx), stable_coin)
+    }
 }
 
 // === Test Helpers ===

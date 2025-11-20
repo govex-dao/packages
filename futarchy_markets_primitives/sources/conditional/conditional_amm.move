@@ -558,6 +558,102 @@ public fun empty_all_amm_liquidity(pool: &mut LiquidityPool, _ctx: &mut TxContex
     (asset_amount_out, stable_amount_out)
 }
 
+// === Arbitrage Reserve Operations ===
+// These functions directly modify reserves WITHOUT LP token accounting
+// Used for auto-arbitrage quantum split/recombine that doesn't involve LP providers
+
+/// Inject reserves into pool for arbitrage (quantum split effect)
+/// Increases reserves without minting LP tokens
+/// Used when arbitrage takes from spot and distributes to conditional pools
+public fun inject_reserves_for_arbitrage(
+    pool: &mut LiquidityPool,
+    asset_amount: u64,
+    stable_amount: u64,
+) {
+    pool.asset_reserve = pool.asset_reserve + asset_amount;
+    pool.stable_reserve = pool.stable_reserve + stable_amount;
+}
+
+/// Extract reserves from pool for arbitrage (quantum recombine effect)
+/// Decreases reserves without burning LP tokens
+/// Used when arbitrage takes from conditional pools and returns to spot
+public fun extract_reserves_for_arbitrage(
+    pool: &mut LiquidityPool,
+    asset_amount: u64,
+    stable_amount: u64,
+) {
+    assert!(pool.asset_reserve >= asset_amount, ELowLiquidity);
+    assert!(pool.stable_reserve >= stable_amount, ELowLiquidity);
+    pool.asset_reserve = pool.asset_reserve - asset_amount;
+    pool.stable_reserve = pool.stable_reserve - stable_amount;
+}
+
+/// Swap from already-injected stable reserves to asset (quantum operation)
+///
+/// Unlike regular swap, this function does NOT add to input reserves because
+/// the stable was already injected via `inject_reserves_for_arbitrage`.
+/// Only removes from asset reserves.
+///
+/// Used in quantum arbitrage flow:
+/// 1. inject_reserves_for_arbitrage(pool, 0, stable_amount) - stable enters
+/// 2. swap_from_injected_stable_to_asset(pool, stable_amount) - swap using injected stable
+/// 3. extract_reserves_for_arbitrage(pool, asset_out, 0) - asset exits
+///
+/// Feeless to maximize arbitrage efficiency (system rebalancing operation).
+public fun swap_from_injected_stable_to_asset(pool: &mut LiquidityPool, amount_in: u64): u64 {
+    assert!(amount_in > 0, EZeroAmount);
+    assert!(pool.asset_reserve > 0 && pool.stable_reserve > 0, EPoolEmpty);
+
+    // Input already in reserves from inject, so we need to use ORIGINAL reserves for calculation
+    // Since inject already added amount_in to stable_reserve, we subtract it back for the formula
+    // calculate_output will add it back: denominator = (stable - amount_in) + amount_in = stable
+    let asset_out = calculate_output(
+        amount_in,
+        pool.stable_reserve - amount_in,  // Use original reserve before inject
+        pool.asset_reserve,
+    );
+    assert!(asset_out < pool.asset_reserve, EPoolEmpty);
+
+    // DO NOT update reserves here - extract_reserves_for_arbitrage will handle that
+    // This function only calculates the output amount
+    // The inject/extract pattern manages reserves: inject adds input, extract removes output
+
+    asset_out
+}
+
+/// Swap from already-injected asset reserves to stable (quantum operation)
+///
+/// Unlike regular swap, this function does NOT add to input reserves because
+/// the asset was already injected via `inject_reserves_for_arbitrage`.
+/// Only removes from stable reserves.
+///
+/// Used in quantum arbitrage flow:
+/// 1. inject_reserves_for_arbitrage(pool, asset_amount, 0) - asset enters
+/// 2. swap_from_injected_asset_to_stable(pool, asset_amount) - swap using injected asset
+/// 3. extract_reserves_for_arbitrage(pool, 0, stable_out) - stable exits
+///
+/// Feeless to maximize arbitrage efficiency (system rebalancing operation).
+public fun swap_from_injected_asset_to_stable(pool: &mut LiquidityPool, amount_in: u64): u64 {
+    assert!(amount_in > 0, EZeroAmount);
+    assert!(pool.asset_reserve > 0 && pool.stable_reserve > 0, EPoolEmpty);
+
+    // Input already in reserves from inject, so we need to use ORIGINAL reserves for calculation
+    // Since inject already added amount_in to asset_reserve, we subtract it back for the formula
+    // calculate_output will add it back: denominator = (asset - amount_in) + amount_in = asset
+    let stable_out = calculate_output(
+        amount_in,
+        pool.asset_reserve - amount_in,  // Use original reserve before inject
+        pool.stable_reserve,
+    );
+    assert!(stable_out < pool.stable_reserve, EPoolEmpty);
+
+    // DO NOT update reserves here - extract_reserves_for_arbitrage will handle that
+    // This function only calculates the output amount
+    // The inject/extract pattern manages reserves: inject adds input, extract removes output
+
+    stable_out
+}
+
 // === Oracle Functions ===
 // Update new_oracle to be simpler:
 fun write_observation(oracle: &mut Oracle, timestamp: u64, price: u128) {

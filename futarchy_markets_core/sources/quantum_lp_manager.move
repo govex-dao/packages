@@ -154,11 +154,11 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
     // Get market_state for pool mutations
     let market_state = coin_escrow::get_market_state_mut(escrow);
 
-    // Divide split amount among all conditional pools to match escrow backing
+    // Quantum replicate: EACH pool gets the FULL amount (not divided!)
+    // 100 spot backing → 100 conditional in EACH outcome (quantum expansion)
     let pools = market_state::borrow_amm_pools_mut(market_state);
-    let num_pools = pools.length();
-    let asset_per_pool = asset_to_split / (num_pools as u64);
-    let stable_per_pool = stable_to_split / (num_pools as u64);
+    let asset_per_pool = asset_to_split;
+    let stable_per_pool = stable_to_split;
 
     let mut i = 0;
     while (i < pools.length()) {
@@ -178,9 +178,13 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
     };
 }
 
-/// Simplified recombination - returns ALL liquidity from winning conditional pool back to spot
+/// Simplified recombination - returns system liquidity from winning conditional pool back to spot
 /// Clears active_proposal_id to unblock LP operations and records proposal end time
-/// Includes both AMM reserves (original liquidity + LP fees) and protocol fees
+/// Includes both AMM reserves and protocol fees, capped at escrow balance
+///
+/// IMPORTANT: Due to quantum model, pool reserves can grow beyond escrow backing through
+/// user trades. We cap withdrawals at escrow balance to prevent failures. User deposits
+/// remain in escrow for their redemptions.
 public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
     winning_outcome: u64,
     spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
@@ -209,15 +213,24 @@ public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
         (asset_reserves, stable_reserves, asset_fees, stable_fees)
     };
 
-    // Total to withdraw from escrow = AMM reserves + protocol fees (all backed by escrow)
+    // Total to withdraw from escrow = AMM reserves + protocol fees
     let total_asset = asset_amount + protocol_fee_asset;
     let total_stable = stable_amount + protocol_fee_stable;
 
-    // Withdraw matching amounts from escrow (includes trader deposits that backed all fees)
-    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, total_asset, ctx);
-    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, total_stable, ctx);
+    // SAFETY: Cap withdrawals at actual escrow balance
+    // Pool reserves can exceed escrow due to quantum model (one escrow backs multiple pools)
+    // User deposits remain in escrow for their redemptions
+    let escrow_asset = coin_escrow::get_escrowed_asset_balance(escrow);
+    let escrow_stable = coin_escrow::get_escrowed_stable_balance(escrow);
 
-    // Add ALL liquidity back to spot pool (AMM reserves + protocol fees)
+    let withdraw_asset = if (total_asset > escrow_asset) { escrow_asset } else { total_asset };
+    let withdraw_stable = if (total_stable > escrow_stable) { escrow_stable } else { total_stable };
+
+    // Withdraw capped amounts from escrow
+    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, withdraw_asset, ctx);
+    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, withdraw_stable, ctx);
+
+    // Add liquidity back to spot pool
     unified_spot_pool::add_liquidity_from_quantum_redeem(
         spot_pool,
         coin::into_balance(asset_coin),

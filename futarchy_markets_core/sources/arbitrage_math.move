@@ -108,7 +108,6 @@ module futarchy_markets_core::arbitrage_math;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::conditional_amm::{Self, LiquidityPool};
 use futarchy_one_shot_utils::constants;
-use futarchy_one_shot_utils::math;
 
 // === Errors ===
 const ETooManyConditionals: u64 = 0;
@@ -116,10 +115,9 @@ const EInvalidFee: u64 = 1;
 
 // === Constants ===
 // MAX_CONDITIONALS coupled with protocol_max_outcomes - ensures consistency across futarchy system
-const BPS_SCALE: u64 = 10000; // Basis points scale
+const BPS_SCALE: u64 = 10000; // Basis points scale (kept for simulation/routing functions)
 const SMART_BOUND_MARGIN_NUM: u64 = 11; // Smart bound = 1.1x user swap (110%)
 const SMART_BOUND_MARGIN_DENOM: u64 = 10;
-const TERNARY_SEARCH_DIVISOR: u64 = 100; // Search to 1% of space (or MIN_COARSE_THRESHOLD min)
 
 /// Minimum safe threshold for ternary search to prevent infinite loops.
 ///
@@ -145,119 +143,188 @@ const MIN_COARSE_THRESHOLD: u64 = 3;
 
 // === Public API ===
 
-/// **PRIMARY N-OUTCOME FUNCTION** - Compute optimal arbitrage after user swap
+/// **PRIMARY N-OUTCOME FUNCTION** - Compute optimal arbitrage (FEELESS)
 /// Returns (optimal_amount, expected_profit, is_spot_to_cond)
 ///
-/// **SMART BOUNDING OPTIMIZATION**:
-/// Uses user's swap output as upper bound (1.1x for safety margin).
-/// Key insight: Max arbitrage ≤ swap that created the imbalance!
-/// Searches [0, min(1.1 * user_output, upper_bound_b)] instead of [0, 10^18].
-///
-/// **Why This Works**:
-/// User swap creates the imbalance - you can't extract more arbitrage than
-/// the imbalance size. No meaningful trade-off, massive gas savings.
+/// **NOTE**: This function now uses FEELESS calculations for internal arbitrage.
+/// Uses smart bounding for efficiency (95%+ gas reduction).
 ///
 /// **Algorithm**:
 /// 1. Spot → Conditional: Buy from spot, sell to ALL conditionals, burn complete set
 /// 2. Conditional → Spot: Buy from ALL conditionals, recombine, sell to spot
 /// 3. Compare profits, return better direction
-///
-/// **Performance**: O(log(1.1*user_output) × N) = ~95%+ gas reduction vs global search
 public fun compute_optimal_arbitrage_for_n_outcomes<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
-    user_swap_output: u64, // Hint from user's swap (0 = use global bound)
-    min_profit: u64,
+    user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
+    _min_profit: u64, // Kept for API compatibility (ignored in feeless)
 ): (u64, u128, bool) {
-    // Validate outcome count
+    // Delegate to feeless implementation with smart bounding
+    let (amount, is_spot_to_cond) = compute_optimal_arbitrage_feeless_with_hint(
+        spot,
+        conditionals,
+        user_swap_output,
+    );
+
+    // Return with amount as "profit" since feeless doesn't track actual profit
+    (amount, (amount as u128), is_spot_to_cond)
+}
+
+/// Compute optimal Spot → Conditional arbitrage (FEELESS with smart bounding)
+public fun compute_optimal_spot_to_conditional<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
+    _min_profit: u64, // Kept for API compatibility (ignored in feeless)
+): (u64, u128) {
+    // Delegate to feeless implementation with smart bounding
+    compute_optimal_spot_to_conditional_feeless_with_hint(spot, conditionals, user_swap_output)
+}
+
+/// Compute optimal Conditional → Spot arbitrage (FEELESS with smart bounding)
+public fun compute_optimal_conditional_to_spot<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
+    _min_profit: u64, // Kept for API compatibility (ignored in feeless)
+): (u64, u128) {
+    // Delegate to feeless implementation with smart bounding
+    compute_optimal_conditional_to_spot_feeless_with_hint(spot, conditionals, user_swap_output)
+}
+
+/// Original x-parameterization interface (for compatibility)
+/// Now uses feeless implementation internally
+/// spot_swap_is_stable_to_asset: true if spot swap is stable→asset, false if asset→stable
+public fun compute_optimal_spot_arbitrage<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    spot_swap_is_stable_to_asset: bool,
+): (u64, u128) {
+    // Use feeless implementation
+    let (amount, is_spot_to_cond) = compute_optimal_arbitrage_feeless(spot, conditionals);
+
+    // Return based on direction match
+    if (spot_swap_is_stable_to_asset == is_spot_to_cond) {
+        (amount, (amount as u128))
+    } else {
+        (0, 0) // Direction mismatch
+    }
+}
+
+// === FEELESS ARBITRAGE FOR INTERNAL REBALANCING ===
+
+/// Compute optimal arbitrage with smart bounding (FEELESS)
+///
+/// Uses user_swap_output hint to narrow search space (95%+ gas reduction).
+/// Key insight: Max arbitrage ≤ swap that created the imbalance!
+///
+/// Returns: (optimal_amount, is_spot_to_cond)
+fun compute_optimal_arbitrage_feeless_with_hint<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    user_swap_output: u64, // Hint: 0 = use global bound
+): (u64, bool) {
     let outcome_count = vector::length(conditionals);
-    if (outcome_count == 0) return (0, 0, false);
+    if (outcome_count == 0) return (0, false);
 
     assert!(outcome_count <= constants::protocol_max_outcomes(), ETooManyConditionals);
 
-    // Try Spot → Conditional arbitrage
-    let (x_stc, profit_stc) = compute_optimal_spot_to_conditional(
+    // Try Spot → Conditional arbitrage (feeless with smart bounding)
+    let (x_stc, profit_stc) = compute_optimal_spot_to_conditional_feeless_with_hint(
         spot,
         conditionals,
         user_swap_output,
-        min_profit,
     );
 
-    // Try Conditional → Spot arbitrage
-    let (x_cts, profit_cts) = compute_optimal_conditional_to_spot(
+    // Try Conditional → Spot arbitrage (feeless with smart bounding)
+    let (x_cts, profit_cts) = compute_optimal_conditional_to_spot_feeless_with_hint(
         spot,
         conditionals,
         user_swap_output,
-        min_profit,
     );
 
     // Return more profitable direction
     if (profit_stc >= profit_cts) {
-        (x_stc, profit_stc, true) // Spot → Conditional
+        (x_stc, true) // Spot → Conditional
     } else {
-        (x_cts, profit_cts, false) // Conditional → Spot
+        (x_cts, false) // Conditional → Spot
     }
 }
 
-/// Compute optimal Spot → Conditional arbitrage with smart bounding
-public fun compute_optimal_spot_to_conditional<AssetType, StableType>(
+/// Compute optimal arbitrage amount WITHOUT fees (for internal pool rebalancing)
+///
+/// This function is designed for internal arbitrage operations where:
+/// - No fees are charged (system moving liquidity between pools)
+/// - We just need to find the optimal amount to move
+///
+/// Uses same ternary search logic but with alpha=beta=BPS_SCALE (no fees)
+///
+/// Returns: (optimal_amount, is_spot_to_cond)
+public fun compute_optimal_arbitrage_feeless<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
-    user_swap_output: u64, // Hint: 0 = use global bound
-    min_profit: u64,
+): (u64, bool) {
+    // Delegate to version with global bound (no hint)
+    compute_optimal_arbitrage_feeless_with_hint(spot, conditionals, 0)
+}
+
+/// Compute optimal Spot → Conditional arbitrage WITHOUT fees (with smart bounding)
+///
+/// Returns: (asset_amount, profit)
+/// - asset_amount: The asset to take from spot and inject into conditionals
+/// - profit: Expected profit in asset terms
+///
+/// NOTE: This returns ASSET amount (not stable input) to match execution semantics
+/// Execution flow: spot asset → cond asset → cond stable → spot stable
+fun compute_optimal_spot_to_conditional_feeless_with_hint<AssetType, StableType>(
+    spot: &UnifiedSpotPool<AssetType, StableType>,
+    conditionals: &vector<LiquidityPool>,
+    user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
 ): (u64, u128) {
     let num_conditionals = vector::length(conditionals);
     if (num_conditionals == 0) return (0, 0);
 
-    assert!(num_conditionals <= constants::protocol_max_outcomes(), ETooManyConditionals);
-
-    // Check for zero liquidity in any conditional pool (early rejection)
+    // Check for zero liquidity in any conditional pool
     let mut i = 0;
     while (i < num_conditionals) {
         let conditional = vector::borrow(conditionals, i);
         let (cond_asset, cond_stable) = conditional_amm::get_reserves(conditional);
         if (cond_asset == 0 || cond_stable == 0) {
-            return (0, 0) // Zero liquidity makes arbitrage impossible
+            return (0, 0)
         };
         i = i + 1;
     };
 
-    // Get spot reserves and fee
+    // Get spot reserves
     let (spot_asset, spot_stable) = unified_spot_pool::get_reserves(spot);
     if (spot_asset == 0 || spot_stable == 0) {
-        return (0, 0) // Zero liquidity in spot makes arbitrage impossible
+        return (0, 0)
     };
-    let spot_fee_bps = unified_spot_pool::get_fee_bps(spot);
 
-    // Build T, A, B constants
-    let (ts, as_vals, bs) = build_tab_constants(
+    // Build T, A, B constants WITHOUT fees
+    let (ts, as_vals, bs) = build_tab_constants_feeless(
         spot_asset,
         spot_stable,
-        spot_fee_bps,
         conditionals,
     );
 
-    // Early exit - check if arbitrage is obviously impossible
+    // Early exit check
     if (early_exit_check_spot_to_cond(&ts, &as_vals)) {
         return (0, 0)
     };
 
-    // Smart bounding (95%+ gas reduction)
+    // Calculate global upper bound
     let global_ub = upper_bound_b(&ts, &bs);
+
+    // Apply smart bounding: max arbitrage ≤ swap that created the imbalance
     let smart_bound = if (user_swap_output == 0) {
         global_ub
     } else {
-        let hint_u128 =
-            (user_swap_output as u128) * (SMART_BOUND_MARGIN_NUM as u128) / (SMART_BOUND_MARGIN_DENOM as u128);
-        let hint_u64 = if (hint_u128 > (std::u64::max_value!() as u128)) {
-            std::u64::max_value!()
-        } else {
-            (hint_u128 as u64)
-        };
-        global_ub.min(hint_u64)
+        let hint_bound = (user_swap_output * SMART_BOUND_MARGIN_NUM) / SMART_BOUND_MARGIN_DENOM;
+        if (hint_bound < global_ub) { hint_bound } else { global_ub }
     };
 
-    // B-parameterization ternary search (F(b) is concave)
+    // B-parameterization ternary search with smart bound
     let (b_star, profit) = optimal_b_search_bounded(
         &ts,
         &as_vals,
@@ -265,63 +332,56 @@ public fun compute_optimal_spot_to_conditional<AssetType, StableType>(
         smart_bound,
     );
 
-    // Check min profit threshold
-    if (profit < (min_profit as u128)) {
+    if (profit == 0) {
         return (0, 0)
     };
 
-    // Convert b* to x* (input amount needed)
-    let x_star = x_required_for_b(&ts, &as_vals, &bs, b_star);
-
-    (x_star, profit)
+    // Return b_star (asset amount) since execution takes asset from spot
+    // NOT x_star (stable input) - the execution flow is:
+    // spot asset → cond asset → cond stable → spot stable
+    (b_star, profit)
 }
 
-/// Compute optimal Conditional → Spot arbitrage with smart bounding
-public fun compute_optimal_conditional_to_spot<AssetType, StableType>(
+/// Compute optimal Conditional → Spot arbitrage WITHOUT fees (with smart bounding)
+///
+/// Returns: (stable_input, profit)
+/// - stable_input: The stable amount to split and use to buy from conditionals
+/// - profit: Expected profit in stable terms
+///
+/// NOTE: This returns STABLE input (not asset amount) to match execution semantics
+fun compute_optimal_conditional_to_spot_feeless_with_hint<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
-    user_swap_output: u64, // Hint: 0 = use global bound
-    min_profit: u64,
+    user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
 ): (u64, u128) {
     let num_conditionals = vector::length(conditionals);
     if (num_conditionals == 0) return (0, 0);
 
-    assert!(num_conditionals <= constants::protocol_max_outcomes(), ETooManyConditionals);
-
-    // Check for zero liquidity in any conditional pool (early rejection)
+    // Check for zero liquidity in any conditional pool
     let mut i = 0;
     while (i < num_conditionals) {
         let conditional = vector::borrow(conditionals, i);
         let (cond_asset, cond_stable) = conditional_amm::get_reserves(conditional);
         if (cond_asset == 0 || cond_stable == 0) {
-            return (0, 0) // Zero liquidity makes arbitrage impossible
+            return (0, 0)
         };
         i = i + 1;
     };
 
-    // Get spot reserves and fee
+    // Get spot reserves
     let (spot_asset, spot_stable) = unified_spot_pool::get_reserves(spot);
     if (spot_asset == 0 || spot_stable == 0) {
-        return (0, 0) // Zero liquidity in spot makes arbitrage impossible
-    };
-    let spot_fee_bps = unified_spot_pool::get_fee_bps(spot);
-
-    // FIX: Validate fee to prevent underflow in beta calculation
-    assert!(spot_fee_bps <= BPS_SCALE, EInvalidFee);
-    let beta = BPS_SCALE - spot_fee_bps;
-
-    // OPTIMIZATION 1: Early exit check - compare derivatives at b=0
-    // F'(0) = S'(0) - C'(0) where:
-    // S'(0) = (R_spot_stable * β) / (R_spot_asset * BPS_SCALE)
-    // C'(0) = max_i(c'_i(0)) where c'_i(0) = (R_i_stable * BPS_SCALE) / (R_i_asset * α_i)
-    // Need F'(0) > 0 for profit to exist [quantum liquidity uses MAX not SUM]
-    if (early_exit_check_cond_to_spot(spot_asset, spot_stable, beta, conditionals)) {
         return (0, 0)
     };
 
-    // Find smallest conditional reserve (for global upper bound)
+    // Early exit check (feeless: beta = BPS_SCALE)
+    if (early_exit_check_cond_to_spot_feeless(spot_asset, spot_stable, conditionals)) {
+        return (0, 0)
+    };
+
+    // Find smallest conditional asset reserve (for global upper bound)
     let mut global_ub = std::u64::max_value!();
-    let mut i = 0;
+    i = 0;
     while (i < num_conditionals) {
         let conditional = vector::borrow(conditionals, i);
         let (cond_asset, _cond_stable) = conditional_amm::get_reserves(conditional);
@@ -331,62 +391,44 @@ public fun compute_optimal_conditional_to_spot<AssetType, StableType>(
         i = i + 1;
     };
 
-    // Need reasonable liquidity for arbitrage
     if (global_ub < 2) return (0, 0);
-
-    // Use global_ub - 1 to stay just inside boundary (avoid asymptote)
     global_ub = global_ub - 1;
 
-    // Smart bounding (95%+ gas reduction)
+    // Apply smart bounding: max arbitrage ≤ swap that created the imbalance
     let smart_bound = if (user_swap_output == 0) {
         global_ub
     } else {
-        let hint_u128 =
-            (user_swap_output as u128) * (SMART_BOUND_MARGIN_NUM as u128) / (SMART_BOUND_MARGIN_DENOM as u128);
-        let hint_u64 = if (hint_u128 > (std::u64::max_value!() as u128)) {
-            std::u64::max_value!()
-        } else {
-            (hint_u128 as u64)
-        };
-        global_ub.min(hint_u64)
+        let hint_bound = (user_swap_output * SMART_BOUND_MARGIN_NUM) / SMART_BOUND_MARGIN_DENOM;
+        if (hint_bound < global_ub) { hint_bound } else { global_ub }
     };
 
-    // Ternary search for optimal b (F(b) is concave, single peak)
+    // Ternary search for optimal b with smart bound
     let mut best_b = 0u64;
     let mut best_profit = 0u128;
     let mut left = 0u64;
     let mut right = smart_bound;
 
-    // FIX B2 (Precision): Guarantee convergence to unit precision by setting fixed threshold.
-    // Defense in depth Layer 1: threshold=3 prevents loop when gap ≤ 3
-    // Defense in depth Layer 2: ceiling division guarantees progress if Layer 1 bypassed
     let final_threshold = MIN_COARSE_THRESHOLD;
 
     while (right - left > final_threshold) {
-        // Layer 2: Ceiling division guarantees third ≥ 1 for any positive gap
-        // ceil(gap/3) = (gap + 2) / 3, mathematically ensures loop always makes progress
-        // Layer 1 (threshold=3) prevents this from ever being needed, but Layer 2 is bulletproof
         let gap = right - left;
-        let third = (gap + 2) / 3; // Ceiling division
+        let third = (gap + 2) / 3;
         let m1 = left + third;
         let m2 = right - third;
 
-        let profit_m1 = profit_conditional_to_spot(
+        let profit_m1 = profit_conditional_to_spot_feeless(
             spot_asset,
             spot_stable,
-            beta,
             conditionals,
             m1,
         );
-        let profit_m2 = profit_conditional_to_spot(
+        let profit_m2 = profit_conditional_to_spot_feeless(
             spot_asset,
             spot_stable,
-            beta,
             conditionals,
             m2,
         );
 
-        // Track best seen
         if (profit_m1 > best_profit) {
             best_profit = profit_m1;
             best_b = m1;
@@ -404,60 +446,187 @@ public fun compute_optimal_conditional_to_spot<AssetType, StableType>(
     };
 
     // Final endpoint check
-    let profit_left = profit_conditional_to_spot(
-        spot_asset,
-        spot_stable,
-        beta,
-        conditionals,
-        left,
-    );
+    let profit_left = profit_conditional_to_spot_feeless(spot_asset, spot_stable, conditionals, left);
     if (profit_left > best_profit) {
         best_profit = profit_left;
         best_b = left;
     };
 
-    let profit_right = profit_conditional_to_spot(
-        spot_asset,
-        spot_stable,
-        beta,
-        conditionals,
-        right,
-    );
+    let profit_right = profit_conditional_to_spot_feeless(spot_asset, spot_stable, conditionals, right);
     if (profit_right > best_profit) {
         best_profit = profit_right;
         best_b = right;
     };
 
-    // Check min profit threshold
-    if (best_profit < (min_profit as u128)) {
-        return (0, 0)
+    // Convert best_b (asset amount) to stable input needed
+    // This is the max cost across all conditionals due to quantum splitting
+    let stable_input = if (best_b == 0) {
+        0
+    } else {
+        let cost = calculate_conditional_cost_feeless(conditionals, best_b);
+        if (cost > (std::u64::max_value!() as u128)) {
+            std::u64::max_value!()
+        } else {
+            (cost as u64)
+        }
     };
 
-    (best_b, best_profit)
+    (stable_input, best_profit)
 }
 
-/// Original x-parameterization interface (for compatibility)
-/// Now uses b-parameterization with smart bounding internally
-/// spot_swap_is_stable_to_asset: true if spot swap is stable→asset, false if asset→stable
-public fun compute_optimal_spot_arbitrage<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+/// Build T, A, B constants WITHOUT fees (alpha = beta = BPS_SCALE)
+///
+/// Simplified formulas:
+/// - T_i = cond_stable * spot_asset
+/// - A_i = cond_asset * spot_stable
+/// - B_i = cond_asset + spot_asset
+fun build_tab_constants_feeless(
+    spot_asset_reserve: u64,
+    spot_stable_reserve: u64,
     conditionals: &vector<LiquidityPool>,
-    spot_swap_is_stable_to_asset: bool,
-): (u64, u128) {
-    // Use new bidirectional solver with 0 min_profit and no hint (global search)
-    let (amount, profit, is_spot_to_cond) = compute_optimal_arbitrage_for_n_outcomes(
-        spot,
-        conditionals,
-        0, // No user_swap_output hint: use global bound
-        0, // No min profit for compatibility
-    );
+): (vector<u128>, vector<u128>, vector<u128>) {
+    let num_conditionals = vector::length(conditionals);
+    let mut ts_vec = vector::empty<u128>();
+    let mut as_vec = vector::empty<u128>();
+    let mut bs_vec = vector::empty<u128>();
 
-    // Return based on direction match
-    if (spot_swap_is_stable_to_asset == is_spot_to_cond) {
-        (amount, profit)
+    let mut i = 0;
+    while (i < num_conditionals) {
+        let conditional = vector::borrow(conditionals, i);
+        let (cond_asset, cond_stable) = conditional_amm::get_reserves(conditional);
+
+        // T_i = cond_stable * spot_asset (no fees)
+        let ti = (cond_stable as u128) * (spot_asset_reserve as u128);
+
+        // A_i = cond_asset * spot_stable
+        let ai = (cond_asset as u128) * (spot_stable_reserve as u128);
+
+        // B_i = cond_asset + spot_asset (no fees)
+        let bi = (cond_asset as u128) + (spot_asset_reserve as u128);
+
+        vector::push_back(&mut ts_vec, ti);
+        vector::push_back(&mut as_vec, ai);
+        vector::push_back(&mut bs_vec, bi);
+
+        i = i + 1;
+    };
+
+    (ts_vec, as_vec, bs_vec)
+}
+
+/// Early exit check for Cond→Spot WITHOUT fees
+fun early_exit_check_cond_to_spot_feeless(
+    spot_asset: u64,
+    spot_stable: u64,
+    conditionals: &vector<LiquidityPool>,
+): bool {
+    // For feeless: S'(0) = spot_stable / spot_asset
+    // c'_i(0) = cond_stable_i / cond_asset_i
+    // Check if spot_stable / spot_asset <= any cond_stable_i / cond_asset_i
+
+    let spot_stable_u256 = (spot_stable as u256);
+    let spot_asset_u256 = (spot_asset as u256);
+
+    let n = vector::length(conditionals);
+    let mut i = 0;
+    while (i < n) {
+        let conditional = vector::borrow(conditionals, i);
+        let (cond_asset, cond_stable) = conditional_amm::get_reserves(conditional);
+
+        // Check if spot_stable * cond_asset <= cond_stable * spot_asset
+        let lhs = spot_stable_u256 * (cond_asset as u256);
+        let rhs = (cond_stable as u256) * spot_asset_u256;
+
+        if (lhs <= rhs) {
+            return true // No profit possible
+        };
+
+        i = i + 1;
+    };
+
+    false
+}
+
+/// Calculate profit for Cond→Spot arbitrage WITHOUT fees
+fun profit_conditional_to_spot_feeless(
+    spot_asset: u64,
+    spot_stable: u64,
+    conditionals: &vector<LiquidityPool>,
+    b: u64,
+): u128 {
+    if (b == 0) return 0;
+
+    // Spot revenue without fees: S(b) = (spot_stable * b) / (spot_asset + b)
+    let spot_revenue = calculate_spot_revenue_feeless(spot_asset, spot_stable, b);
+
+    // Conditional cost without fees: C(b) = max_i((cond_stable_i * b) / (cond_asset_i - b))
+    let total_cost = calculate_conditional_cost_feeless(conditionals, b);
+
+    if (spot_revenue > total_cost) {
+        spot_revenue - total_cost
     } else {
-        (0, 0) // Direction mismatch
+        0
     }
+}
+
+/// Calculate spot revenue WITHOUT fees
+/// S(b) = (spot_stable * b) / (spot_asset + b)
+fun calculate_spot_revenue_feeless(spot_asset: u64, spot_stable: u64, b: u64): u128 {
+    let b_u256 = (b as u256);
+    let spot_stable_u256 = (spot_stable as u256);
+    let spot_asset_u256 = (spot_asset as u256);
+
+    let numerator = spot_stable_u256 * b_u256;
+    let denominator = spot_asset_u256 + b_u256;
+
+    if (denominator == 0) return 0;
+
+    let result = numerator / denominator;
+    if (result > (std::u128::max_value!() as u256)) {
+        std::u128::max_value!()
+    } else {
+        (result as u128)
+    }
+}
+
+/// Calculate conditional cost WITHOUT fees
+/// C(b) = max_i((cond_stable_i * b) / (cond_asset_i - b))
+fun calculate_conditional_cost_feeless(conditionals: &vector<LiquidityPool>, b: u64): u128 {
+    let num_conditionals = vector::length(conditionals);
+    let mut max_cost = 0u128;
+    let b_u128 = (b as u128);
+
+    let mut i = 0;
+    while (i < num_conditionals) {
+        let conditional = vector::borrow(conditionals, i);
+        let (cond_asset, cond_stable) = conditional_amm::get_reserves(conditional);
+
+        // Skip if b >= cond_asset
+        if (b >= cond_asset) {
+            return std::u128::max_value!()
+        };
+
+        let cond_asset_u128 = (cond_asset as u128);
+        let cond_stable_u128 = (cond_stable as u128);
+
+        // cost_i = (cond_stable * b) / (cond_asset - b)
+        let numerator = cond_stable_u128 * b_u128;
+        let denominator = cond_asset_u128 - b_u128;
+
+        if (denominator == 0) {
+            return std::u128::max_value!()
+        };
+
+        let cost_i = numerator / denominator;
+
+        if (cost_i > max_cost) {
+            max_cost = cost_i;
+        };
+
+        i = i + 1;
+    };
+
+    max_cost
 }
 
 // === Core B-Parameterization Functions ===
@@ -684,73 +853,7 @@ fun early_exit_check_spot_to_cond(ts: &vector<u128>, as_vals: &vector<u128>): bo
     false // All pools have T_i > A_i → arbitrage may exist
 }
 
-/// Early exit check: if spot derivative <= cost derivative at b=0, no Cond→Spot arbitrage
-///
-/// MATHEMATICAL PROOF:
-/// F(b) = S(b) - C(b) where:
-/// - S(b) = (R_spot_stable * b * β) / (R_spot_asset * BPS_SCALE + b * β)
-/// - C(b) = max_i (R_i_stable * b * BPS_SCALE) / ((R_i_asset - b) * α_i)  [quantum liquidity!]
-///
-/// Derivatives at b=0:
-/// S'(0) = (R_spot_stable * β) / (R_spot_asset * BPS_SCALE)
-/// C'(0) = max_i(c'_i(0)) where c'_i(0) = (R_i_stable * BPS_SCALE) / (R_i_asset * α_i)
-///
-/// For profit: F'(0) > 0 ⟺ S'(0) > C'(0) = max_i(c'_i(0))  [quantum liquidity max semantics]
-/// Return true (exit early) if S'(0) ≤ C'(0)
-///
-/// CONSERVATIVE CHECK: If S'(0) ≤ ANY c'_i(0), then S'(0) ≤ max_i(c'_i(0)) = C'(0).
-/// This correctly catches unprofitable cases (spot revenue slope too shallow).
-fun early_exit_check_cond_to_spot(
-    spot_asset: u64,
-    spot_stable: u64,
-    beta: u64,
-    conditionals: &vector<LiquidityPool>,
-): bool {
-    // Calculate S'(0) = (R_spot_stable * β) / (R_spot_asset * BPS_SCALE)
-    let spot_stable_u256 = (spot_stable as u256);
-    let beta_u256 = (beta as u256);
-    let spot_asset_u256 = (spot_asset as u256);
-    let bps_u256 = (BPS_SCALE as u256);
-
-    // S'(0) numerator: R_spot_stable * β
-    let s_prime_num = spot_stable_u256 * beta_u256;
-    // S'(0) denominator: R_spot_asset * BPS_SCALE
-    let s_prime_denom = spot_asset_u256 * bps_u256;
-
-    // Check: if S'(0) <= ANY c'_i(0), then S'(0) <= max_i(c'_i(0)) = C'(0)
-    // Quantum liquidity uses MAX semantics, not sum!
-
-    let n = vector::length(conditionals);
-    let mut i = 0;
-    while (i < n) {
-        let conditional = vector::borrow(conditionals, i);
-        let (cond_asset, cond_stable) = conditional_amm::get_reserves(conditional);
-        let cond_fee_bps = conditional_amm::get_fee_bps(conditional);
-
-        // FIX: Validate fee to prevent underflow in alpha_i calculation
-        assert!(cond_fee_bps <= BPS_SCALE, EInvalidFee);
-        let alpha_i = BPS_SCALE - cond_fee_bps;
-
-        // c'_i(0) = (R_i_stable * BPS_SCALE) / (R_i_asset * α_i)
-        let c_i_num = (cond_stable as u256) * bps_u256;
-        let c_i_denom = (cond_asset as u256) * (alpha_i as u256);
-
-        // Check if s_prime_num / s_prime_denom <= c_i_num / c_i_denom
-        // ⟺ s_prime_num * c_i_denom <= s_prime_denom * c_i_num
-        if (s_prime_num * c_i_denom <= s_prime_denom * c_i_num) {
-            // Spot slope ≤ this conditional's slope
-            // Since C'(0) = max_i(c'_i) ≥ c'_i ≥ S'(0), definitely no profit
-            return true
-        };
-
-        i = i + 1;
-    };
-
-    // S'(0) > all individual c'_i(0)
-    // Since C'(0) = max_i(c'_i) and S'(0) > every c'_i, we have S'(0) > C'(0)
-    // Arbitrage may be profitable - let ternary search find optimal b
-    false
-}
+// Note: early_exit_check_cond_to_spot (fee-based) removed - using feeless version instead
 
 /// Safe cross-product comparison: Check if a * b <= c * d without overflow
 /// Uses u256 for exact comparison (no precision loss)
@@ -762,91 +865,7 @@ fun safe_cross_product_le(a: u128, b: u128, c: u128, d: u128): bool {
     ((a as u256) * (b as u256)) <= ((c as u256) * (d as u256))
 }
 
-// === TAB Constants Builder ===
-
-/// Build T, A, B constants for b-parameterization from pool reserves
-/// These constants encode AMM state and fees for efficient arbitrage calculation
-fun build_tab_constants(
-    spot_asset_reserve: u64,
-    spot_stable_reserve: u64,
-    spot_fee_bps: u64,
-    conditionals: &vector<LiquidityPool>,
-): (vector<u128>, vector<u128>, vector<u128>) {
-    let num_conditionals = vector::length(conditionals);
-    let mut ts_vec = vector::empty<u128>();
-    let mut as_vec = vector::empty<u128>();
-    let mut bs_vec = vector::empty<u128>();
-
-    // FIX #7: Validate spot fee to prevent underflow
-    assert!(spot_fee_bps <= BPS_SCALE, EInvalidFee);
-    let beta = BPS_SCALE - spot_fee_bps;
-
-    let mut i = 0;
-    while (i < num_conditionals) {
-        let conditional = vector::borrow(conditionals, i);
-        let (cond_asset, cond_stable) = conditional_amm::get_reserves(conditional);
-        let cond_fee_bps = conditional_amm::get_fee_bps(conditional);
-
-        // FIX #7: Validate conditional fee to prevent underflow
-        assert!(cond_fee_bps <= BPS_SCALE, EInvalidFee);
-        let alpha_i = BPS_SCALE - cond_fee_bps;
-
-        // T_i = (cond_stable * alpha_i * spot_asset * beta) / BPS²
-        // FIX #8: Use u256 for entire calculation with SINGLE division to avoid double-rounding
-        let cond_stable_u256 = (cond_stable as u256);
-        let alpha_i_u256 = (alpha_i as u256);
-        let spot_asset_u256 = (spot_asset_reserve as u256);
-        let beta_u256 = (beta as u256);
-        let bps_u256 = (BPS_SCALE as u256);
-
-        // CRITICAL: Multiply ALL terms FIRST, then divide ONCE to avoid precision loss
-        // Old (wrong): (a/b) * (c/d) causes TWO truncations
-        // New (correct): (a * c) / (b * d) causes ONE truncation
-        let ti_u256 =
-            (cond_stable_u256 * alpha_i_u256 * spot_asset_u256 * beta_u256)
-            / (bps_u256 * bps_u256);
-
-        // Clamp to u128 max if needed
-        let ti = if (ti_u256 > (std::u128::max_value!() as u256)) {
-            std::u128::max_value!()
-        } else {
-            (ti_u256 as u128)
-        };
-
-        // A_i = cond_asset * spot_stable (use u256 to prevent overflow)
-        let cond_asset_u256 = (cond_asset as u256);
-        let spot_stable_u256 = (spot_stable_reserve as u256);
-        let ai_u256 = cond_asset_u256 * spot_stable_u256;
-
-        let ai = if (ai_u256 > (std::u128::max_value!() as u256)) {
-            std::u128::max_value!()
-        } else {
-            (ai_u256 as u128)
-        };
-
-        // B_i = β * (R_i,asset * BPS + α_i * R_spot,asset) / BPS²
-        // FIX: Use SINGLE division to avoid double-rounding (same fix as T_i)
-        // Old (wrong): temp = a + b/c; result = temp * d / c (TWO divisions)
-        // New (correct): result = d * (a * c + b) / c² (ONE division)
-        let bi_u256 =
-            (beta_u256 * (cond_asset_u256 * bps_u256 + alpha_i_u256 * spot_asset_u256))
-            / (bps_u256 * bps_u256);
-
-        let bi = if (bi_u256 > (std::u128::max_value!() as u256)) {
-            std::u128::max_value!()
-        } else {
-            (bi_u256 as u128)
-        };
-
-        vector::push_back(&mut ts_vec, ti);
-        vector::push_back(&mut as_vec, ai);
-        vector::push_back(&mut bs_vec, bi);
-
-        i = i + 1;
-    };
-
-    (ts_vec, as_vec, bs_vec)
-}
+// Note: build_tab_constants (fee-based) removed - using build_tab_constants_feeless instead
 
 // === Simulation Functions (For Verification) ===
 
@@ -993,33 +1012,7 @@ public fun calculate_conditional_arbitrage_profit<AssetType, StableType>(
 
 // === Conditional → Spot Helper Functions ===
 
-/// Calculate profit for Conditional → Spot arbitrage at given b
-/// F(b) = S(b) - C(b)
-/// where:
-/// - S(b) = spot output from selling b base assets
-/// - C(b) = total cost to buy b conditional assets from all pools
-fun profit_conditional_to_spot(
-    spot_asset: u64,
-    spot_stable: u64,
-    beta: u64, // spot fee multiplier (BPS_SCALE - fee_bps)
-    conditionals: &vector<LiquidityPool>,
-    b: u64,
-): u128 {
-    if (b == 0) return 0;
-
-    // Calculate spot revenue: S(b) = spot output from selling b base assets
-    let spot_revenue = calculate_spot_revenue(spot_asset, spot_stable, beta, b);
-
-    // Calculate total cost from all conditional pools: C(b) = max_i(c_i(b)) [quantum liquidity!]
-    let total_cost = calculate_conditional_cost(conditionals, b);
-
-    // Profit: S(b) - C(b)
-    if (spot_revenue > total_cost) {
-        spot_revenue - total_cost
-    } else {
-        0
-    }
-}
+// Note: profit_conditional_to_spot (fee-based) removed - using feeless version instead
 
 /// Calculate revenue from selling b base assets to spot
 /// S(b) = (R_spot_stable * b * β) / (R_spot_asset * BPS_SCALE + b * β)
@@ -1483,14 +1476,16 @@ fun evaluate_split_routing_asset_to_stable<AssetType, StableType>(
 // These wrappers expose internal functions for white-box testing.
 // They are compiled out of production builds (#[test_only] attribute).
 
+// Note: test_only_build_tab_constants now uses feeless version (ignores fee_bps parameter)
+
 #[test_only]
 public fun test_only_build_tab_constants(
-    spot_asset_reserve: u64,
-    spot_stable_reserve: u64,
-    spot_fee_bps: u64,
+    spot_asset: u64,
+    spot_stable: u64,
+    _fee_bps: u64, // Ignored - using feeless version
     conditionals: &vector<LiquidityPool>,
 ): (vector<u128>, vector<u128>, vector<u128>) {
-    build_tab_constants(spot_asset_reserve, spot_stable_reserve, spot_fee_bps, conditionals)
+    build_tab_constants_feeless(spot_asset, spot_stable, conditionals)
 }
 
 #[test_only]

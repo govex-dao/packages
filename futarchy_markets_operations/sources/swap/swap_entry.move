@@ -28,7 +28,6 @@
 module futarchy_markets_operations::swap_entry;
 
 use futarchy_markets_core::arbitrage;
-use futarchy_markets_core::arbitrage_math;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_markets_core::swap_core;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
@@ -102,86 +101,14 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
     let proposal_state = proposal::state(proposal);
 
     if (proposal_state == STATE_TRADING) {
-        // ROUTING OPTIMIZATION: Calculate optimal split between direct and routed paths
-        let routed_amount = {
-            let market_state = coin_escrow::get_market_state(escrow);
-            let pools = market_state::borrow_amm_pools(market_state);
-            let (routed, _expected_output) = arbitrage_math::compute_optimal_route_stable_to_asset(
-                spot_pool,
-                pools,
-                amount_in,
-            );
-            routed // Drop pools reference before creating session
-        };
-
-        // Create swap session for routing operations
-        let session = swap_core::begin_swap_session(escrow);
-
-        // Execute optimal routing strategy
-        let asset_out = if (routed_amount == 0) {
-            // Pure direct: all input goes straight to spot
-            unified_spot_pool::swap_stable_for_asset(
-                spot_pool,
-                stable_in,
-                min_asset_out,
-                clock,
-                ctx,
-            )
-        } else if (routed_amount == amount_in) {
-            // Pure routed: all input goes through conditionals
-            // Routing: Stable → Asset (spot) → Conditional Assets → Conditional Stables → Spot Stable (arb) → Asset (spot)
-            let (stable_profit, asset_profit, balance) = arbitrage::execute_optimal_spot_arbitrage(
-                spot_pool,
-                escrow,
-                &session,
-                stable_in,
-                coin::zero<AssetType>(ctx),
-                0, // min_profit
-                recipient,
-                existing_balance_opt,
-                clock,
-                ctx,
-            );
-            existing_balance_opt = option::some(balance);
-            coin::destroy_zero(stable_profit); // Stable leg is always zero after arb
-            asset_profit
-        } else {
-            // Hybrid split: route some, direct swap rest
-            let routed_coin = coin::split(&mut stable_in, routed_amount, ctx);
-
-            // Route portion through conditionals
-            let (stable_profit, asset_profit, balance) = arbitrage::execute_optimal_spot_arbitrage(
-                spot_pool,
-                escrow,
-                &session,
-                routed_coin,
-                coin::zero<AssetType>(ctx),
-                0,
-                recipient,
-                existing_balance_opt,
-                clock,
-                ctx,
-            );
-            existing_balance_opt = option::some(balance);
-            coin::destroy_zero(stable_profit); // Stable output is zero, asset carries profit
-            let routed_asset = asset_profit;
-
-            // Direct swap remainder
-            let mut direct_asset = unified_spot_pool::swap_stable_for_asset(
-                spot_pool,
-                stable_in,
-                0, // no min for partial swap
-                clock,
-                ctx,
-            );
-
-            // Combine outputs
-            coin::join(&mut direct_asset, routed_asset);
-            direct_asset
-        };
-
-        // Finalize session
-        swap_core::finalize_swap_session(session, escrow);
+        // Direct swap in spot pool
+        let asset_out = unified_spot_pool::swap_stable_for_asset(
+            spot_pool,
+            stable_in,
+            min_asset_out,
+            clock,
+            ctx,
+        );
 
         // Validate slippage on total output
         assert!(asset_out.value() >= min_asset_out, EZeroAmount);
@@ -301,86 +228,14 @@ public fun swap_spot_asset_to_stable<AssetType, StableType>(
     let proposal_state = proposal::state(proposal);
 
     if (proposal_state == STATE_TRADING) {
-        // ROUTING OPTIMIZATION: Calculate optimal split between direct and routed paths
-        let routed_amount = {
-            let market_state = coin_escrow::get_market_state(escrow);
-            let pools = market_state::borrow_amm_pools(market_state);
-            let (routed, _expected_output) = arbitrage_math::compute_optimal_route_asset_to_stable(
-                spot_pool,
-                pools,
-                amount_in,
-            );
-            routed // Drop pools reference before creating session
-        };
-
-        // Create swap session for routing operations
-        let session = swap_core::begin_swap_session(escrow);
-
-        // Execute optimal routing strategy
-        let stable_out = if (routed_amount == 0) {
-            // Pure direct: all input goes straight to spot
-            unified_spot_pool::swap_asset_for_stable(
-                spot_pool,
-                asset_in,
-                min_stable_out,
-                clock,
-                ctx,
-            )
-        } else if (routed_amount == amount_in) {
-            // Pure routed: all input goes through conditionals
-            // Routing: Asset → Stable (spot) → Conditional Stables → Conditional Assets → Spot Asset (arb) → Stable (spot)
-            let (stable_profit, asset_profit, balance) = arbitrage::execute_optimal_spot_arbitrage(
-                spot_pool,
-                escrow,
-                &session,
-                coin::zero<StableType>(ctx),
-                asset_in,
-                0, // min_profit
-                recipient,
-                existing_balance_opt,
-                clock,
-                ctx,
-            );
-            existing_balance_opt = option::some(balance);
-            coin::destroy_zero(asset_profit); // Asset leg is always zero after arb
-            stable_profit
-        } else {
-            // Hybrid split: route some, direct swap rest
-            let routed_coin = coin::split(&mut asset_in, routed_amount, ctx);
-
-            // Route portion through conditionals
-            let (stable_profit, asset_profit, balance) = arbitrage::execute_optimal_spot_arbitrage(
-                spot_pool,
-                escrow,
-                &session,
-                coin::zero<StableType>(ctx),
-                routed_coin,
-                0,
-                recipient,
-                existing_balance_opt,
-                clock,
-                ctx,
-            );
-            existing_balance_opt = option::some(balance);
-            coin::destroy_zero(asset_profit); // Asset output is zero, stable carries profit
-            let routed_stable = stable_profit;
-
-            // Direct swap remainder
-            let mut direct_stable = unified_spot_pool::swap_asset_for_stable(
-                spot_pool,
-                asset_in,
-                0, // no min for partial swap
-                clock,
-                ctx,
-            );
-
-            // Combine outputs
-            coin::join(&mut direct_stable, routed_stable);
-            direct_stable
-        };
-
-        // Finalize session
-        swap_core::finalize_swap_session(session, escrow);
+        // Direct swap in spot pool
+        let stable_out = unified_spot_pool::swap_asset_for_stable(
+            spot_pool,
+            asset_in,
+            min_stable_out,
+            clock,
+            ctx,
+        );
 
         // Validate slippage on total output
         assert!(stable_out.value() >= min_stable_out, EZeroAmount);

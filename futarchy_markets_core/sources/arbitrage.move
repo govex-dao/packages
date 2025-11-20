@@ -12,7 +12,6 @@
 module futarchy_markets_core::arbitrage;
 
 use futarchy_markets_core::arbitrage_math;
-use futarchy_markets_core::swap_core::{Self, SwapSession};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm;
@@ -20,418 +19,9 @@ use futarchy_markets_primitives::conditional_balance::{Self, ConditionalMarketBa
 use futarchy_markets_primitives::market_state;
 use std::option;
 use sui::clock::Clock;
-use sui::coin::{Self, Coin};
-use sui::event;
-use sui::object::{Self, ID};
+use sui::coin;
 
-// === Errors ===
-const EZeroAmount: u64 = 0;
-const EInsufficientProfit: u64 = 1;
-const EInvalidDirection: u64 = 2;
-
-// === Events ===
-
-/// Emitted when spot arbitrage completes
-public struct SpotArbitrageExecuted has copy, drop {
-    proposal_id: ID,
-    outcome_count: u64,
-    input_asset: u64,
-    input_stable: u64,
-    output_asset: u64,
-    output_stable: u64,
-    profit_asset: u64,
-    profit_stable: u64,
-}
-
-/// Emitted when conditional arbitrage completes
-public struct ConditionalArbitrageExecuted has copy, drop {
-    proposal_id: ID,
-    outcome_idx: u8,
-    amount_in: u64,
-    amount_out: u64,
-}
-
-// === Main Arbitrage Functions ===
-
-/// Execute spot arbitrage with auto-merge - works for ANY outcome count!
-///
-/// Takes spot coins, performs quantum mint + swaps across all outcomes,
-/// finds complete set minimum, burns complete set, returns profit + dust.
-///
-/// **NEW: Auto-Merge Support!** Pass your existing dust balance and it will
-/// accumulate into it. DCA bots doing 100 swaps = 1 NFT instead of 100!
-///
-/// # Arbitrage Flow
-/// 1. Deposit spot coins to escrow (quantum liquidity)
-/// 2. Add amounts to balance for ALL outcomes simultaneously
-/// 3. Swap asset→stable (or stable→asset) in EACH outcome market
-/// 4. Find minimum balance across outcomes (complete set limit)
-/// 5. Burn complete set and withdraw spot coins as profit
-/// 6. Merge dust into existing balance OR create new balance
-///
-/// # Arguments
-/// * `stable_for_arb` - Spot stable coins to use (can be zero)
-/// * `asset_for_arb` - Spot asset coins to use (can be zero)
-/// * `min_profit` - Minimum profit required (0 = no minimum)
-/// * `recipient` - Address to receive profits
-/// * `existing_balance_opt` - Optional existing balance to merge into (auto-merge!)
-///   - None = Create new balance object
-///   - Some(balance) = Merge dust into existing balance (DCA optimization!)
-///
-/// # Returns
-/// * Tuple: (stable_profit, asset_profit, dust_balance)
-/// * ALWAYS returns a balance (merged or new)
-/// * Caller should transfer balance to recipient
-///
-/// # Example - DCA Bot Pattern
-/// ```move
-/// // First swap - no existing balance
-/// let mut balance = option::none();
-///
-/// // Loop 100 swaps - accumulate into one NFT!
-/// let mut i = 0;
-/// while (i < 100) {
-///     let (stable_profit, asset_profit, dust) = execute_optimal_spot_arbitrage(
-///         spot_pool, escrow, &session,
-///         stable_coin, asset_coin, 0, recipient,
-///         balance,  // ← Pass previous balance back!
-///         clock, ctx
-///     );
-///     balance = option::some(dust);  // Accumulate
-///     i = i + 1;
-/// };
-///
-/// // After 100 swaps: 1 NFT instead of 100!
-/// transfer::public_transfer(option::extract(&mut balance), recipient);
-/// ```
-public fun execute_optimal_spot_arbitrage<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    escrow: &mut TokenEscrow<AssetType, StableType>,
-    session: &SwapSession,
-    stable_for_arb: Coin<StableType>,
-    asset_for_arb: Coin<AssetType>,
-    min_profit: u64,
-    recipient: address,
-    mut existing_balance_opt: option::Option<ConditionalMarketBalance<AssetType, StableType>>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<StableType>, Coin<AssetType>, ConditionalMarketBalance<AssetType, StableType>) {
-    // Validate market is live
-    let market_state = coin_escrow::get_market_state(escrow);
-    market_state::assert_trading_active(market_state);
-
-    let stable_amt = stable_for_arb.value();
-    let asset_amt = asset_for_arb.value();
-
-    // Determine arbitrage direction and execute
-    if (stable_amt > 0 && asset_amt == 0) {
-        // Stable→Asset→Conditionals→Stable arbitrage
-        // Destroy zero asset coin
-        coin::destroy_zero(asset_for_arb);
-        execute_spot_arb_stable_to_asset_direction(
-            spot_pool,
-            escrow,
-            session,
-            stable_for_arb,
-            min_profit,
-            recipient,
-            existing_balance_opt,
-            clock,
-            ctx,
-        )
-    } else if (asset_amt > 0 && stable_amt == 0) {
-        // Asset→Stable→Conditionals→Asset arbitrage
-        // Destroy zero stable coin
-        coin::destroy_zero(stable_for_arb);
-        execute_spot_arb_asset_to_stable_direction(
-            spot_pool,
-            escrow,
-            session,
-            asset_for_arb,
-            min_profit,
-            recipient,
-            existing_balance_opt,
-            clock,
-            ctx,
-        )
-    } else {
-        // No coins or both coins provided - just return them and empty/existing balance
-        if (stable_amt > 0) {
-            transfer::public_transfer(stable_for_arb, recipient);
-        } else {
-            coin::destroy_zero(stable_for_arb);
-        };
-        if (asset_amt > 0) {
-            transfer::public_transfer(asset_for_arb, recipient);
-        } else {
-            coin::destroy_zero(asset_for_arb);
-        };
-
-        // Return existing balance or create empty one
-        let balance = if (option::is_some(&existing_balance_opt)) {
-            option::extract(&mut existing_balance_opt)
-        } else {
-            let market_id = futarchy_markets_primitives::market_state::market_id(market_state);
-            let outcome_count = futarchy_markets_primitives::market_state::outcome_count(
-                market_state,
-            );
-            conditional_balance::new<AssetType, StableType>(market_id, (outcome_count as u8), ctx)
-        };
-        option::destroy_none(existing_balance_opt);
-        (coin::zero<StableType>(ctx), coin::zero<AssetType>(ctx), balance)
-    }
-}
-
-// === Direction-Specific Arbitrage ===
-
-/// Execute: Stable → Spot Asset → Conditional Assets → Conditional Stables → Spot Stable (profit)
-fun execute_spot_arb_stable_to_asset_direction<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    escrow: &mut TokenEscrow<AssetType, StableType>,
-    session: &SwapSession,
-    stable_for_arb: Coin<StableType>,
-    min_profit: u64,
-    recipient: address,
-    mut existing_balance_opt: option::Option<ConditionalMarketBalance<AssetType, StableType>>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<StableType>, Coin<AssetType>, ConditionalMarketBalance<AssetType, StableType>) {
-    let stable_amt = stable_for_arb.value();
-    assert!(stable_amt > 0, EZeroAmount);
-
-    // Get market info from escrow
-    let market_state = coin_escrow::get_market_state(escrow);
-    let outcome_count = futarchy_markets_primitives::market_state::outcome_count(market_state);
-    let market_id = futarchy_markets_primitives::market_state::market_id(market_state);
-
-    // 1. Swap spot stable → spot asset
-    let asset_from_spot = unified_spot_pool::swap_stable_for_asset(
-        spot_pool,
-        stable_for_arb,
-        0,
-        clock,
-        ctx,
-    );
-    let asset_amt = asset_from_spot.value();
-
-    // 2. Create temporary balance object for arbitrage
-    let mut arb_balance = conditional_balance::new<AssetType, StableType>(
-        market_id,
-        (outcome_count as u8),
-        ctx,
-    );
-
-    // 3. Deposit asset to escrow for quantum mint
-    let (deposited_asset, _) = coin_escrow::deposit_spot_coins(
-        escrow,
-        asset_from_spot,
-        coin::zero<StableType>(ctx),
-    );
-
-    // 4. Add to balance (quantum: same amount in ALL outcomes)
-    let mut i = 0u8;
-    while ((i as u64) < outcome_count) {
-        conditional_balance::add_to_balance(&mut arb_balance, i, true, deposited_asset);
-        i = i + 1;
-    };
-
-    // 5. Swap asset → stable in EACH conditional market (LOOP!)
-    i = 0u8;
-    while ((i as u64) < outcome_count) {
-        swap_core::swap_balance_asset_to_stable<AssetType, StableType>(
-            session,
-            escrow,
-            &mut arb_balance,
-            i,
-            asset_amt,
-            0,
-            clock,
-            ctx,
-        );
-        i = i + 1;
-    };
-
-    // 6. Find minimum stable amount (complete set limit)
-    let min_stable = conditional_balance::find_min_balance(&arb_balance, false);
-
-    // 7. Burn complete set → withdraw spot stable
-    let profit_stable = burn_complete_set_and_withdraw_stable(
-        &mut arb_balance,
-        escrow,
-        min_stable,
-        ctx,
-    );
-
-    // Validate profit meets minimum
-    assert!(profit_stable.value() >= min_profit, EInsufficientProfit);
-
-    // Calculate net profit (handle losses where output < input)
-    let net_profit_stable = if (profit_stable.value() >= stable_amt) {
-        profit_stable.value() - stable_amt
-    } else {
-        0 // Loss case - report as 0 profit
-    };
-
-    // 8. CRITICAL FIX: Swap profit stable back to asset on spot to rebalance price
-    // This completes the arbitrage loop and brings spot price back toward equilibrium
-    let profit_asset = unified_spot_pool::swap_stable_for_asset(
-        spot_pool,
-        profit_stable,
-        0,
-        clock,
-        ctx,
-    );
-
-    // Emit event
-    event::emit(SpotArbitrageExecuted {
-        proposal_id: market_id,
-        outcome_count,
-        input_asset: 0,
-        input_stable: stable_amt,
-        output_asset: profit_asset.value(),
-        output_stable: 0,
-        profit_asset: if (profit_asset.value() >= asset_amt) { profit_asset.value() - asset_amt }
-        else { 0 },
-        profit_stable: 0,
-    });
-
-    // 9. Merge dust into existing balance OR return new balance
-    let final_balance = if (option::is_some(&existing_balance_opt)) {
-        let mut existing = option::extract(&mut existing_balance_opt);
-        conditional_balance::merge(&mut existing, arb_balance); // Merge new dust into existing
-        existing
-    } else {
-        arb_balance // Return new balance
-    };
-    option::destroy_none(existing_balance_opt);
-
-    (coin::zero<StableType>(ctx), profit_asset, final_balance)
-}
-
-/// Execute: Asset → Spot Stable → Conditional Stables → Conditional Assets → Spot Asset (profit)
-fun execute_spot_arb_asset_to_stable_direction<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    escrow: &mut TokenEscrow<AssetType, StableType>,
-    session: &SwapSession,
-    asset_for_arb: Coin<AssetType>,
-    min_profit: u64,
-    recipient: address,
-    mut existing_balance_opt: option::Option<ConditionalMarketBalance<AssetType, StableType>>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<StableType>, Coin<AssetType>, ConditionalMarketBalance<AssetType, StableType>) {
-    let asset_amt = asset_for_arb.value();
-    assert!(asset_amt > 0, EZeroAmount);
-
-    // Get market info from escrow
-    let market_state = coin_escrow::get_market_state(escrow);
-    let outcome_count = futarchy_markets_primitives::market_state::outcome_count(market_state);
-    let market_id = futarchy_markets_primitives::market_state::market_id(market_state);
-
-    // 1. Swap spot asset → spot stable
-    let stable_from_spot = unified_spot_pool::swap_asset_for_stable(
-        spot_pool,
-        asset_for_arb,
-        0,
-        clock,
-        ctx,
-    );
-    let stable_amt = stable_from_spot.value();
-
-    // 2. Create temporary balance object
-    let mut arb_balance = conditional_balance::new<AssetType, StableType>(
-        market_id,
-        (outcome_count as u8),
-        ctx,
-    );
-
-    // 3. Deposit stable to escrow for quantum mint
-    let (_, deposited_stable) = coin_escrow::deposit_spot_coins(
-        escrow,
-        coin::zero<AssetType>(ctx),
-        stable_from_spot,
-    );
-
-    // 4. Add to balance (quantum: same amount in ALL outcomes)
-    let mut i = 0u8;
-    while ((i as u64) < outcome_count) {
-        conditional_balance::add_to_balance(&mut arb_balance, i, false, deposited_stable);
-        i = i + 1;
-    };
-
-    // 5. Swap stable → asset in EACH conditional market (LOOP!)
-    i = 0u8;
-    while ((i as u64) < outcome_count) {
-        swap_core::swap_balance_stable_to_asset<AssetType, StableType>(
-            session,
-            escrow,
-            &mut arb_balance,
-            i,
-            stable_amt,
-            0,
-            clock,
-            ctx,
-        );
-        i = i + 1;
-    };
-
-    // 6. Find minimum asset amount (complete set limit)
-    let min_asset = conditional_balance::find_min_balance(&arb_balance, true);
-
-    // 7. Burn complete set → withdraw spot asset
-    let profit_asset = burn_complete_set_and_withdraw_asset(
-        &mut arb_balance,
-        escrow,
-        min_asset,
-        ctx,
-    );
-
-    // Validate profit meets minimum
-    assert!(profit_asset.value() >= min_profit, EInsufficientProfit);
-
-    // Calculate net profit (handle losses where output < input)
-    let net_profit_asset = if (profit_asset.value() >= asset_amt) {
-        profit_asset.value() - asset_amt
-    } else {
-        0 // Loss case - report as 0 profit
-    };
-
-    // 8. CRITICAL FIX: Swap profit asset back to stable on spot to rebalance price
-    // This completes the arbitrage loop and brings spot price back toward equilibrium
-    let profit_stable = unified_spot_pool::swap_asset_for_stable(
-        spot_pool,
-        profit_asset,
-        0,
-        clock,
-        ctx,
-    );
-
-    // Emit event
-    event::emit(SpotArbitrageExecuted {
-        proposal_id: market_id,
-        outcome_count,
-        input_asset: asset_amt,
-        input_stable: 0,
-        output_asset: 0,
-        output_stable: profit_stable.value(),
-        profit_asset: 0,
-        profit_stable: if (profit_stable.value() >= stable_amt) {
-            profit_stable.value() - stable_amt
-        } else { 0 },
-    });
-
-    // 9. Merge dust into existing balance OR return new balance
-    let final_balance = if (option::is_some(&existing_balance_opt)) {
-        let mut existing = option::extract(&mut existing_balance_opt);
-        conditional_balance::merge(&mut existing, arb_balance); // Merge new dust into existing
-        existing
-    } else {
-        arb_balance // Return new balance
-    };
-    option::destroy_none(existing_balance_opt);
-
-    (profit_stable, coin::zero<AssetType>(ctx), final_balance)
-}
+// === Main Arbitrage Function ===
 
 /// Automatic arbitrage after conditional swaps to bring spot price back into safe range
 ///
@@ -439,197 +29,295 @@ fun execute_spot_arb_asset_to_stable_direction<AssetType, StableType>(
 /// This function atomically arbitrages using pool liquidity (no user coins required) to bring
 /// spot price back into equilibrium.
 ///
-/// The function iterates, executing small arb operations until spot price is within the
-/// conditional price range (min_cond_price ≤ spot_price ≤ max_cond_price).
-/// Automatic arbitrage after conditional swaps to bring spot price back into safe range
+/// **CRITICAL**: This function does NOT modify the main escrow. It moves reserves between
+/// spot pool and conditional pools using quantum split/recombine semantics:
+/// 1. Take from spot pool reserves
+/// 2. Quantum split to conditional pool reserves
+/// 3. Swap in each conditional pool
+/// 4. Quantum recombine from conditional pools
+/// 5. Return to spot pool reserves
+///
+/// Uses ternary search to find the globally optimal arbitrage amount in a single call.
 ///
 /// **PTB-COMPATIBLE!** Returns balance for chaining in programmable transactions.
 /// **DCA PLATFORM READY!** Supports isolated balances per user with auto-merge.
 ///
 /// # Arguments
 /// * `existing_balance_opt` - Optional existing balance to merge into
-///   - None = Create new balance object (call 1)
-///   - Some(balance) = Merge dust into existing balance (calls 2-N)
+///   - None = Create new balance object
+///   - Some(balance) = Merge dust into existing balance
 ///
 /// # Returns
-/// * Option<ConditionalMarketBalance> - Some(balance) if iterations ran or existing balance provided, None otherwise
+/// * Option<ConditionalMarketBalance> - Some(balance) if arbitrage ran or existing balance provided, None otherwise
 /// * Use in PTB: Pass return value to next call's `existing_balance_opt`
-///
-/// # Example - DCA Platform PTB
-/// ```typescript
-/// const tx = new Transaction();
-/// // Call 1: may return None if no arb needed
-/// let bal = autoRebalance(pool, escrow, option::none(), clock);
-/// // Call 2-N: merge if Some
-/// bal = autoRebalance(pool, escrow, bal, clock);
-/// // Transfer final if exists
-/// if (bal.isSome()) tx.transferObjects([bal], user);
-/// ```
 public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
     spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     mut existing_balance_opt: option::Option<ConditionalMarketBalance<AssetType, StableType>>,
-    clock: &Clock,
+    _clock: &Clock,
     ctx: &mut TxContext,
 ): option::Option<ConditionalMarketBalance<AssetType, StableType>> {
-    // Note: We limit iterations to prevent infinite loops
-    let mut iterations = 0;
-    let max_iterations = 20; // Safety guard - increased for better convergence with large price gaps
-
-    while (iterations < max_iterations) {
-        // Use proper arbitrage math with ternary search to find optimal amount
-        // It will return 0 if no profitable arbitrage exists (price close enough)
+    // Get market info and compute optimal arbitrage using FEELESS math
+    // (internal arbitrage doesn't charge fees - just moving liquidity between pools)
+    let (arb_amount, is_spot_to_cond, market_id, outcome_count) = {
         let market_state = coin_escrow::get_market_state(escrow);
         let pools = market_state::borrow_amm_pools(market_state);
 
-        let (
-            arb_amount,
-            expected_profit,
-            is_spot_to_cond,
-        ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+        // Use feeless computation since internal arbitrage has no fees
+        let (arb_amount, is_spot_to_cond) = arbitrage_math::compute_optimal_arbitrage_feeless(
             spot_pool,
             pools,
-            0, // No user swap hint - we want global optimal
-            0, // No min profit requirement for rebalancing
         );
 
-        // If no profitable arbitrage found, we're done
-        if (arb_amount == 0) {
-            break
-        };
+        let market_id = market_state::market_id(market_state);
+        let outcome_count = market_state::outcome_count(market_state);
 
-        // Safety check: make sure escrow has enough balance
-        let (escrow_asset, escrow_stable) = coin_escrow::get_spot_balances(escrow);
-        if (escrow_asset < arb_amount && escrow_stable < arb_amount) {
-            // Not enough liquidity to continue, exit
-            break
-        };
-
-        let session = swap_core::begin_swap_session(escrow);
-
-        // Execute arbitrage in the direction suggested by arbitrage math
-        if (is_spot_to_cond) {
-            // Spot → Conditional (buy from spot, pushes spot price UP)
-            // This is optimal when spot price is too LOW
-            if (escrow_stable < arb_amount) {
-                swap_core::finalize_swap_session(session, escrow);
-                break
-            };
-
-            let stable_coin = coin_escrow::withdraw_stable_balance(escrow, arb_amount, ctx);
-            let (stable_out, asset_out, balance) = execute_spot_arb_stable_to_asset_direction(
-                spot_pool,
-                escrow,
-                &session,
-                stable_coin,
-                0, // min_profit
-                @0x0, // dummy recipient
-                existing_balance_opt,
-                clock,
-                ctx,
-            );
-            // Store merged balance for next iteration
-            existing_balance_opt = option::some(balance);
-
-            // Destroy returned coins
-            coin::destroy_zero(stable_out);
-            if (asset_out.value() > 0) {
-                coin_escrow::deposit_spot_coins(escrow, asset_out, coin::zero<StableType>(ctx));
-            } else {
-                coin::destroy_zero(asset_out);
-            };
-        } else {
-            // Conditional → Spot (sell to spot, pushes spot price DOWN)
-            // This is optimal when spot price is too HIGH
-            if (escrow_asset < arb_amount) {
-                swap_core::finalize_swap_session(session, escrow);
-                break
-            };
-
-            let asset_coin = coin_escrow::withdraw_asset_balance(escrow, arb_amount, ctx);
-            let (stable_out, asset_out, balance) = execute_spot_arb_asset_to_stable_direction(
-                spot_pool,
-                escrow,
-                &session,
-                asset_coin,
-                0, // min_profit
-                @0x0, // dummy recipient
-                existing_balance_opt,
-                clock,
-                ctx,
-            );
-            // Store merged balance for next iteration
-            existing_balance_opt = option::some(balance);
-
-            // Destroy returned coins
-            coin::destroy_zero(asset_out);
-            if (stable_out.value() > 0) {
-                coin_escrow::deposit_spot_coins(escrow, coin::zero<AssetType>(ctx), stable_out);
-            } else {
-                coin::destroy_zero(stable_out);
-            };
-        };
-
-        swap_core::finalize_swap_session(session, escrow);
-        iterations = iterations + 1;
+        (arb_amount, is_spot_to_cond, market_id, outcome_count)
     };
 
-    // Return balance if exists (merged or original), otherwise None
-    // This avoids creating unnecessary empty balance objects
-    existing_balance_opt
-}
-
-// === Helper Functions ===
-
-/// Burn complete set of conditional stables and withdraw spot stable
-///
-/// Subtracts amount from ALL outcome stable balances, then withdraws from escrow.
-/// This maintains the quantum liquidity invariant.
-///
-/// PUBLIC for use in swap_entry::finalize_conditional_swaps
-public fun burn_complete_set_and_withdraw_stable<AssetType, StableType>(
-    balance: &mut ConditionalMarketBalance<AssetType, StableType>,
-    escrow: &mut TokenEscrow<AssetType, StableType>,
-    amount: u64,
-    ctx: &mut TxContext,
-): Coin<StableType> {
-    let outcome_count = conditional_balance::outcome_count(balance);
-
-    // Subtract from all outcome stable balances
-    let mut i = 0u8;
-    while ((i as u64) < (outcome_count as u64)) {
-        conditional_balance::sub_from_balance(balance, i, false, amount);
-        i = i + 1;
+    // If no profitable arbitrage found, return existing balance or None
+    if (arb_amount == 0) {
+        return existing_balance_opt
     };
 
-    // Withdraw from escrow
-    let (asset, stable) = coin_escrow::withdraw_from_escrow(escrow, 0, amount, ctx);
-    coin::destroy_zero(asset); // Destroy zero asset coin
-    stable
+    // Get spot pool reserves to check if we have enough
+    let (spot_asset, spot_stable) = unified_spot_pool::get_reserves(spot_pool);
+
+    // Execute arbitrage based on direction
+    // NOTE: We invert is_spot_to_cond because the math model's naming is opposite to execution flow
+    // - Math's "Spot→Cond" = spot is cheap = execution should sell spot asset
+    // - Math's "Cond→Spot" = cond is cheap = execution should buy from cond
+    let result_balance = if (!is_spot_to_cond) {
+        // Direction: Conditional price too LOW (cond asset is cheap)
+        // Action: Buy asset from conditional pools using stable
+        // Flow: spot stable → cond stable → cond asset → spot asset
+
+        // Safety check: spot pool needs enough stable
+        if (spot_stable < arb_amount) {
+            return existing_balance_opt
+        };
+
+        // 1. Take stable from spot pool and use escrow as type converter
+        // Note: Escrow composition changes but total value is preserved
+        let stable_taken = unified_spot_pool::take_stable_for_arbitrage(spot_pool, arb_amount);
+        coin_escrow::deposit_spot_liquidity(escrow, sui::balance::zero<AssetType>(), stable_taken);
+
+        // 2-5. Do all pool operations in one block
+        let (asset_outs, min_asset) = {
+            let market_state = coin_escrow::get_market_state_mut(escrow);
+            let pools_mut = market_state::borrow_amm_pools_mut(market_state);
+
+            // 2. Quantum split: inject stable into each conditional pool
+            let mut i = 0u64;
+            while (i < outcome_count) {
+                let pool = &mut pools_mut[i];
+                conditional_amm::inject_reserves_for_arbitrage(pool, 0, arb_amount);
+                i = i + 1;
+            };
+
+            // 3. Swap in each conditional pool: stable → asset
+            // Use swap_from_injected to avoid double-counting (input already injected)
+            let mut asset_outs: vector<u64> = vector[];
+            i = 0;
+            while (i < outcome_count) {
+                let pool = &mut pools_mut[i];
+                let asset_out = conditional_amm::swap_from_injected_stable_to_asset(
+                    pool,
+                    arb_amount,
+                );
+                vector::push_back(&mut asset_outs, asset_out);
+                i = i + 1;
+            };
+
+            // 4. Find minimum asset out
+            let mut min_asset = *vector::borrow(&asset_outs, 0);
+            i = 1;
+            while (i < outcome_count) {
+                let asset_out = *vector::borrow(&asset_outs, i);
+                if (asset_out < min_asset) {
+                    min_asset = asset_out;
+                };
+                i = i + 1;
+            };
+
+            // 5. Quantum recombine: extract min_asset from each conditional pool
+            i = 0;
+            while (i < outcome_count) {
+                let pool = &mut pools_mut[i];
+                conditional_amm::extract_reserves_for_arbitrage(pool, min_asset, 0);
+                i = i + 1;
+            };
+
+            (asset_outs, min_asset)
+        };
+
+        // 6. Withdraw asset from escrow and return to spot pool
+        let asset_coin = coin_escrow::withdraw_asset_balance(escrow, min_asset, ctx);
+        unified_spot_pool::return_asset_from_arbitrage(spot_pool, coin::into_balance(asset_coin));
+
+        // 7. Create dust balance with extra asset per outcome
+        let mut dust_balance = conditional_balance::new<AssetType, StableType>(
+            market_id,
+            (outcome_count as u8),
+            ctx,
+        );
+        let mut i = 0u64;
+        while (i < outcome_count) {
+            let asset_out = *vector::borrow(&asset_outs, i);
+            let dust = asset_out - min_asset;
+            if (dust > 0) {
+                conditional_balance::add_to_balance(&mut dust_balance, (i as u8), true, dust);
+            };
+            i = i + 1;
+        };
+
+        dust_balance
+    } else {
+        // Direction: Spot price too LOW (spot asset is cheap)
+        // Action: Sell asset from spot to conditional pools for stable
+        // Flow: spot asset → cond asset → cond stable → spot stable
+
+        // Safety check: spot pool needs enough asset
+        if (spot_asset < arb_amount) {
+            return existing_balance_opt
+        };
+
+        // 1. Take asset from spot pool and use escrow as type converter
+        // Note: Escrow composition changes but total value is preserved
+        let asset_taken = unified_spot_pool::take_asset_for_arbitrage(spot_pool, arb_amount);
+        coin_escrow::deposit_spot_liquidity(escrow, asset_taken, sui::balance::zero<StableType>());
+
+        // 2-5. Do all pool operations in one block
+        let (stable_outs, min_stable) = {
+            let market_state = coin_escrow::get_market_state_mut(escrow);
+            let pools_mut = market_state::borrow_amm_pools_mut(market_state);
+
+            // 2. Quantum split: inject asset into each conditional pool
+            let mut i = 0u64;
+            while (i < outcome_count) {
+                let pool = &mut pools_mut[i];
+                conditional_amm::inject_reserves_for_arbitrage(pool, arb_amount, 0);
+                i = i + 1;
+            };
+
+            // 3. Swap in each conditional pool: asset → stable
+            // Use swap_from_injected to avoid double-counting (input already injected)
+            let mut stable_outs: vector<u64> = vector[];
+            i = 0;
+            while (i < outcome_count) {
+                let pool = &mut pools_mut[i];
+                let stable_out = conditional_amm::swap_from_injected_asset_to_stable(
+                    pool,
+                    arb_amount,
+                );
+                vector::push_back(&mut stable_outs, stable_out);
+                i = i + 1;
+            };
+
+            // 4. Find minimum stable out
+            let mut min_stable = *vector::borrow(&stable_outs, 0);
+            i = 1;
+            while (i < outcome_count) {
+                let stable_out = *vector::borrow(&stable_outs, i);
+                if (stable_out < min_stable) {
+                    min_stable = stable_out;
+                };
+                i = i + 1;
+            };
+
+            // 5. Quantum recombine: extract min_stable from each conditional pool
+            i = 0;
+            while (i < outcome_count) {
+                let pool = &mut pools_mut[i];
+                conditional_amm::extract_reserves_for_arbitrage(pool, 0, min_stable);
+                i = i + 1;
+            };
+
+            (stable_outs, min_stable)
+        };
+
+        // 6. Withdraw stable from escrow and return to spot pool
+        let stable_coin = coin_escrow::withdraw_stable_balance(escrow, min_stable, ctx);
+        unified_spot_pool::return_stable_from_arbitrage(spot_pool, coin::into_balance(stable_coin));
+
+        // 7. Create dust balance with extra stable per outcome
+        let mut dust_balance = conditional_balance::new<AssetType, StableType>(
+            market_id,
+            (outcome_count as u8),
+            ctx,
+        );
+        let mut i = 0u64;
+        while (i < outcome_count) {
+            let stable_out = *vector::borrow(&stable_outs, i);
+            let dust = stable_out - min_stable;
+            if (dust > 0) {
+                conditional_balance::add_to_balance(&mut dust_balance, (i as u8), false, dust);
+            };
+            i = i + 1;
+        };
+
+        dust_balance
+    };
+
+    // Merge dust into existing balance if provided
+    let final_balance = if (option::is_some(&existing_balance_opt)) {
+        let mut existing = option::extract(&mut existing_balance_opt);
+        conditional_balance::merge(&mut existing, result_balance);
+        existing
+    } else {
+        result_balance
+    };
+    option::destroy_none(existing_balance_opt);
+
+    option::some(final_balance)
 }
 
-/// Burn complete set of conditional assets and withdraw spot asset
+// === Complete Set Burn Helpers ===
+
+/// Burns complete set of asset from balance and withdraws spot asset from escrow
 ///
-/// Subtracts amount from ALL outcome asset balances, then withdraws from escrow.
-///
-/// PUBLIC for use in swap_entry::finalize_conditional_swaps
+/// Used when user has accumulated conditional tokens across all outcomes and wants to
+/// close their position by burning complete sets and receiving spot coins.
 public fun burn_complete_set_and_withdraw_asset<AssetType, StableType>(
     balance: &mut ConditionalMarketBalance<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     amount: u64,
     ctx: &mut TxContext,
-): Coin<AssetType> {
-    let outcome_count = conditional_balance::outcome_count(balance);
+): sui::coin::Coin<AssetType> {
+    // Burn the complete set from balance (subtracts from all outcomes)
+    let market_state = coin_escrow::get_market_state(escrow);
+    let outcome_count = market_state::outcome_count(market_state);
 
-    // Subtract from all outcome asset balances
-    let mut i = 0u8;
-    while ((i as u64) < (outcome_count as u64)) {
-        conditional_balance::sub_from_balance(balance, i, true, amount);
+    let mut i = 0u64;
+    while (i < outcome_count) {
+        conditional_balance::sub_from_balance(balance, (i as u8), true, amount);
         i = i + 1;
     };
 
-    // Withdraw from escrow
-    let (asset, stable) = coin_escrow::withdraw_from_escrow(escrow, amount, 0, ctx);
-    coin::destroy_zero(stable); // Destroy zero stable coin
-    asset
+    // Withdraw spot asset from escrow
+    coin_escrow::withdraw_asset_balance(escrow, amount, ctx)
+}
+
+/// Burns complete set of stable from balance and withdraws spot stable from escrow
+///
+/// Used when user has accumulated conditional tokens across all outcomes and wants to
+/// close their position by burning complete sets and receiving spot coins.
+public fun burn_complete_set_and_withdraw_stable<AssetType, StableType>(
+    balance: &mut ConditionalMarketBalance<AssetType, StableType>,
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    amount: u64,
+    ctx: &mut TxContext,
+): sui::coin::Coin<StableType> {
+    // Burn the complete set from balance (subtracts from all outcomes)
+    let market_state = coin_escrow::get_market_state(escrow);
+    let outcome_count = market_state::outcome_count(market_state);
+
+    let mut i = 0u64;
+    while (i < outcome_count) {
+        conditional_balance::sub_from_balance(balance, (i as u8), false, amount);
+        i = i + 1;
+    };
+
+    // Withdraw spot stable from escrow
+    coin_escrow::withdraw_stable_balance(escrow, amount, ctx)
 }

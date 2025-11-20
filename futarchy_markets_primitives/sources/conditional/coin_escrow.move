@@ -3,7 +3,7 @@
 
 module futarchy_markets_primitives::coin_escrow;
 
-use futarchy_markets_primitives::market_state::MarketState;
+use futarchy_markets_primitives::market_state::{Self, MarketState};
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 use sui::dynamic_field;
@@ -53,6 +53,8 @@ const TOKEN_TYPE_ASSET: u8 = 0;
 const TOKEN_TYPE_STABLE: u8 = 1;
 const TOKEN_TYPE_LP: u8 = 2;
 const ETokenTypeMismatch: u64 = 100;
+const EMarketNotFinalized: u64 = 101; // Market must be finalized for single-outcome withdrawal
+const ENotWinningOutcome: u64 = 102; // Can only withdraw from winning outcome after finalization
 const MARKET_EXPIRY_PERIOD_MS: u64 = 2_592_000_000; // 30 days in ms
 
 // === Key Structures for TreasuryCap Storage ===
@@ -381,12 +383,22 @@ public fun deposit_spot_liquidity<AssetType, StableType>(
 
 /// Burn conditional asset coins and withdraw equivalent spot asset
 /// Used when redeeming conditional coins back to spot tokens (e.g., after market finalization)
+///
+/// SECURITY: Only allows withdrawal from winning outcome after market finalization.
+/// For pre-finalization exit, use complete-set withdrawal (burn from ALL outcomes).
 public fun burn_conditional_asset_and_withdraw<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
     amount: u64,
     ctx: &mut TxContext,
 ): Coin<AssetType> {
+    // SECURITY CHECK: Market must be finalized for single-outcome withdrawal
+    assert!(market_state::is_finalized(&escrow.market_state), EMarketNotFinalized);
+
+    // SECURITY CHECK: Can only withdraw from the winning outcome
+    let winning = market_state::get_winning_outcome(&escrow.market_state);
+    assert!(outcome_index == winning, ENotWinningOutcome);
+
     // Mint the conditional coins to burn them (quantum liquidity: amounts must match)
     let conditional_coin = mint_conditional_asset<AssetType, StableType, ConditionalCoinType>(
         escrow,
@@ -408,12 +420,22 @@ public fun burn_conditional_asset_and_withdraw<AssetType, StableType, Conditiona
 }
 
 /// Burn conditional stable coins and withdraw equivalent spot stable
+///
+/// SECURITY: Only allows withdrawal from winning outcome after market finalization.
+/// For pre-finalization exit, use complete-set withdrawal (burn from ALL outcomes).
 public fun burn_conditional_stable_and_withdraw<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
     amount: u64,
     ctx: &mut TxContext,
 ): Coin<StableType> {
+    // SECURITY CHECK: Market must be finalized for single-outcome withdrawal
+    assert!(market_state::is_finalized(&escrow.market_state), EMarketNotFinalized);
+
+    // SECURITY CHECK: Can only withdraw from the winning outcome
+    let winning = market_state::get_winning_outcome(&escrow.market_state);
+    assert!(outcome_index == winning, ENotWinningOutcome);
+
     // Mint the conditional coins to burn them
     let conditional_coin = mint_conditional_stable<AssetType, StableType, ConditionalCoinType>(
         escrow,
@@ -433,6 +455,9 @@ public fun burn_conditional_stable_and_withdraw<AssetType, StableType, Condition
     let stable_balance = escrow.escrowed_stable.split(amount);
     coin::from_balance(stable_balance, ctx)
 }
+
+// Note: burn_complete_set_and_withdraw_from_balance moved to conditional_balance.move
+// to avoid cyclic dependency between coin_escrow and conditional_balance
 
 // === Deposit and Mint Helpers (For Creating Conditional Coins) ===
 
@@ -486,6 +511,20 @@ public fun get_spot_balances<AssetType, StableType>(
     escrow: &TokenEscrow<AssetType, StableType>,
 ): (u64, u64) {
     (escrow.escrowed_asset.value(), escrow.escrowed_stable.value())
+}
+
+/// Get escrowed asset balance
+public fun get_escrowed_asset_balance<AssetType, StableType>(
+    escrow: &TokenEscrow<AssetType, StableType>,
+): u64 {
+    escrow.escrowed_asset.value()
+}
+
+/// Get escrowed stable balance
+public fun get_escrowed_stable_balance<AssetType, StableType>(
+    escrow: &TokenEscrow<AssetType, StableType>,
+): u64 {
+    escrow.escrowed_stable.value()
 }
 
 /// Withdraw asset balance from escrow (for internal use)

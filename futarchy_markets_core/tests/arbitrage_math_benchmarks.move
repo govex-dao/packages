@@ -432,66 +432,6 @@ fun test_benchmark_large_reserves() {
     ts::end(scenario);
 }
 
-#[test]
-/// Benchmark: Bidirectional solver overhead
-/// Measures cost of trying both directions vs single direction
-///
-/// Compares:
-/// - Bidirectional solver (tries both Spot→Cond and Cond→Spot)
-/// - Single direction solvers
-///
-/// Expected: Bidirectional should be ~2x single direction cost
-fun test_benchmark_bidirectional_overhead() {
-    let mut scenario = ts::begin(ADMIN);
-
-    let spot_pool = create_spot_pool(
-        1_500_000,
-        500_000,
-        FEE_BPS,
-        ts::ctx(&mut scenario),
-    );
-
-    let conditional_pools = create_n_conditional_pools(
-        10,
-        500_000,
-        1_500_000,
-        FEE_BPS,
-        ts::ctx(&mut scenario),
-    );
-
-    // Bidirectional solver (tries both)
-    let (_amt_both, profit_both, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
-        &spot_pool,
-        &conditional_pools,
-        0,
-        0,
-    );
-
-    // Single direction (only the correct one)
-    let (_amt_single, profit_single) = if (is_stc) {
-        arbitrage_math::compute_optimal_spot_to_conditional(
-            &spot_pool,
-            &conditional_pools,
-            0,
-            0,
-        )
-    } else {
-        arbitrage_math::compute_optimal_conditional_to_spot(
-            &spot_pool,
-            &conditional_pools,
-            0,
-            0,
-        )
-    };
-
-    // Results should match (within rounding)
-    assert!(profit_both == profit_single, 0);
-
-    cleanup_spot_pool(spot_pool);
-    cleanup_conditional_pools(conditional_pools);
-
-    ts::end(scenario);
-}
 
 #[test]
 /// Benchmark: Two-phase search efficiency

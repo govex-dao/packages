@@ -1733,6 +1733,10 @@ fun test_burn_asset_and_withdraw_basic() {
     let zero_stable = coin::mint_for_testing<TEST_COIN_B>(0, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, spot_deposit, zero_stable);
 
+    // Finalize market for redemption
+    let ms = coin_escrow::get_market_state_mut(&mut escrow);
+    market_state::finalize_for_testing(ms);
+
     // Burn conditional and withdraw spot (this is for redemption scenario)
     let withdrawn_spot = coin_escrow::burn_conditional_asset_and_withdraw<
         TEST_COIN_A,
@@ -1777,6 +1781,10 @@ fun test_burn_stable_and_withdraw_basic() {
     let zero_asset = coin::mint_for_testing<TEST_COIN_A>(0, ctx);
     let spot_deposit = coin::mint_for_testing<TEST_COIN_B>(2000, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, zero_asset, spot_deposit);
+
+    // Finalize market for redemption
+    let ms = coin_escrow::get_market_state_mut(&mut escrow);
+    market_state::finalize_for_testing(ms);
 
     // Burn conditional and withdraw spot
     let withdrawn_spot = coin_escrow::burn_conditional_stable_and_withdraw<
@@ -1858,6 +1866,10 @@ fun test_full_cycle_deposit_mint_burn_withdraw() {
     let supply2 = coin_escrow::get_asset_supply<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(&escrow, 0);
     assert!(supply2 == 0, 5);
 
+    // Finalize market for redemption
+    let ms = coin_escrow::get_market_state_mut(&mut escrow);
+    market_state::finalize_for_testing(ms);
+
     // Step 3: Now use burn_and_withdraw to get spot back
     let withdrawn = coin_escrow::burn_conditional_asset_and_withdraw<
         TEST_COIN_A,
@@ -1911,6 +1923,11 @@ fun test_multiple_deposit_mint_burn_withdraw_cycles() {
         0,
         cond1,
     );
+
+    // Finalize market for redemption (only needed once)
+    let ms = coin_escrow::get_market_state_mut(&mut escrow);
+    market_state::finalize_for_testing(ms);
+
     let withdrawn1 = coin_escrow::burn_conditional_asset_and_withdraw<
         TEST_COIN_A,
         TEST_COIN_B,
@@ -2056,6 +2073,11 @@ fun test_cross_outcome_operations() {
     );
     assert!(supply_0 == 0, 1);
     assert!(supply_1 == 2000, 2);
+
+    // Finalize market for redemption with outcome 1 as winner
+    let ms = coin_escrow::get_market_state_mut(&mut escrow);
+    market_state::finalize_for_testing(ms);
+    market_state::test_set_winning_outcome(ms, 1);
 
     // Withdraw from shared liquidity using outcome 1's burn-withdraw
     let withdrawn = coin_escrow::burn_conditional_asset_and_withdraw<

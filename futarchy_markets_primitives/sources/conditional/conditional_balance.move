@@ -589,12 +589,14 @@ public fun burn_complete_set_and_withdraw_from_balance<AssetType, StableType>(
         i = i + 1;
     };
 
-    // Withdraw from escrow
+    // Withdraw from escrow and decrement user backing
     if (is_asset) {
         let asset_coin = coin_escrow::withdraw_asset_balance(escrow, min_amount, ctx);
+        coin_escrow::decrement_user_backing(escrow, min_amount);
         (min_amount, asset_coin, sui::coin::zero<StableType>(ctx))
     } else {
         let stable_coin = coin_escrow::withdraw_stable_balance(escrow, min_amount, ctx);
+        coin_escrow::decrement_user_backing(escrow, min_amount);
         (min_amount, sui::coin::zero<AssetType>(ctx), stable_coin)
     }
 }

@@ -32,6 +32,9 @@ export interface CreateRaiseConfig {
 
     // Payment
     launchpadFee: bigint | number; // Creation fee in MIST
+
+    // Optional: Extra tokens to mint and return to caller (for creator allocation)
+    extraMintToCaller?: bigint | number; // Default: 0
 }
 
 /**
@@ -121,6 +124,9 @@ export class LaunchpadOperations {
         const startDelay = config.startDelayMs !== undefined ?
             config.startDelayMs :
             undefined;
+        const extraMintToCaller = config.extraMintToCaller !== undefined ?
+            config.extraMintToCaller :
+            0;
 
         // Prepare launchpad fee payment
         const launchpadFee = builder.splitSui(config.launchpadFee);
@@ -166,6 +172,7 @@ export class LaunchpadOperations {
                     elements: metadataValues.map(v => tx.pure.string(v))
                 }), // metadata_values
                 launchpadFee, // launchpad_fee
+                tx.pure.u64(extraMintToCaller), // extra_mint_to_caller
                 tx.sharedObjectRef({
                     objectId: clock,
                     initialSharedVersion: 1,

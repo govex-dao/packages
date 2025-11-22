@@ -158,6 +158,7 @@ fun test_sweep_dust_after_claim_period() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -361,6 +362,7 @@ fun test_sweep_dust_fails_before_claim_period() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );

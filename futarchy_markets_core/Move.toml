@@ -11,8 +11,8 @@ futarchy_types = { local = "../futarchy_types" }
 futarchy_core = { local = "../futarchy_core" }
 
 [addresses]
-futarchy_markets_core = "0xe6dd72eaa5d0c60152449f6a28f8dfa04cc412e1606bfbc76a89b54eb2633328"
-futarchy_markets_primitives = "0x724a132d4d6c25cc197550d7317804f93e34b31c8094e3307ef46b71b7434197"
-futarchy_types = "0xbdbdfdd75fab3265eb1857820f70105208d08fb77cbe80b55fe20209871e0fa1"
-futarchy_one_shot_utils = "0x487c17c6778ed34664b02a3d74b43e4ebc06f8185398c4d8234344ea9a536a6b"
-futarchy_core = "0x38e7547c0387dabdc8ee889ce91e9923b245a56b20437525e91f3b89e9ac4074"
+futarchy_markets_core = "0xb2c6a831c7c464366f1df285a4796fb8f33d968c5cee3ad7c964017caeb8dbb9"
+futarchy_markets_primitives = "0x7ea9b484a59ad84606f26601cce55f2320aacd9ea63c5b0793ccf9a1bbe4778c"
+futarchy_types = "0xd437f722697ba29b5784f09062d9651e14fb04f556380260b77e118fdf05d3c9"
+futarchy_one_shot_utils = "0x3cc78056eeed7455c65f7561b2432e16216f751c415e3b5828defaeeff1f4841"
+futarchy_core = "0x9e9df7be2f1b40363a56944b5ff1b8f52a2de9570fb45e6aa3f79b20d052aede"

@@ -156,6 +156,7 @@ fun test_settlement_algorithm_basic() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -308,6 +309,7 @@ fun test_settlement_with_cap_violation() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -455,6 +457,7 @@ fun test_settlement_respects_max_raise() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -594,6 +597,7 @@ fun test_settlement_complex_multi_tier() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );

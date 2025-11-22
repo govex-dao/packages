@@ -101,6 +101,8 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
         // Note: Escrow composition changes but total value is preserved
         let stable_taken = unified_spot_pool::take_stable_for_arbitrage(spot_pool, arb_amount);
         coin_escrow::deposit_spot_liquidity(escrow, sui::balance::zero<AssetType>(), stable_taken);
+        // Immediately decrement LP backing - arbitrage is internal, not LP deposit
+        coin_escrow::decrement_lp_backing(escrow, 0, arb_amount);
 
         // 2-5. Do all pool operations in one block
         let (asset_outs, min_asset) = {
@@ -186,6 +188,8 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
         // Note: Escrow composition changes but total value is preserved
         let asset_taken = unified_spot_pool::take_asset_for_arbitrage(spot_pool, arb_amount);
         coin_escrow::deposit_spot_liquidity(escrow, asset_taken, sui::balance::zero<StableType>());
+        // Immediately decrement LP backing - arbitrage is internal, not LP deposit
+        coin_escrow::decrement_lp_backing(escrow, arb_amount, 0);
 
         // 2-5. Do all pool operations in one block
         let (stable_outs, min_stable) = {
@@ -294,8 +298,10 @@ public fun burn_complete_set_and_withdraw_asset<AssetType, StableType>(
         i = i + 1;
     };
 
-    // Withdraw spot asset from escrow
-    coin_escrow::withdraw_asset_balance(escrow, amount, ctx)
+    // Withdraw spot asset from escrow and decrement user backing
+    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, amount, ctx);
+    coin_escrow::decrement_user_backing(escrow, amount);
+    asset_coin
 }
 
 /// Burns complete set of stable from balance and withdraws spot stable from escrow
@@ -318,6 +324,8 @@ public fun burn_complete_set_and_withdraw_stable<AssetType, StableType>(
         i = i + 1;
     };
 
-    // Withdraw spot stable from escrow
-    coin_escrow::withdraw_stable_balance(escrow, amount, ctx)
+    // Withdraw spot stable from escrow and decrement user backing
+    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, amount, ctx);
+    coin_escrow::decrement_user_backing(escrow, amount);
+    stable_coin
 }

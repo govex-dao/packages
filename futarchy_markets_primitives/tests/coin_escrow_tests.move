@@ -1728,10 +1728,22 @@ fun test_burn_asset_and_withdraw_basic() {
     let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
     coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
 
-    // First, deposit spot tokens to escrow (simulate existing liquidity)
+    // First, deposit spot tokens and mint conditional coins
     let spot_deposit = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
-    let zero_stable = coin::mint_for_testing<TEST_COIN_B>(0, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, spot_deposit, zero_stable);
+    let mut cond_asset = coin_escrow::deposit_asset_and_mint_conditional<
+        TEST_COIN_A,
+        TEST_COIN_B,
+        COND_0_ASSET,
+    >(
+        &mut escrow,
+        0,
+        spot_deposit,
+        ctx,
+    );
+
+    // Split to get 500 for withdrawal
+    let cond_to_burn = cond_asset.split(500, ctx);
+    coin::burn_for_testing(cond_asset);
 
     // Finalize market for redemption
     let ms = coin_escrow::get_market_state_mut(&mut escrow);
@@ -1744,8 +1756,7 @@ fun test_burn_asset_and_withdraw_basic() {
         COND_0_ASSET,
     >(
         &mut escrow,
-        0, // outcome_index
-        500, // amount to burn/withdraw
+        cond_to_burn,
         ctx,
     );
 
@@ -1756,9 +1767,10 @@ fun test_burn_asset_and_withdraw_basic() {
     let (bal_asset, _) = coin_escrow::get_spot_balances(&escrow);
     assert!(bal_asset == 500, 1); // 1000 - 500
 
-    // Verify conditional supply (mint happened then burn, net zero change)
+    // Verify conditional supply (minted 1000, burned 500 through escrow)
+    // Note: coin::burn_for_testing doesn't affect escrow supply tracking
     let supply = coin_escrow::get_asset_supply<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(&escrow, 0);
-    assert!(supply == 0, 2); // minted 500 then burned 500
+    assert!(supply == 500, 2); // 1000 minted - 500 burned via escrow
 
     coin::burn_for_testing(withdrawn_spot);
     test_utils::destroy(escrow);
@@ -1777,10 +1789,22 @@ fun test_burn_stable_and_withdraw_basic() {
     let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
     coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
 
-    // Deposit spot stable to escrow
-    let zero_asset = coin::mint_for_testing<TEST_COIN_A>(0, ctx);
+    // Deposit stable and mint conditional stable coins
     let spot_deposit = coin::mint_for_testing<TEST_COIN_B>(2000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, zero_asset, spot_deposit);
+    let mut cond_stable = coin_escrow::deposit_stable_and_mint_conditional<
+        TEST_COIN_A,
+        TEST_COIN_B,
+        COND_0_STABLE,
+    >(
+        &mut escrow,
+        0,
+        spot_deposit,
+        ctx,
+    );
+
+    // Split to get 1000 for withdrawal
+    let cond_to_burn = cond_stable.split(1000, ctx);
+    coin::burn_for_testing(cond_stable);
 
     // Finalize market for redemption
     let ms = coin_escrow::get_market_state_mut(&mut escrow);
@@ -1793,8 +1817,7 @@ fun test_burn_stable_and_withdraw_basic() {
         COND_0_STABLE,
     >(
         &mut escrow,
-        0, // outcome_index
-        1000, // amount
+        cond_to_burn,
         ctx,
     );
 
@@ -1805,12 +1828,13 @@ fun test_burn_stable_and_withdraw_basic() {
     let (_, bal_stable) = coin_escrow::get_spot_balances(&escrow);
     assert!(bal_stable == 1000, 1); // 2000 - 1000
 
-    // Verify supply (net zero from mint-burn cycle)
+    // Verify supply (minted 2000, burned 1000 through escrow)
+    // Note: coin::burn_for_testing doesn't affect escrow supply tracking
     let supply = coin_escrow::get_stable_supply<TEST_COIN_A, TEST_COIN_B, COND_0_STABLE>(
         &escrow,
         0,
     );
-    assert!(supply == 0, 2);
+    assert!(supply == 1000, 2); // 2000 minted - 1000 burned via escrow
 
     coin::burn_for_testing(withdrawn_spot);
     test_utils::destroy(escrow);
@@ -1835,7 +1859,7 @@ fun test_full_cycle_deposit_mint_burn_withdraw() {
 
     // Step 1: Deposit and mint
     let spot_asset = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
-    let cond_asset = coin_escrow::deposit_asset_and_mint_conditional<
+    let mut cond_asset = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
         TEST_COIN_B,
         COND_0_ASSET,
@@ -1853,18 +1877,19 @@ fun test_full_cycle_deposit_mint_burn_withdraw() {
     let supply1 = coin_escrow::get_asset_supply<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(&escrow, 0);
     assert!(supply1 == 1000, 3);
 
-    // Step 2: Burn conditional coins (manually, separate from withdraw)
+    // Step 2: Split and burn some conditional coins (manually, separate from withdraw)
+    let cond_to_withdraw = cond_asset.split(500, ctx);
     coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
         &mut escrow,
         0,
         cond_asset,
     );
 
-    // State after burn: escrow still has 1000, supply is 0
+    // State after burn: escrow still has 1000, supply is 500 (burned 500)
     let (bal2_a, _) = coin_escrow::get_spot_balances(&escrow);
     assert!(bal2_a == 1000, 4);
     let supply2 = coin_escrow::get_asset_supply<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(&escrow, 0);
-    assert!(supply2 == 0, 5);
+    assert!(supply2 == 500, 5);
 
     // Finalize market for redemption
     let ms = coin_escrow::get_market_state_mut(&mut escrow);
@@ -1877,8 +1902,7 @@ fun test_full_cycle_deposit_mint_burn_withdraw() {
         COND_0_ASSET,
     >(
         &mut escrow,
-        0,
-        500,
+        cond_to_withdraw,
         ctx,
     );
     assert!(withdrawn.value() == 500, 6);
@@ -1906,7 +1930,11 @@ fun test_multiple_deposit_mint_burn_withdraw_cycles() {
     let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
     coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
 
-    // Cycle 1: Deposit 500, burn/withdraw 500
+    // Finalize market for redemption (only needed once)
+    let ms = coin_escrow::get_market_state_mut(&mut escrow);
+    market_state::finalize_for_testing(ms);
+
+    // Cycle 1: Deposit 500, withdraw 500
     let spot1 = coin::mint_for_testing<TEST_COIN_A>(500, ctx);
     let cond1 = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
@@ -1918,15 +1946,6 @@ fun test_multiple_deposit_mint_burn_withdraw_cycles() {
         spot1,
         ctx,
     );
-    coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
-        &mut escrow,
-        0,
-        cond1,
-    );
-
-    // Finalize market for redemption (only needed once)
-    let ms = coin_escrow::get_market_state_mut(&mut escrow);
-    market_state::finalize_for_testing(ms);
 
     let withdrawn1 = coin_escrow::burn_conditional_asset_and_withdraw<
         TEST_COIN_A,
@@ -1934,15 +1953,14 @@ fun test_multiple_deposit_mint_burn_withdraw_cycles() {
         COND_0_ASSET,
     >(
         &mut escrow,
-        0,
-        500,
+        cond1,
         ctx,
     );
     coin::burn_for_testing(withdrawn1);
     let (bal1, _) = coin_escrow::get_spot_balances(&escrow);
     assert!(bal1 == 0, 0);
 
-    // Cycle 2: Deposit 1000, burn/withdraw 1000
+    // Cycle 2: Deposit 1000, withdraw 1000
     let spot2 = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
     let cond2 = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
@@ -1954,26 +1972,20 @@ fun test_multiple_deposit_mint_burn_withdraw_cycles() {
         spot2,
         ctx,
     );
-    coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
-        &mut escrow,
-        0,
-        cond2,
-    );
     let withdrawn2 = coin_escrow::burn_conditional_asset_and_withdraw<
         TEST_COIN_A,
         TEST_COIN_B,
         COND_0_ASSET,
     >(
         &mut escrow,
-        0,
-        1000,
+        cond2,
         ctx,
     );
     coin::burn_for_testing(withdrawn2);
     let (bal2, _) = coin_escrow::get_spot_balances(&escrow);
     assert!(bal2 == 0, 1);
 
-    // Cycle 3: Deposit 2000, burn/withdraw 2000
+    // Cycle 3: Deposit 2000, withdraw 2000
     let spot3 = coin::mint_for_testing<TEST_COIN_A>(2000, ctx);
     let cond3 = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
@@ -1985,19 +1997,13 @@ fun test_multiple_deposit_mint_burn_withdraw_cycles() {
         spot3,
         ctx,
     );
-    coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
-        &mut escrow,
-        0,
-        cond3,
-    );
     let withdrawn3 = coin_escrow::burn_conditional_asset_and_withdraw<
         TEST_COIN_A,
         TEST_COIN_B,
         COND_0_ASSET,
     >(
         &mut escrow,
-        0,
-        2000,
+        cond3,
         ctx,
     );
     coin::burn_for_testing(withdrawn3);
@@ -2040,7 +2046,7 @@ fun test_cross_outcome_operations() {
 
     // Deposit and mint for outcome 1
     let spot_1 = coin::mint_for_testing<TEST_COIN_A>(2000, ctx);
-    let cond_1 = coin_escrow::deposit_asset_and_mint_conditional<
+    let mut cond_1 = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
         TEST_COIN_B,
         COND_1_ASSET,
@@ -2079,6 +2085,9 @@ fun test_cross_outcome_operations() {
     market_state::finalize_for_testing(ms);
     market_state::test_set_winning_outcome(ms, 1);
 
+    // Split cond_1 to get 500 for withdrawal
+    let cond_to_withdraw = cond_1.split(500, ctx);
+
     // Withdraw from shared liquidity using outcome 1's burn-withdraw
     let withdrawn = coin_escrow::burn_conditional_asset_and_withdraw<
         TEST_COIN_A,
@@ -2086,8 +2095,7 @@ fun test_cross_outcome_operations() {
         COND_1_ASSET,
     >(
         &mut escrow,
-        1,
-        500,
+        cond_to_withdraw,
         ctx,
     );
     assert!(withdrawn.value() == 500, 3);
@@ -2656,5 +2664,539 @@ fun test_recombine_asset_complete_set_3_outcomes() {
     coin::burn_for_testing<TEST_COIN_A>(spot);
     test_utils::destroy(escrow);
 
+    ts::end(scenario);
+}
+
+// === Stage 8: Quantum Invariant Tracking Tests ===
+
+#[test]
+fun test_supply_vector_tracking_on_mint() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 2 outcomes
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    // Register caps for both outcomes
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // Verify initial supplies are 0
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 0, 0);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 0, 1);
+    assert!(coin_escrow::get_outcome_stable_supply(&escrow, 0) == 0, 2);
+    assert!(coin_escrow::get_outcome_stable_supply(&escrow, 1) == 0, 3);
+
+    // Mint to outcome 0
+    let cond_asset_0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 1000, ctx,
+    );
+    let cond_stable_0 = coin_escrow::mint_conditional_stable<TEST_COIN_A, TEST_COIN_B, COND_0_STABLE>(
+        &mut escrow, 0, 2000, ctx,
+    );
+
+    // Verify outcome 0 supplies updated
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 4);
+    assert!(coin_escrow::get_outcome_stable_supply(&escrow, 0) == 2000, 5);
+
+    // Verify outcome 1 supplies unchanged
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 0, 6);
+    assert!(coin_escrow::get_outcome_stable_supply(&escrow, 1) == 0, 7);
+
+    // Mint to outcome 1
+    let cond_asset_1 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        &mut escrow, 1, 500, ctx,
+    );
+
+    // Verify outcome 1 updated, outcome 0 unchanged
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 8);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 500, 9);
+
+    coin::burn_for_testing(cond_asset_0);
+    coin::burn_for_testing(cond_stable_0);
+    coin::burn_for_testing(cond_asset_1);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_supply_vector_tracking_on_burn() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(1, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
+
+    // Mint coins
+    let cond_asset = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 1000, ctx,
+    );
+
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 0);
+
+    // Burn coins
+    coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, cond_asset,
+    );
+
+    // Verify supply decremented
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 0, 1);
+
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_get_all_supplies_vectors() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 3 outcomes
+    let market_state = create_test_market_state(3, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    // Register all caps
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    let asset_cap_2 = create_blank_treasury_cap_for_testing<COND_2_ASSET>(ctx);
+    let stable_cap_2 = create_blank_treasury_cap_for_testing<COND_2_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 2, asset_cap_2, stable_cap_2);
+
+    // Mint different amounts to each outcome
+    let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 100, ctx,
+    );
+    let c1 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        &mut escrow, 1, 200, ctx,
+    );
+    let c2 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_2_ASSET>(
+        &mut escrow, 2, 300, ctx,
+    );
+
+    // Verify get_all_asset_supplies returns correct vector
+    let asset_supplies = coin_escrow::get_all_asset_supplies(&escrow);
+    assert!(asset_supplies.length() == 3, 0);
+    assert!(asset_supplies[0] == 100, 1);
+    assert!(asset_supplies[1] == 200, 2);
+    assert!(asset_supplies[2] == 300, 3);
+
+    // Verify get_all_stable_supplies returns zeros (nothing minted)
+    let stable_supplies = coin_escrow::get_all_stable_supplies(&escrow);
+    assert!(stable_supplies.length() == 3, 4);
+    assert!(stable_supplies[0] == 0, 5);
+    assert!(stable_supplies[1] == 0, 6);
+    assert!(stable_supplies[2] == 0, 7);
+
+    coin::burn_for_testing(c0);
+    coin::burn_for_testing(c1);
+    coin::burn_for_testing(c2);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_assert_quantum_invariant_passes() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // Deposit spot tokens to escrow
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    let spot_stable = coin::mint_for_testing<TEST_COIN_B>(2000, ctx);
+    coin_escrow::deposit_spot_coins(&mut escrow, spot_asset, spot_stable);
+
+    // Mint conditional coins (less than escrow balance)
+    let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 500, ctx,
+    );
+    let c1 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        &mut escrow, 1, 800, ctx,
+    );
+
+    // Invariant should pass (escrow 1000 >= max supply 800)
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    coin::burn_for_testing(c0);
+    coin::burn_for_testing(c1);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = coin_escrow::EQuantumInvariantViolation)]
+fun test_assert_quantum_invariant_fails_insufficient_escrow() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(1, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
+
+    // Deposit only 100 spot tokens
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(100, ctx);
+    let spot_stable = coin::mint_for_testing<TEST_COIN_B>(100, ctx);
+    coin_escrow::deposit_spot_coins(&mut escrow, spot_asset, spot_stable);
+
+    // Mint 500 conditional (more than escrow balance of 100)
+    let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 500, ctx,
+    );
+
+    // This should fail - escrow (100) < supply (500)
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    coin::burn_for_testing(c0);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_assert_all_invariants_passes() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(1, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
+
+    // Deposit via deposit_spot_liquidity (LP backing)
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    let spot_stable = coin::mint_for_testing<TEST_COIN_B>(1000, ctx);
+    coin_escrow::deposit_spot_liquidity(
+        &mut escrow,
+        coin::into_balance(spot_asset),
+        coin::into_balance(spot_stable),
+    );
+
+    // Mint conditional coins
+    let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 500, ctx,
+    );
+
+    // Both invariants should pass
+    coin_escrow::assert_all_invariants(&escrow);
+
+    coin::burn_for_testing(c0);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_supply_tracking_independent_outcomes() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 2 outcomes
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // Mint/burn only to outcome 0
+    let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 1000, ctx,
+    );
+
+    // Outcome 1 should be unaffected
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 0, 0);
+
+    // Burn from outcome 0
+    coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, c0,
+    );
+
+    // Both should be 0 now
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 0, 1);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 0, 2);
+
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = coin_escrow::EQuantumInvariantViolation)]
+fun test_quantum_invariant_checks_all_outcomes() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 2 outcomes
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // Deposit 500 spot
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(500, ctx);
+    let spot_stable = coin::mint_for_testing<TEST_COIN_B>(500, ctx);
+    coin_escrow::deposit_spot_coins(&mut escrow, spot_asset, spot_stable);
+
+    // Outcome 0: mint 300 (OK, 300 <= 500)
+    let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 300, ctx,
+    );
+
+    // Outcome 1: mint 600 (FAIL, 600 > 500)
+    let c1 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        &mut escrow, 1, 600, ctx,
+    );
+
+    // Should fail because outcome 1 violates invariant
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    coin::burn_for_testing(c0);
+    coin::burn_for_testing(c1);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_supply_tracking_deposit_and_mint() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(1, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
+
+    // Use deposit_asset_and_mint_conditional (full flow)
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    let cond_coin = coin_escrow::deposit_asset_and_mint_conditional<
+        TEST_COIN_A,
+        TEST_COIN_B,
+        COND_0_ASSET,
+    >(&mut escrow, 0, spot_asset, ctx);
+
+    // Verify supply tracked
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 0);
+    assert!(cond_coin.value() == 1000, 1);
+
+    // Verify escrow balance
+    let (escrow_asset, _) = coin_escrow::get_spot_balances(&escrow);
+    assert!(escrow_asset == 1000, 2);
+
+    // Quantum invariant should pass (1000 >= 1000)
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    coin::burn_for_testing(cond_coin);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_supply_tracking_split_recombine() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 2 outcomes
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // Split complete set
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    let (cond_0, cond_1) = split_asset_complete_set_2_for_testing<
+        TEST_COIN_A,
+        TEST_COIN_B,
+        COND_0_ASSET,
+        COND_1_ASSET,
+    >(&mut escrow, spot_asset, ctx);
+
+    // Both outcomes should have 1000 supply (quantum model)
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 0);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 1000, 1);
+
+    // Quantum invariant should pass
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    // Recombine
+    let spot = recombine_asset_complete_set_2_for_testing<
+        TEST_COIN_A,
+        TEST_COIN_B,
+        COND_0_ASSET,
+        COND_1_ASSET,
+    >(&mut escrow, cond_0, cond_1, ctx);
+
+    // Both supplies should be 0
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 0, 2);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 0, 3);
+
+    coin::burn_for_testing(spot);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_quantum_invariant_after_partial_burn() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(1, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
+
+    // Deposit 1000
+    let spot = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    coin_escrow::deposit_spot_coins(&mut escrow, spot, coin::zero<TEST_COIN_B>(ctx));
+
+    // Mint 1000
+    let mut cond = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 1000, ctx,
+    );
+
+    // Invariant passes (1000 >= 1000)
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    // Split the coin and burn half
+    let cond_half = coin::split(&mut cond, 500, ctx);
+    coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, cond_half,
+    );
+
+    // Supply should be 500
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 500, 0);
+
+    // Invariant still passes (1000 >= 500)
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    coin::burn_for_testing(cond);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_multiple_mints_accumulate_supply() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(1, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
+
+    // Multiple mints should accumulate
+    let c1 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 100, ctx,
+    );
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 100, 0);
+
+    let c2 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 200, ctx,
+    );
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 300, 1);
+
+    let c3 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 300, ctx,
+    );
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 600, 2);
+
+    coin::burn_for_testing(c1);
+    coin::burn_for_testing(c2);
+    coin::burn_for_testing(c3);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_supply_tracks_both_asset_and_stable_independently() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow
+    let market_state = create_test_market_state(1, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap, stable_cap);
+
+    // Mint different amounts of asset and stable
+    let asset_coin = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, 1000, ctx,
+    );
+    let stable_coin = coin_escrow::mint_conditional_stable<TEST_COIN_A, TEST_COIN_B, COND_0_STABLE>(
+        &mut escrow, 0, 5000, ctx,
+    );
+
+    // Verify independent tracking
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 0);
+    assert!(coin_escrow::get_outcome_stable_supply(&escrow, 0) == 5000, 1);
+
+    // Burn only stable
+    coin_escrow::burn_conditional_stable<TEST_COIN_A, TEST_COIN_B, COND_0_STABLE>(
+        &mut escrow, 0, stable_coin,
+    );
+
+    // Asset unchanged, stable decremented
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 2);
+    assert!(coin_escrow::get_outcome_stable_supply(&escrow, 0) == 0, 3);
+
+    coin::burn_for_testing(asset_coin);
+    test_utils::destroy(escrow);
     ts::end(scenario);
 }

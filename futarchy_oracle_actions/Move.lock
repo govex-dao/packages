@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "AF62A735E3513CBFA1F3726CFA6F81FD256E8F5E7A6690B35A300DCA96D24BA8"
+manifest_digest = "7D8CD470DD865CC71293D42796A7331DB3FE8F614395730592EF967BB2B36C36"
 deps_digest = "D7FB1F2E1A893B9A0E80A392473710373DE5791D3AC8F6D898803754B2ADAE6B"
 dependencies = [
   { id = "AccountActions", name = "AccountActions" },
@@ -150,7 +150,10 @@ id = "futarchy_types"
 source = { local = "../futarchy_types" }
 
 dependencies = [
+  { id = "Bridge", name = "Bridge" },
+  { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
+  { id = "SuiSystem", name = "SuiSystem" },
 ]
 
 [move.toolchain-version]
@@ -161,7 +164,7 @@ flavor = "sui"
 [env]
 
 [env.devnet]
-chain-id = "cffbbc89"
-original-published-id = "0xd28efe2fdcff42a9112cb1378fc37708789c849cbc38037ce7e5bf12df31d819"
-latest-published-id = "0xd28efe2fdcff42a9112cb1378fc37708789c849cbc38037ce7e5bf12df31d819"
+chain-id = "dac402e1"
+original-published-id = "0x6ee3c9f1a07f7e9b8eb11713dfa5c89df2a934ebdb7084bc0960211368e927a6"
+latest-published-id = "0x6ee3c9f1a07f7e9b8eb11713dfa5c89df2a934ebdb7084bc0960211368e927a6"
 published-version = "1"

@@ -151,6 +151,7 @@ fun test_zero_contribution_rejected() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -241,6 +242,7 @@ fun test_contribution_before_start_time() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -330,6 +332,7 @@ fun test_contribution_after_deadline() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -423,6 +426,7 @@ fun test_settlement_before_deadline() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -526,6 +530,7 @@ fun test_double_settlement_rejected() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -647,6 +652,7 @@ fun test_contribution_of_view_function() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -767,6 +773,7 @@ fun test_nonzero_supply_rejected() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );

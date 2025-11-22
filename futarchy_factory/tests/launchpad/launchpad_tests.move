@@ -173,6 +173,7 @@ fun test_basic_launchpad_creation() {
             vector::empty<String>(), // metadata_keys
             vector::empty<String>(), // metadata_values
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -239,6 +240,7 @@ fun test_launchpad_with_unallowed_stable() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -295,6 +297,7 @@ fun test_launchpad_contribution() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -405,6 +408,7 @@ fun test_settlement_and_successful_raise() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -562,6 +566,7 @@ fun test_pro_rata_allocation_logic() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -741,6 +746,7 @@ fun test_failed_raise_settlement() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -895,6 +901,7 @@ fun test_claim_tokens_successful_raise() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -1054,6 +1061,7 @@ fun test_claim_refund_failed_raise() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -1181,6 +1189,7 @@ fun test_batch_claim_tokens() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -1402,6 +1411,7 @@ fun test_early_raise_completion() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -1522,6 +1532,7 @@ fun test_raised_stables_in_dao_vault() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -1677,6 +1688,82 @@ fun test_raised_stables_in_dao_vault() {
     };
 
     clock::destroy_for_testing(clock);
+    ts::end(scenario);
+}
+
+#[test]
+/// Test that extra_mint_to_caller mints additional tokens and sends them to the creator
+fun test_extra_mint_to_caller() {
+    let sender = @0xA;
+    let mut scenario = setup_test(sender);
+
+    // Initialize test coin
+    ts::next_tx(&mut scenario, sender);
+    test_asset_regular::init_for_testing(ts::ctx(&mut scenario));
+
+    // Create a launchpad with extra_mint_to_caller
+    ts::next_tx(&mut scenario, sender);
+    {
+        let factory = ts::take_shared<factory::Factory>(&scenario);
+        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+
+        let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
+        let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
+
+        // Create payment for launchpad creation fee
+        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
+
+        // Setup allowed caps
+        let mut allowed_caps = vector::empty<u64>();
+        vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
+
+        launchpad::create_raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>(
+            &factory,
+            &mut fee_manager,
+            treasury_cap,
+            coin_metadata,
+            b"extra-mint-test".to_string(), // affiliate_id
+            1_000_000_000_000, // tokens_for_sale (1M tokens)
+            10_000_000_000, // min_raise_amount (10k USDC)
+            option::some(100_000_000_000), // max_raise_amount (100k USDC)
+            allowed_caps,
+            option::none(), // start_delay_ms
+            false, // allow_early_completion
+            b"Extra Mint Test".to_string(),
+            vector::empty<String>(), // metadata_keys
+            vector::empty<String>(), // metadata_values
+            payment,
+            500_000_000_000, // extra_mint_to_caller (500k tokens for creator)
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+
+        clock::destroy_for_testing(clock);
+        ts::return_shared(factory);
+        ts::return_shared(fee_manager);
+    };
+
+    // Verify raise was created
+    ts::next_tx(&mut scenario, sender);
+    {
+        let raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
+            &scenario,
+        );
+        assert!(launchpad::state(&raise) == 0, 0); // STATE_FUNDING
+        assert!(launchpad::total_raised(&raise) == 0, 1);
+        ts::return_shared(raise);
+    };
+
+    // Verify creator received the extra minted tokens
+    ts::next_tx(&mut scenario, sender);
+    {
+        let extra_tokens = ts::take_from_sender<Coin<TEST_ASSET_REGULAR>>(&scenario);
+        // Creator should have received 500k extra tokens
+        assert!(extra_tokens.value() == 500_000_000_000, 2);
+        ts::return_to_sender(&scenario, extra_tokens);
+    };
+
     ts::end(scenario);
 }
 

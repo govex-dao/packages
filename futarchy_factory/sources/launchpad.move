@@ -437,6 +437,8 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
     metadata_keys: vector<String>,
     metadata_values: vector<String>,
     launchpad_fee: Coin<sui::sui::SUI>,
+    // Extra tokens to mint and return to caller (for creator allocation)
+    extra_mint_to_caller: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -483,6 +485,7 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
         description,
         metadata_keys,
         metadata_values,
+        extra_mint_to_caller,
         clock,
         ctx,
     );
@@ -1471,6 +1474,7 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
     description: String,
     metadata_keys: vector<String>,
     metadata_values: vector<String>,
+    extra_mint_to_caller: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -1478,6 +1482,12 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
     futarchy_one_shot_utils::coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
 
     let minted_tokens = coin::mint(&mut treasury_cap, tokens_for_sale, ctx);
+
+    // Mint extra tokens for the caller if requested (for creator allocation)
+    if (extra_mint_to_caller > 0) {
+        let extra_tokens = coin::mint(&mut treasury_cap, extra_mint_to_caller, ctx);
+        sui_transfer::public_transfer(extra_tokens, ctx.sender());
+    };
 
     // Calculate start_time: creation_time + delay (if delay provided, otherwise start immediately)
     let current_time = clock.timestamp_ms();

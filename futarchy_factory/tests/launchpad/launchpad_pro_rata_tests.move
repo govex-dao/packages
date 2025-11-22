@@ -160,6 +160,7 @@ fun test_pro_rata_cap_exclusion() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -312,6 +313,7 @@ fun test_contribution_multiple_times_same_cap() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -445,6 +447,7 @@ fun test_view_allowed_caps() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
+            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );

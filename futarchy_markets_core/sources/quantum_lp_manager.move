@@ -180,9 +180,12 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
 
 /// Simplified recombination - returns system liquidity from winning conditional pool back to spot
 /// Clears active_proposal_id to unblock LP operations and records proposal end time
-/// Includes both AMM reserves and protocol fees, capped at escrow balance
+/// Returns only AMM reserves (LP fees included), NOT protocol fees.
 ///
-/// IMPORTANT: Due to quantum model, pool reserves can grow beyond escrow backing through
+/// IMPORTANT: Protocol fees are collected separately via collect_protocol_fees() in
+/// liquidity_interact.move. They go to the FeeManager, not back to LPs.
+///
+/// Due to quantum model, pool reserves can grow beyond escrow backing through
 /// user trades. We cap withdrawals at escrow balance to prevent failures. User deposits
 /// remain in escrow for their redemptions.
 public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
@@ -192,43 +195,67 @@ public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    // Get market_state and empty winning conditional pool + collect protocol fees
-    let (asset_amount, stable_amount, protocol_fee_asset, protocol_fee_stable) = {
+    // Get market_state and empty winning conditional pool (reserves only, not protocol fees)
+    let (asset_amount, stable_amount) = {
         let market_state = coin_escrow::get_market_state_mut(escrow);
         let pool_mut = market_state::get_pool_mut_by_outcome(market_state, (winning_outcome as u8));
 
         // Get AMM reserves (original liquidity + LP fees)
-        let (asset_reserves, stable_reserves) = conditional_amm::empty_all_amm_liquidity(
+        // Protocol fees are NOT included - they're collected separately
+        conditional_amm::empty_all_amm_liquidity(
             pool_mut,
             ctx,
-        );
-
-        // Get protocol fees before resetting
-        let asset_fees = conditional_amm::get_protocol_fees_asset(pool_mut);
-        let stable_fees = conditional_amm::get_protocol_fees_stable(pool_mut);
-
-        // Reset protocol fees to zero now that we've captured them
-        conditional_amm::reset_protocol_fees(pool_mut);
-
-        (asset_reserves, stable_reserves, asset_fees, stable_fees)
+        )
     };
 
-    // Total to withdraw from escrow = AMM reserves + protocol fees
-    let total_asset = asset_amount + protocol_fee_asset;
-    let total_stable = stable_amount + protocol_fee_stable;
+    // Total to withdraw from escrow = AMM reserves only (no protocol fees)
+    let total_asset = asset_amount;
+    let total_stable = stable_amount;
 
-    // SAFETY: Cap withdrawals at actual escrow balance
-    // Pool reserves can exceed escrow due to quantum model (one escrow backs multiple pools)
-    // User deposits remain in escrow for their redemptions
+    // SAFETY: Cap withdrawals at LP backing to preserve user redemptions
+    // The LP deposited a specific amount via quantum split - we return at most that amount.
+    // User deposits remain in escrow for their redemptions.
+    // Also cap at escrow balance for safety (should never exceed LP backing + user backing).
+    let lp_asset = coin_escrow::get_lp_deposited_asset(escrow);
+    let lp_stable = coin_escrow::get_lp_deposited_stable(escrow);
     let escrow_asset = coin_escrow::get_escrowed_asset_balance(escrow);
     let escrow_stable = coin_escrow::get_escrowed_stable_balance(escrow);
 
-    let withdraw_asset = if (total_asset > escrow_asset) { escrow_asset } else { total_asset };
-    let withdraw_stable = if (total_stable > escrow_stable) { escrow_stable } else { total_stable };
+    // Get user deposits to ensure we leave enough for redemptions
+    // Users can swap between types (deposit stable, redeem asset), so we track
+    // total deposits and reserve that much of EACH type for safety.
+    let user_total_buffer = coin_escrow::get_user_deposited_total(escrow);
+
+    // Cap at minimum of: requested amount, LP backing, escrow balance minus user buffer
+    let withdraw_asset = {
+        let amt = if (total_asset > lp_asset) { lp_asset } else { total_asset };
+        let amt = if (amt > escrow_asset) { escrow_asset } else { amt };
+        // Ensure we leave enough for user redemptions (cross-type swaps possible)
+        let max_withdraw = if (escrow_asset > user_total_buffer) {
+            escrow_asset - user_total_buffer
+        } else {
+            0
+        };
+        if (amt > max_withdraw) { max_withdraw } else { amt }
+    };
+    let withdraw_stable = {
+        let amt = if (total_stable > lp_stable) { lp_stable } else { total_stable };
+        let amt = if (amt > escrow_stable) { escrow_stable } else { amt };
+        // Ensure we leave enough for user redemptions (cross-type swaps possible)
+        let max_withdraw = if (escrow_stable > user_total_buffer) {
+            escrow_stable - user_total_buffer
+        } else {
+            0
+        };
+        if (amt > max_withdraw) { max_withdraw } else { amt }
+    };
 
     // Withdraw capped amounts from escrow
     let asset_coin = coin_escrow::withdraw_asset_balance(escrow, withdraw_asset, ctx);
     let stable_coin = coin_escrow::withdraw_stable_balance(escrow, withdraw_stable, ctx);
+
+    // Decrement LP backing tracking
+    coin_escrow::decrement_lp_backing(escrow, withdraw_asset, withdraw_stable);
 
     // Add liquidity back to spot pool
     unified_spot_pool::add_liquidity_from_quantum_redeem(

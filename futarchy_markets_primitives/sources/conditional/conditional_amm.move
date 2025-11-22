@@ -7,12 +7,8 @@ use futarchy_markets_primitives::futarchy_twap_oracle::{Self, Oracle};
 use futarchy_one_shot_utils::constants;
 use futarchy_one_shot_utils::math;
 use std::u64;
-use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::event;
-use sui::object::{Self, ID, UID};
-use sui::sui::SUI;
-use sui::tx_context::TxContext;
 
 // === Introduction ===
 // This is a Uniswap V2-style XY=K AMM implementation for futarchy prediction markets.
@@ -47,7 +43,6 @@ const EPriceTooHigh: u64 = 5; // Price exceeds maximum allowed value
 const EZeroAmount: u64 = 6; // Input amount is zero
 const EMarketIdMismatch: u64 = 7; // Market ID doesn't match expected value
 const EInsufficientLPTokens: u64 = 8; // Not enough LP tokens to burn
-const EInvalidTokenType: u64 = 9; // Wrong conditional token type provided
 const EOverflow: u64 = 10; // Arithmetic overflow detected
 const EInvalidFeeRate: u64 = 11; // Fee rate is invalid (e.g., >= 100%)
 const EKInvariantViolation: u64 = 12; // K-invariant violation (guards constant-product invariant)
@@ -55,9 +50,7 @@ const EImbalancedLiquidity: u64 = 13; // Liquidity deposit is too imbalanced (>1
 
 // === Constants ===
 const FEE_SCALE: u64 = 10000;
-const DEFAULT_FEE: u64 = 30; // 0.3%
 const MINIMUM_LIQUIDITY: u128 = 1000;
-// Other constants moved to constants module
 
 // === Structs ===
 
@@ -72,16 +65,6 @@ public struct LiquidityPool has key, store {
     protocol_fees_asset: u64, // Track accumulated asset token fees
     protocol_fees_stable: u64, // Track accumulated stable token fees
     lp_supply: u64, // Track total LP shares for this pool
-    // Bucket tracking for LP withdrawal system
-    // LIVE: Came from spot.LIVE via quantum split (will recombine to spot.LIVE)
-    // TRANSITIONING: Came from spot.TRANSITIONING via quantum split (will recombine to spot.WITHDRAW_ONLY)
-    // Note: Conditionals don't have WITHDRAW_ONLY - that only exists in spot after recombination
-    asset_live: u64,
-    asset_transitioning: u64,
-    stable_live: u64,
-    stable_transitioning: u64,
-    lp_live: u64,
-    lp_transitioning: u64,
 }
 
 // === Events ===
@@ -151,7 +134,7 @@ public fun new_pool(
     );
 
     // Create pool object
-    let pool = LiquidityPool {
+    LiquidityPool {
         id: object::new(ctx),
         market_id,
         outcome_idx,
@@ -162,16 +145,7 @@ public fun new_pool(
         protocol_fees_asset: 0,
         protocol_fees_stable: 0,
         lp_supply: 0, // Start at 0 so first provider logic works correctly
-        // Initialize all liquidity in LIVE bucket (from quantum split)
-        asset_live: initial_asset,
-        asset_transitioning: 0,
-        stable_live: initial_stable,
-        stable_transitioning: 0,
-        lp_live: 0, // Will be set when LP is added
-        lp_transitioning: 0,
-    };
-
-    pool
+    }
 }
 
 // === Core Swap Functions ===
@@ -548,12 +522,6 @@ public fun empty_all_amm_liquidity(pool: &mut LiquidityPool, _ctx: &mut TxContex
 
     // Reset LP accounting so the next quantum split reboots cleanly
     pool.lp_supply = 0;
-    pool.asset_live = 0;
-    pool.asset_transitioning = 0;
-    pool.stable_live = 0;
-    pool.stable_transitioning = 0;
-    pool.lp_live = 0;
-    pool.lp_transitioning = 0;
 
     (asset_amount_out, stable_amount_out)
 }
@@ -672,19 +640,6 @@ public fun get_reserves(pool: &LiquidityPool): (u64, u64) {
 
 public fun get_lp_supply(pool: &LiquidityPool): u64 {
     pool.lp_supply
-}
-
-/// Get bucket amounts for recombination
-/// Returns (asset_live, asset_transitioning, stable_live, stable_transitioning, lp_live, lp_transitioning)
-public fun get_bucket_amounts(pool: &LiquidityPool): (u64, u64, u64, u64, u64, u64) {
-    (
-        pool.asset_live,
-        pool.asset_transitioning,
-        pool.stable_live,
-        pool.stable_transitioning,
-        pool.lp_live,
-        pool.lp_transitioning,
-    )
 }
 
 /// Get pool fee in basis points
@@ -1025,13 +980,6 @@ public fun create_test_pool(
         protocol_fees_asset: 0,
         protocol_fees_stable: 0,
         lp_supply: (MINIMUM_LIQUIDITY as u64),
-        // Initialize all liquidity in LIVE bucket for testing
-        asset_live: asset_reserve,
-        asset_transitioning: 0,
-        stable_live: stable_reserve,
-        stable_transitioning: 0,
-        lp_live: (MINIMUM_LIQUIDITY as u64),
-        lp_transitioning: 0,
     }
 }
 
@@ -1073,13 +1021,6 @@ public fun create_pool_for_testing(
         protocol_fees_asset: 0,
         protocol_fees_stable: 0,
         lp_supply: (MINIMUM_LIQUIDITY as u64),
-        // Initialize all liquidity in LIVE bucket for testing
-        asset_live: asset_amount,
-        asset_transitioning: 0,
-        stable_live: stable_amount,
-        stable_transitioning: 0,
-        lp_live: (MINIMUM_LIQUIDITY as u64),
-        lp_transitioning: 0,
     }
 }
 
@@ -1096,12 +1037,6 @@ public fun destroy_for_testing(pool: LiquidityPool) {
         protocol_fees_asset: _,
         protocol_fees_stable: _,
         lp_supply: _,
-        asset_live: _,
-        asset_transitioning: _,
-        stable_live: _,
-        stable_transitioning: _,
-        lp_live: _,
-        lp_transitioning: _,
     } = pool;
     id.delete();
     oracle.destroy_for_testing();

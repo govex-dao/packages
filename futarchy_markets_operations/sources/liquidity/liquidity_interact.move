@@ -63,26 +63,12 @@ public fun empty_amm_and_return_to_dao<
     );
     let (conditional_asset_amt, conditional_stable_amt) = pool.empty_all_amm_liquidity(ctx);
 
-    // Burn conditional coins and withdraw spot tokens
-    let asset_coin = escrow.burn_conditional_asset_and_withdraw<
-        AssetType,
-        StableType,
-        AssetConditionalCoin,
-    >(
-        winning_outcome,
-        conditional_asset_amt,
-        ctx,
-    );
+    // Withdraw spot tokens directly (AMM reserves are virtual, no actual coins to burn)
+    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, conditional_asset_amt, ctx);
+    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, conditional_stable_amt, ctx);
 
-    let stable_coin = escrow.burn_conditional_stable_and_withdraw<
-        AssetType,
-        StableType,
-        StableConditionalCoin,
-    >(
-        winning_outcome,
-        conditional_stable_amt,
-        ctx,
-    );
+    // Decrement LP backing tracking since DAO is withdrawing its liquidity
+    coin_escrow::decrement_lp_backing(escrow, conditional_asset_amt, conditional_stable_amt);
 
     (asset_coin, stable_coin)
 }
@@ -145,8 +131,10 @@ public fun redeem_conditional_asset<AssetType, StableType, ConditionalCoinType>(
         conditional_coin,
     );
 
-    // Withdraw spot asset (1:1)
-    coin_escrow::withdraw_asset_balance(escrow, amount, ctx)
+    // Withdraw spot asset (1:1) and decrement user backing
+    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, amount, ctx);
+    coin_escrow::decrement_user_backing(escrow, amount);
+    asset_coin
 }
 
 /// Redeem conditional stable coin back to spot stable
@@ -171,8 +159,10 @@ public fun redeem_conditional_stable<AssetType, StableType, ConditionalCoinType>
         conditional_coin,
     );
 
-    // Withdraw spot stable (1:1)
-    coin_escrow::withdraw_stable_balance(escrow, amount, ctx)
+    // Withdraw spot stable (1:1) and decrement user backing
+    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, amount, ctx);
+    coin_escrow::decrement_user_backing(escrow, amount);
+    stable_coin
 }
 
 // === AMM Liquidity Management ===

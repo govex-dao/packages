@@ -137,6 +137,35 @@ fun add_liquidity_to_conditional_pools(
         );
         i = i + 1;
     };
+
+    // Also update supply tracking to match AMM reserves
+    // This simulates the quantum split that would happen in production
+    let mut i = 0;
+    while (i < outcome_count) {
+        coin_escrow::increment_supply_for_outcome(escrow, i, true, reserve_per_outcome);
+        coin_escrow::increment_supply_for_outcome(escrow, i, false, reserve_per_outcome);
+        i = i + 1;
+    };
+
+    // Also deposit to escrow to match
+    coin_escrow::deposit_spot_liquidity_for_testing(escrow, reserve_per_outcome, reserve_per_outcome);
+}
+
+#[test_only]
+/// Add extra liquidity to escrow and update supplies for all outcomes
+/// This maintains the quantum invariant: escrow == supply + wrapped
+fun deposit_extra_liquidity_to_escrow(
+    escrow: &mut TokenEscrow<TEST_COIN_A, TEST_COIN_B>,
+    asset_amount: u64,
+    stable_amount: u64,
+    ctx: &mut TxContext,
+) {
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(asset_amount, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(stable_amount, ctx);
+    coin_escrow::deposit_spot_coins(escrow, asset_for_escrow, stable_for_escrow);
+
+    // Update supplies for all outcomes to maintain quantum invariant
+    coin_escrow::increment_supplies_for_all_outcomes(escrow, asset_amount, stable_amount);
 }
 
 #[test_only]
@@ -183,9 +212,7 @@ fun test_auto_rebalance_when_spot_too_high() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add enough liquidity to escrow for arbitrage
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute auto-rebalance
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -233,9 +260,7 @@ fun test_auto_rebalance_when_spot_too_low() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add enough liquidity to escrow for arbitrage
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute auto-rebalance
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -285,9 +310,7 @@ fun test_auto_rebalance_no_op_when_in_range() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add liquidity to escrow
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(5_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(5_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 5_000_000_000, 5_000_000_000, ctx);
 
     // Spot price (1.0) is within conditional range, so no rebalancing needed
 
@@ -339,9 +362,7 @@ fun test_auto_rebalance_three_outcomes() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute auto-rebalance
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -385,9 +406,7 @@ fun test_auto_rebalance_small_adjustments() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute auto-rebalance
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -437,9 +456,7 @@ fun test_arbitrage_actually_executes_spot_too_high() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute auto-rebalance
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -497,9 +514,7 @@ fun test_arbitrage_actually_executes_spot_too_low() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute auto-rebalance
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -553,9 +568,7 @@ fun test_arbitrage_dust_balance_contents() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -608,9 +621,7 @@ fun test_multiple_arbitrage_calls() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     // First arbitrage call - should produce dust
     let dust_opt_1 = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -669,9 +680,7 @@ fun test_conditional_pool_reserves_change() {
     let (initial_cond1_asset, initial_cond1_stable) = conditional_amm::get_reserves(&pools[1]);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -721,9 +730,7 @@ fun test_burn_complete_set_and_withdraw_asset() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage to get dust with conditional tokens
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -789,9 +796,7 @@ fun test_burn_complete_set_and_withdraw_stable() {
     add_liquidity_to_conditional_pools(&mut escrow, INITIAL_CONDITIONAL_RESERVE, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -860,9 +865,7 @@ fun test_arbitrage_extreme_price_divergence() {
     add_liquidity_to_conditional_pools(&mut escrow, 3_000_000_000, ctx);
 
     // Large escrow liquidity for significant arbitrage
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -913,9 +916,7 @@ fun test_arbitrage_four_outcomes() {
     add_liquidity_to_conditional_pools(&mut escrow, 500_000_000, ctx);
 
     // Add liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -976,9 +977,7 @@ fun test_exact_reserve_changes_cond_to_spot() {
     let (init_cond1_asset, init_cond1_stable) = conditional_amm::get_reserves(&pools[1]);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1062,9 +1061,7 @@ fun test_exact_reserve_changes_spot_to_cond() {
     let (init_cond1_asset, init_cond1_stable) = conditional_amm::get_reserves(&pools[1]);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1179,10 +1176,20 @@ fun test_exact_dust_amounts() {
     market_state::set_amm_pools(market_state, pools);
     market_state::init_trading_for_testing(market_state);
 
-    // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
+    // Add escrow liquidity - use max of pool reserves for proper quantum backing
+    let escrow_asset = 1_200_000_000u64;  // Max of pool assets
+    let escrow_stable = 1_000_000_000u64; // Max of pool stables
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(escrow_asset, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(escrow_stable, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+
+    // Set up supply tracking to match AMM reserves
+    // Pool 0: 1,000,000,000 asset, 1,000,000,000 stable
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, false, escrow_stable);
+    // Pool 1: 1,200,000,000 asset, 800,000,000 stable
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, false, escrow_stable);
 
     // Record pool reserves before arbitrage
     let market_state = coin_escrow::get_market_state(&escrow);
@@ -1258,9 +1265,7 @@ fun test_value_conservation() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Record initial pool states (escrow is pass-through, not counted)
     let (init_spot_asset, init_spot_stable) = unified_spot_pool::get_reserves(&spot_pool);
@@ -1354,9 +1359,7 @@ fun test_price_convergence_after_arbitrage() {
     let (init_min_cond, init_max_cond) = get_conditional_price_range(&escrow);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1428,9 +1431,7 @@ fun test_balanced_pools_minimal_dust() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1496,9 +1497,7 @@ fun test_multiple_arbitrage_exact_accumulation() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Large escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     // First arbitrage
     let mut dust_opt_1 = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1568,9 +1567,7 @@ fun test_conditional_pool_constant_product() {
     let init_k1 = (init_c1_asset as u128) * (init_c1_stable as u128);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1677,9 +1674,7 @@ fun test_arbitrage_highly_asymmetric_pools() {
     market_state::init_trading_for_testing(market_state);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1733,9 +1728,7 @@ fun test_arbitrage_near_threshold() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1833,9 +1826,7 @@ fun test_arbitrage_three_outcomes_spread_prices() {
     market_state::init_trading_for_testing(market_state);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(15_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(15_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 15_000_000_000, 15_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1878,9 +1869,7 @@ fun test_arbitrage_convergence_multiple_iterations() {
     add_liquidity_to_conditional_pools(&mut escrow, 2_000_000_000, ctx);
 
     // Large escrow liquidity for multiple iterations
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(50_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(50_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 50_000_000_000, 50_000_000_000, ctx);
 
     // First iteration
     let dust_opt_1 = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -1957,9 +1946,7 @@ fun test_arbitrage_pool_capacity_limited() {
     add_liquidity_to_conditional_pools(&mut escrow, 100_000_000, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Get initial conditional reserves
     let market_state = coin_escrow::get_market_state(&escrow);
@@ -2075,9 +2062,7 @@ fun test_arbitrage_five_outcomes_varying_prices() {
     market_state::init_trading_for_testing(market_state);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2131,9 +2116,7 @@ fun test_arbitrage_extreme_price_ratio() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Large escrow for significant arbitrage
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(30_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(30_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 30_000_000_000, 30_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2204,10 +2187,18 @@ fun test_arbitrage_dust_reflects_pool_imbalance() {
     market_state::set_amm_pools(market_state, pools);
     market_state::init_trading_for_testing(market_state);
 
-    // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(15_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(15_000_000_000, ctx);
+    // Add escrow liquidity - use max of pool reserves for proper quantum backing
+    let escrow_asset = 2_000_000_000u64;  // Max of pool assets
+    let escrow_stable = 1_000_000_000u64; // Max of pool stables
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(escrow_asset, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(escrow_stable, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+
+    // Set up supply tracking for each outcome
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, false, escrow_stable);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, false, escrow_stable);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2255,9 +2246,7 @@ fun test_arbitrage_bidirectional_sequence() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Large escrow for multiple operations
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(30_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(30_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 30_000_000_000, 30_000_000_000, ctx);
 
     // First arbitrage: spot too high
     let dust_opt_1 = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2275,8 +2264,11 @@ fun test_arbitrage_bidirectional_sequence() {
     // price = stable / asset, so: add asset -> price decreases, remove stable -> price decreases
     let asset_to_add = coin::mint_for_testing<TEST_COIN_A>(mid_asset, ctx);
     unified_spot_pool::return_asset_from_arbitrage(&mut spot_pool, coin::into_balance(asset_to_add));
-    let taken_stable = unified_spot_pool::take_stable_for_arbitrage(&mut spot_pool, mid_stable / 2);
+    let stable_transfer_amount = mid_stable / 2;
+    let taken_stable = unified_spot_pool::take_stable_for_arbitrage(&mut spot_pool, stable_transfer_amount);
     coin_escrow::deposit_spot_liquidity(&mut escrow, sui::balance::zero<TEST_COIN_A>(), taken_stable);
+    // Update supplies to maintain quantum invariant
+    coin_escrow::increment_supplies_for_all_outcomes(&mut escrow, 0, stable_transfer_amount);
 
     let low_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
     assert!(low_spot_price < mid_spot_price, 0);
@@ -2321,9 +2313,7 @@ fun test_arbitrage_small_reserves() {
     add_liquidity_to_conditional_pools(&mut escrow, 50_000_000, ctx);
 
     // Small escrow
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(500_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(500_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 500_000_000, 500_000_000, ctx);
 
     // Execute arbitrage - should not panic
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2360,9 +2350,7 @@ fun test_arbitrage_spot_pool_k_behavior() {
     let mut escrow = create_test_escrow_with_markets(2, 1_000_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2445,10 +2433,20 @@ fun test_arbitrage_all_conditionals_above_spot() {
     market_state::set_amm_pools(market_state, pools);
     market_state::init_trading_for_testing(market_state);
 
-    // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
+    // Add escrow liquidity - use max of pool reserves for proper quantum backing
+    let escrow_asset = 1_000_000_000u64;  // Max of pool assets
+    let escrow_stable = 1_200_000_000u64; // Max of pool stables
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(escrow_asset, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(escrow_stable, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+
+    // Set up supply tracking for each outcome
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, false, escrow_stable);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, false, escrow_stable);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 2, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 2, false, escrow_stable);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2527,10 +2525,20 @@ fun test_arbitrage_all_conditionals_below_spot() {
     market_state::set_amm_pools(market_state, pools);
     market_state::init_trading_for_testing(market_state);
 
-    // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
+    // Add escrow liquidity - use max of pool reserves for proper quantum backing
+    let escrow_asset = 2_000_000_000u64;  // Max of pool assets
+    let escrow_stable = 1_000_000_000u64; // Max of pool stables
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(escrow_asset, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(escrow_stable, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+
+    // Set up supply tracking for each outcome
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 0, false, escrow_stable);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 1, false, escrow_stable);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 2, true, escrow_asset);
+    coin_escrow::increment_supply_for_outcome(&mut escrow, 2, false, escrow_stable);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2597,10 +2605,20 @@ fun test_arbitrage_seven_outcomes() {
     market_state::set_amm_pools(market_state, pools);
     market_state::init_trading_for_testing(market_state);
 
-    // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
+    // Add escrow liquidity - use pool reserves for proper quantum backing
+    let escrow_asset = 300_000_000u64;
+    let escrow_stable = 300_000_000u64;
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(escrow_asset, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(escrow_stable, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+
+    // Set up supply tracking for all 7 outcomes
+    let mut j = 0u64;
+    while (j < 7) {
+        coin_escrow::increment_supply_for_outcome(&mut escrow, j, true, escrow_asset);
+        coin_escrow::increment_supply_for_outcome(&mut escrow, j, false, escrow_stable);
+        j = j + 1;
+    };
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2639,9 +2657,7 @@ fun test_arbitrage_until_exhausted() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Large escrow
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(50_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(50_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 50_000_000_000, 50_000_000_000, ctx);
 
     // Run arbitrage multiple times until prices converge
     let mut iteration = 0u64;
@@ -2705,9 +2721,7 @@ fun test_arbitrage_large_reserves_precision() {
     add_liquidity_to_conditional_pools(&mut escrow, 10_000_000_000_000, ctx);
 
     // Large escrow
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(100_000_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(100_000_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 100_000_000_000_000, 100_000_000_000_000, ctx);
 
     // Execute arbitrage - should not overflow
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2770,10 +2784,20 @@ fun test_arbitrage_identical_conditional_prices() {
     market_state::set_amm_pools(market_state, pools);
     market_state::init_trading_for_testing(market_state);
 
-    // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(15_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(15_000_000_000, ctx);
+    // Add escrow liquidity - use pool reserves for proper quantum backing
+    let escrow_asset = 1_000_000_000u64;
+    let escrow_stable = 1_000_000_000u64;
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(escrow_asset, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(escrow_stable, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+
+    // Set up supply tracking for all 3 outcomes
+    let mut j = 0u64;
+    while (j < 3) {
+        coin_escrow::increment_supply_for_outcome(&mut escrow, j, true, escrow_asset);
+        coin_escrow::increment_supply_for_outcome(&mut escrow, j, false, escrow_stable);
+        j = j + 1;
+    };
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -2835,9 +2859,7 @@ fun test_arbitrage_moderate_escrow() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Moderate escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(5_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(5_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 5_000_000_000, 5_000_000_000, ctx);
 
     let (init_spot_asset, init_spot_stable) = unified_spot_pool::get_reserves(&spot_pool);
 
@@ -2908,9 +2930,7 @@ fun test_arbitrage_exact_price_match_one_pool() {
     market_state::init_trading_for_testing(market_state);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     let init_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
 
@@ -3004,9 +3024,7 @@ fun test_arbitrage_four_outcomes_alternating() {
     market_state::init_trading_for_testing(market_state);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     let init_spot_price = unified_spot_pool::get_spot_price(&spot_pool);
 
@@ -3061,9 +3079,7 @@ fun test_arbitrage_tiny_price_difference() {
     add_liquidity_to_conditional_pools(&mut escrow, 5_000_000_000, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -3112,9 +3128,7 @@ fun test_arbitrage_profit_verification() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Add escrow liquidity
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Calculate initial total value in spot pool (using stable as numeraire)
     // Value = stable + asset * price
@@ -3209,9 +3223,7 @@ fun test_arbitrage_k_growth_over_time() {
     add_liquidity_to_conditional_pools(&mut escrow, 2_000_000_000, ctx);
 
     // Large escrow for multiple arbitrages
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(50_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(50_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 50_000_000_000, 50_000_000_000, ctx);
 
     // Record initial K
     let (init_asset, init_stable) = unified_spot_pool::get_reserves(&spot_pool);
@@ -3294,9 +3306,7 @@ fun test_arbitrage_existing_balance_merge() {
     let mut escrow = create_test_escrow_with_markets(2, 1_000_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     // Create an existing balance manually
     let market_state = coin_escrow::get_market_state(&escrow);
@@ -3359,9 +3369,7 @@ fun test_arbitrage_insufficient_spot_reserves() {
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
     // Large escrow
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Execute arbitrage - should not panic, may return None if can't execute
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -3399,9 +3407,7 @@ fun test_arbitrage_direction_selection() {
     let mut escrow_high = create_test_escrow_with_markets(2, 1_000_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow_high, 1_000_000_000, ctx);
 
-    let asset1 = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable1 = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow_high, asset1, stable1);
+    deposit_extra_liquidity_to_escrow(&mut escrow_high, 10_000_000_000, 10_000_000_000, ctx);
 
     let (init_asset_high, init_stable_high) = unified_spot_pool::get_reserves(&spot_pool_high);
 
@@ -3426,9 +3432,7 @@ fun test_arbitrage_direction_selection() {
     let mut escrow_low = create_test_escrow_with_markets(2, 1_000_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow_low, 1_000_000_000, ctx);
 
-    let asset2 = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable2 = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow_low, asset2, stable2);
+    deposit_extra_liquidity_to_escrow(&mut escrow_low, 10_000_000_000, 10_000_000_000, ctx);
 
     let (init_asset_low, init_stable_low) = unified_spot_pool::get_reserves(&spot_pool_low);
 
@@ -3478,9 +3482,7 @@ fun test_arbitrage_escrow_balance_changes() {
     // Add specific escrow amounts
     let escrow_asset = 10_000_000_000u64;
     let escrow_stable = 10_000_000_000u64;
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(escrow_asset, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(escrow_stable, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, escrow_asset, escrow_stable, ctx);
 
     let init_escrow_asset = coin_escrow::get_escrowed_asset_balance(&escrow);
     let init_escrow_stable = coin_escrow::get_escrowed_stable_balance(&escrow);
@@ -3548,9 +3550,7 @@ fun test_arbitrage_price_convergence_accuracy() {
     let (cond_asset, cond_stable) = conditional_amm::get_reserves(&pools[0]);
     let cond_price = (cond_stable as u128) * 1_000_000_000_000 / (cond_asset as u128);
 
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(20_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(20_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 20_000_000_000, 20_000_000_000, ctx);
 
     // Execute arbitrage
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(
@@ -3610,9 +3610,7 @@ fun test_arbitrage_minimal_amounts_rounding() {
     let mut escrow = create_test_escrow_with_markets(2, 5_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow, 5_000, ctx);
 
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(50_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(50_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    deposit_extra_liquidity_to_escrow(&mut escrow, 50_000, 50_000, ctx);
 
     // Execute arbitrage with small amounts
     let mut dust_opt = arbitrage::auto_rebalance_spot_after_conditional_swaps(

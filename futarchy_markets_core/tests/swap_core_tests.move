@@ -32,6 +32,21 @@ fun create_test_clock(timestamp_ms: u64, ctx: &mut TxContext): Clock {
     clock
 }
 
+/// Add to balance and update wrapped tracking in escrow
+/// This simulates the proper flow where wrapping coins increments wrapped tracking
+#[test_only]
+fun add_to_balance_with_tracking(
+    balance: &mut ConditionalMarketBalance<TEST_COIN_A, TEST_COIN_B>,
+    escrow: &mut TokenEscrow<TEST_COIN_A, TEST_COIN_B>,
+    outcome_idx: u8,
+    is_asset: bool,
+    amount: u64,
+) {
+    conditional_balance::add_to_balance(balance, outcome_idx, is_asset, amount);
+    // Use increment_wrapped_balance to properly accumulate (not set)
+    coin_escrow::increment_wrapped_balance(escrow, (outcome_idx as u64), is_asset, amount);
+}
+
 /// Create token escrow with market state and conditional pools
 #[test_only]
 fun create_test_escrow_with_markets(
@@ -137,6 +152,18 @@ fun add_liquidity_to_pools(
         );
         i = i + 1;
     };
+
+    // Also update supply tracking to match AMM reserves
+    // This simulates the quantum split that would happen in production
+    let mut i = 0;
+    while (i < outcome_count) {
+        coin_escrow::increment_supply_for_outcome(escrow, i, true, reserve_per_outcome);
+        coin_escrow::increment_supply_for_outcome(escrow, i, false, reserve_per_outcome);
+        i = i + 1;
+    };
+
+    // Also deposit to escrow to match
+    coin_escrow::deposit_spot_liquidity_for_testing(escrow, reserve_per_outcome, reserve_per_outcome);
 }
 
 /// Create proposal in TRADING state
@@ -280,13 +307,13 @@ fun test_swap_balance_asset_to_stable_success() {
     let market_state = coin_escrow::get_market_state(&escrow);
     let market_id = market_state::market_id(market_state);
 
-    // Create balance and add asset
+    // Create balance and add asset with proper tracking
     let mut balance = conditional_balance::new<TEST_COIN_A, TEST_COIN_B>(
         market_id,
         2,
         ctx,
     );
-    conditional_balance::add_to_balance(&mut balance, 0, true, 10000);
+    add_to_balance_with_tracking(&mut balance, &mut escrow, 0, true, 10000);
 
     let session = swap_core::begin_swap_session(&escrow);
 
@@ -336,10 +363,10 @@ fun test_swap_balance_asset_to_stable_multiple_outcomes() {
         ctx,
     );
 
-    // Add asset to all outcomes
+    // Add asset to all outcomes with proper tracking
     let mut i = 0u8;
     while ((i as u64) < 3) {
-        conditional_balance::add_to_balance(&mut balance, i, true, 5000);
+        add_to_balance_with_tracking(&mut balance, &mut escrow, i, true, 5000);
         i = i + 1;
     };
 
@@ -551,9 +578,9 @@ fun test_swap_balance_stable_to_asset_success() {
     let market_state = coin_escrow::get_market_state(&escrow);
     let market_id = market_state::market_id(market_state);
 
-    // Create balance and add stable
+    // Create balance and add stable with proper tracking
     let mut balance = conditional_balance::new<TEST_COIN_A, TEST_COIN_B>(market_id, 2, ctx);
-    conditional_balance::add_to_balance(&mut balance, 0, false, 8000);
+    add_to_balance_with_tracking(&mut balance, &mut escrow, 0, false, 8000);
 
     let session = swap_core::begin_swap_session(&escrow);
 
@@ -594,7 +621,7 @@ fun test_swap_balance_stable_to_asset_multiple_swaps_same_outcome() {
     let market_id = market_state::market_id(market_state);
 
     let mut balance = conditional_balance::new<TEST_COIN_A, TEST_COIN_B>(market_id, 2, ctx);
-    conditional_balance::add_to_balance(&mut balance, 1, false, 20000);
+    add_to_balance_with_tracking(&mut balance, &mut escrow, 1, false, 20000);
 
     let session = swap_core::begin_swap_session(&escrow);
 
@@ -707,8 +734,8 @@ fun test_complete_swap_session_workflow() {
     let market_id = market_state::market_id(market_state_ref);
 
     let mut balance = conditional_balance::new<TEST_COIN_A, TEST_COIN_B>(market_id, 2, ctx);
-    conditional_balance::add_to_balance(&mut balance, 0, true, 10000);
-    conditional_balance::add_to_balance(&mut balance, 1, false, 15000);
+    add_to_balance_with_tracking(&mut balance, &mut escrow, 0, true, 10000);
+    add_to_balance_with_tracking(&mut balance, &mut escrow, 1, false, 15000);
 
     // 1. Begin session
     let session = swap_core::begin_swap_session(&escrow);
@@ -761,11 +788,11 @@ fun test_swap_with_5_outcomes() {
 
     let mut balance = conditional_balance::new<TEST_COIN_A, TEST_COIN_B>(market_id, 5, ctx);
 
-    // Add both asset and stable to all 5 outcomes
+    // Add both asset and stable to all 5 outcomes with proper tracking
     let mut i = 0u8;
     while ((i as u64) < 5) {
-        conditional_balance::add_to_balance(&mut balance, i, true, 3000);
-        conditional_balance::add_to_balance(&mut balance, i, false, 4000);
+        add_to_balance_with_tracking(&mut balance, &mut escrow, i, true, 3000);
+        add_to_balance_with_tracking(&mut balance, &mut escrow, i, false, 4000);
         i = i + 1;
     };
 

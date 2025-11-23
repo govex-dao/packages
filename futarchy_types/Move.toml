@@ -5,4 +5,4 @@ edition = "2024.beta"
 [dependencies]
 
 [addresses]
-futarchy_types = "0xd437f722697ba29b5784f09062d9651e14fb04f556380260b77e118fdf05d3c9"
+futarchy_types = "0x790ad5bff0b0773e1f5e01684bf4667538ec02f0cae2be29526cd9981bff2c36"

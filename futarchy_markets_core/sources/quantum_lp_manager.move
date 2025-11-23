@@ -144,8 +144,11 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
         stable_to_split,
     );
 
-    // Deposit to escrow as quantum backing
-    coin_escrow::deposit_spot_liquidity(
+    // Deposit to escrow as quantum backing and update supplies for all outcomes
+    // CRITICAL: Must use lp_deposit_quantum (not deposit_spot_liquidity) to maintain
+    // the quantum invariant: escrow == supply + wrapped for each outcome.
+    // This function atomically deposits, tracks LP backing, and updates supplies.
+    let (_deposited_asset, _deposited_stable) = coin_escrow::lp_deposit_quantum(
         escrow,
         asset_balance,
         stable_balance,

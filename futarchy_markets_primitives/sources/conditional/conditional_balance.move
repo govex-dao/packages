@@ -438,6 +438,9 @@ public fun unwrap_to_coin<AssetType, StableType, ConditionalCoinType>(
     let amount = get_balance(balance, outcome_idx, is_asset);
     assert!(amount > 0, EInvalidBalanceAccess);
 
+    // Decrement wrapped balance tracking before minting
+    coin_escrow::decrement_wrapped_balance(escrow, (outcome_idx as u64), is_asset, amount);
+
     // CORRECT ORDER: Mint first, then clear balance
     // This ensures if minting fails, balance isn't lost
     let coin = coin_escrow::mint_conditional<AssetType, StableType, ConditionalCoinType>(
@@ -525,6 +528,9 @@ public fun wrap_coin<AssetType, StableType, ConditionalCoinType>(
         coin,
     );
 
+    // Track wrapped balance in escrow for quantum invariant
+    coin_escrow::increment_wrapped_balance(escrow, (outcome_idx as u64), is_asset, amount);
+
     // Add to balance
     add_to_balance(balance, outcome_idx, is_asset, amount);
 
@@ -582,10 +588,12 @@ public fun burn_complete_set_and_withdraw_from_balance<AssetType, StableType>(
         return (0, sui::coin::zero<AssetType>(ctx), sui::coin::zero<StableType>(ctx))
     };
 
-    // Subtract min_amount from each outcome
+    // Subtract min_amount from each outcome and decrement wrapped balance tracking
     i = 0;
     while (i < (outcome_count as u64)) {
         sub_from_balance(balance, (i as u8), is_asset, min_amount);
+        // Decrement wrapped balance tracking for quantum invariant
+        coin_escrow::decrement_wrapped_balance(escrow, i, is_asset, min_amount);
         i = i + 1;
     };
 
@@ -593,12 +601,226 @@ public fun burn_complete_set_and_withdraw_from_balance<AssetType, StableType>(
     if (is_asset) {
         let asset_coin = coin_escrow::withdraw_asset_balance(escrow, min_amount, ctx);
         coin_escrow::decrement_user_backing(escrow, min_amount);
+
+        // Check invariant after withdrawal - inline to avoid second loop
+        let escrow_asset = coin_escrow::get_escrowed_asset_balance(escrow);
+        i = 0;
+        while (i < (outcome_count as u64)) {
+            let supply = coin_escrow::get_outcome_asset_supply(escrow, i);
+            let wrapped = coin_escrow::get_outcome_wrapped_asset(escrow, i);
+            assert!(escrow_asset == supply + wrapped, coin_escrow::quantum_invariant_error());
+            i = i + 1;
+        };
+
         (min_amount, asset_coin, sui::coin::zero<StableType>(ctx))
     } else {
         let stable_coin = coin_escrow::withdraw_stable_balance(escrow, min_amount, ctx);
         coin_escrow::decrement_user_backing(escrow, min_amount);
+
+        // Check invariant after withdrawal - inline to avoid second loop
+        let escrow_stable = coin_escrow::get_escrowed_stable_balance(escrow);
+        i = 0;
+        while (i < (outcome_count as u64)) {
+            let supply = coin_escrow::get_outcome_stable_supply(escrow, i);
+            let wrapped = coin_escrow::get_outcome_wrapped_stable(escrow, i);
+            assert!(escrow_stable == supply + wrapped, coin_escrow::quantum_invariant_error());
+            i = i + 1;
+        };
+
         (min_amount, sui::coin::zero<AssetType>(ctx), stable_coin)
     }
+}
+
+// === Atomic Balance Operations (Single Call for N Outcomes) ===
+// These functions eliminate the N-call pattern by atomically updating all outcomes.
+
+/// Atomically split spot stable to ConditionalMarketBalance for ALL outcomes.
+/// Single call replaces: start_split → N×split_step → finish_split → N×wrap_coin
+///
+/// Deposits spot stable to escrow, increments wrapped for ALL outcomes,
+/// and updates the balance tracker. Maintains quantum invariant.
+///
+/// Note: Goes directly to wrapped balance form (no typed coin intermediate),
+/// so only increments wrapped, not supply.
+///
+/// Returns the amount deposited.
+public fun split_stable_to_balance<AssetType, StableType>(
+    escrow: &mut coin_escrow::TokenEscrow<AssetType, StableType>,
+    balance: &mut ConditionalMarketBalance<AssetType, StableType>,
+    stable_coin: sui::coin::Coin<StableType>,
+): u64 {
+    let amount = stable_coin.value();
+    assert!(amount > 0, EInvalidBalanceAccess);
+
+    // Validate balance belongs to this market
+    let escrow_market_id = coin_escrow::market_state_id(escrow);
+    assert!(balance.market_id == escrow_market_id, EWrongMarket);
+
+    // Deposit to escrow and track as user backing
+    coin_escrow::deposit_spot_stable_for_balance(escrow, stable_coin);
+
+    // Quantum split: increment wrapped for ALL outcomes and check invariant in single loop
+    // (no supply increment - goes directly to balance form, not typed coin)
+    let outcome_count = balance.outcome_count;
+    let escrow_stable = coin_escrow::get_escrowed_stable_balance(escrow);
+    let mut i = 0u64;
+    while (i < (outcome_count as u64)) {
+        // Increment wrapped and check invariant for this outcome
+        coin_escrow::increment_wrapped_balance(escrow, i, false, amount);
+        let supply = coin_escrow::get_outcome_stable_supply(escrow, i);
+        let wrapped = coin_escrow::get_outcome_wrapped_stable(escrow, i);
+        assert!(escrow_stable == supply + wrapped, coin_escrow::quantum_invariant_error());
+
+        // Update balance tracker
+        add_to_balance(balance, (i as u8), false, amount);
+
+        i = i + 1;
+    };
+
+    amount
+}
+
+/// Atomically split spot asset to ConditionalMarketBalance for ALL outcomes.
+/// Single call replaces: start_split → N×split_step → finish_split → N×wrap_coin
+///
+/// Note: Goes directly to wrapped balance form (no typed coin intermediate),
+/// so only increments wrapped, not supply.
+///
+/// Returns the amount deposited.
+public fun split_asset_to_balance<AssetType, StableType>(
+    escrow: &mut coin_escrow::TokenEscrow<AssetType, StableType>,
+    balance: &mut ConditionalMarketBalance<AssetType, StableType>,
+    asset_coin: sui::coin::Coin<AssetType>,
+): u64 {
+    let amount = asset_coin.value();
+    assert!(amount > 0, EInvalidBalanceAccess);
+
+    // Validate balance belongs to this market
+    let escrow_market_id = coin_escrow::market_state_id(escrow);
+    assert!(balance.market_id == escrow_market_id, EWrongMarket);
+
+    // Deposit to escrow and track as user backing
+    coin_escrow::deposit_spot_asset_for_balance(escrow, asset_coin);
+
+    // Quantum split: increment wrapped for ALL outcomes and check invariant in single loop
+    // (no supply increment - goes directly to balance form, not typed coin)
+    let outcome_count = balance.outcome_count;
+    let escrow_asset = coin_escrow::get_escrowed_asset_balance(escrow);
+    let mut i = 0u64;
+    while (i < (outcome_count as u64)) {
+        // Increment wrapped and check invariant for this outcome
+        coin_escrow::increment_wrapped_balance(escrow, i, true, amount);
+        let supply = coin_escrow::get_outcome_asset_supply(escrow, i);
+        let wrapped = coin_escrow::get_outcome_wrapped_asset(escrow, i);
+        assert!(escrow_asset == supply + wrapped, coin_escrow::quantum_invariant_error());
+
+        // Update balance tracker
+        add_to_balance(balance, (i as u8), true, amount);
+
+        i = i + 1;
+    };
+
+    amount
+}
+
+/// Atomically recombine ConditionalMarketBalance back to spot stable.
+/// Single call replaces: N×unwrap_coin → N×burn_step → finish_recombine
+///
+/// Requires equal balance across ALL outcomes (complete set).
+/// Returns the spot stable coin.
+public fun recombine_balance_to_stable<AssetType, StableType>(
+    escrow: &mut coin_escrow::TokenEscrow<AssetType, StableType>,
+    balance: &mut ConditionalMarketBalance<AssetType, StableType>,
+    amount: u64,
+    ctx: &mut TxContext,
+): sui::coin::Coin<StableType> {
+    assert!(amount > 0, EInvalidBalanceAccess);
+
+    // Validate balance belongs to this market
+    let escrow_market_id = coin_escrow::market_state_id(escrow);
+    assert!(balance.market_id == escrow_market_id, EWrongMarket);
+
+    // Quantum recombine: verify balance and decrement wrapped for ALL outcomes in single loop
+    // (no supply decrement - was never in typed coin form)
+    let outcome_count = balance.outcome_count;
+    let mut i = 0u64;
+    while (i < (outcome_count as u64)) {
+        // Verify sufficient balance (complete set requirement)
+        let bal = get_balance(balance, (i as u8), false);
+        assert!(bal >= amount, EInsufficientBalance);
+
+        // Decrement wrapped and update balance tracker
+        coin_escrow::decrement_wrapped_balance(escrow, i, false, amount);
+        sub_from_balance(balance, (i as u8), false, amount);
+
+        i = i + 1;
+    };
+
+    // Withdraw from escrow
+    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, amount, ctx);
+    coin_escrow::decrement_user_backing(escrow, amount);
+
+    // Check invariant after withdrawal - inline to avoid second loop
+    let escrow_stable = coin_escrow::get_escrowed_stable_balance(escrow);
+    i = 0;
+    while (i < (outcome_count as u64)) {
+        let supply = coin_escrow::get_outcome_stable_supply(escrow, i);
+        let wrapped = coin_escrow::get_outcome_wrapped_stable(escrow, i);
+        assert!(escrow_stable == supply + wrapped, coin_escrow::quantum_invariant_error());
+        i = i + 1;
+    };
+
+    stable_coin
+}
+
+/// Atomically recombine ConditionalMarketBalance back to spot asset.
+/// Single call replaces: N×unwrap_coin → N×burn_step → finish_recombine
+///
+/// Requires equal balance across ALL outcomes (complete set).
+/// Returns the spot asset coin.
+public fun recombine_balance_to_asset<AssetType, StableType>(
+    escrow: &mut coin_escrow::TokenEscrow<AssetType, StableType>,
+    balance: &mut ConditionalMarketBalance<AssetType, StableType>,
+    amount: u64,
+    ctx: &mut TxContext,
+): sui::coin::Coin<AssetType> {
+    assert!(amount > 0, EInvalidBalanceAccess);
+
+    // Validate balance belongs to this market
+    let escrow_market_id = coin_escrow::market_state_id(escrow);
+    assert!(balance.market_id == escrow_market_id, EWrongMarket);
+
+    // Quantum recombine: verify balance and decrement wrapped for ALL outcomes in single loop
+    // (no supply decrement - was never in typed coin form)
+    let outcome_count = balance.outcome_count;
+    let mut i = 0u64;
+    while (i < (outcome_count as u64)) {
+        // Verify sufficient balance (complete set requirement)
+        let bal = get_balance(balance, (i as u8), true);
+        assert!(bal >= amount, EInsufficientBalance);
+
+        // Decrement wrapped and update balance tracker
+        coin_escrow::decrement_wrapped_balance(escrow, i, true, amount);
+        sub_from_balance(balance, (i as u8), true, amount);
+
+        i = i + 1;
+    };
+
+    // Withdraw from escrow
+    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, amount, ctx);
+    coin_escrow::decrement_user_backing(escrow, amount);
+
+    // Check invariant after withdrawal - inline to avoid second loop
+    let escrow_asset = coin_escrow::get_escrowed_asset_balance(escrow);
+    i = 0;
+    while (i < (outcome_count as u64)) {
+        let supply = coin_escrow::get_outcome_asset_supply(escrow, i);
+        let wrapped = coin_escrow::get_outcome_wrapped_asset(escrow, i);
+        assert!(escrow_asset == supply + wrapped, coin_escrow::quantum_invariant_error());
+        i = i + 1;
+    };
+
+    asset_coin
 }
 
 // === Test Helpers ===

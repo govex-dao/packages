@@ -1634,8 +1634,8 @@ fun test_deposit_mint_for_different_outcomes() {
         ctx,
     );
 
-    // Deposit and mint for outcome 1
-    let spot_1 = coin::mint_for_testing<TEST_COIN_A>(2000, ctx);
+    // Deposit and mint for outcome 1 (must be same amount to maintain quantum invariant)
+    let spot_1 = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
     let cond_1 = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
         TEST_COIN_B,
@@ -1647,15 +1647,15 @@ fun test_deposit_mint_for_different_outcomes() {
         ctx,
     );
 
-    // Verify independent conditional coins
+    // Verify conditional coins have equal amounts (quantum model)
     assert!(cond_0.value() == 1000, 0);
-    assert!(cond_1.value() == 2000, 1);
+    assert!(cond_1.value() == 1000, 1);
 
     // Verify escrow balance (accumulated from both deposits)
     let (bal_asset, _) = coin_escrow::get_spot_balances(&escrow);
-    assert!(bal_asset == 3000, 2); // 1000 + 2000
+    assert!(bal_asset == 2000, 2); // 1000 + 1000
 
-    // Verify independent supplies
+    // Verify equal supplies (quantum model)
     let supply_0 = coin_escrow::get_asset_supply<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
         &escrow,
         0,
@@ -1665,7 +1665,7 @@ fun test_deposit_mint_for_different_outcomes() {
         1,
     );
     assert!(supply_0 == 1000, 3);
-    assert!(supply_1 == 2000, 4);
+    assert!(supply_1 == 1000, 4);
 
     coin::burn_for_testing(cond_0);
     coin::burn_for_testing(cond_1);
@@ -2031,7 +2031,7 @@ fun test_cross_outcome_operations() {
     let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
     coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
 
-    // Deposit and mint for outcome 0
+    // Deposit and mint for outcome 0 (quantum model: same amount for all outcomes)
     let spot_0 = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
     let cond_0 = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
@@ -2044,8 +2044,8 @@ fun test_cross_outcome_operations() {
         ctx,
     );
 
-    // Deposit and mint for outcome 1
-    let spot_1 = coin::mint_for_testing<TEST_COIN_A>(2000, ctx);
+    // Deposit and mint for outcome 1 (same amount to maintain quantum invariant)
+    let spot_1 = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
     let mut cond_1 = coin_escrow::deposit_asset_and_mint_conditional<
         TEST_COIN_A,
         TEST_COIN_B,
@@ -2059,7 +2059,7 @@ fun test_cross_outcome_operations() {
 
     // Escrow should have accumulated liquidity
     let (bal_asset, _) = coin_escrow::get_spot_balances(&escrow);
-    assert!(bal_asset == 3000, 0); // 1000 + 2000
+    assert!(bal_asset == 2000, 0); // 1000 + 1000
 
     // Burn outcome 0 conditionals
     coin_escrow::burn_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
@@ -2078,7 +2078,7 @@ fun test_cross_outcome_operations() {
         1,
     );
     assert!(supply_0 == 0, 1);
-    assert!(supply_1 == 2000, 2);
+    assert!(supply_1 == 1000, 2);
 
     // Finalize market for redemption with outcome 1 as winner
     let ms = coin_escrow::get_market_state_mut(&mut escrow);
@@ -2102,7 +2102,7 @@ fun test_cross_outcome_operations() {
 
     // Escrow balance should decrease
     let (bal_asset2, _) = coin_escrow::get_spot_balances(&escrow);
-    assert!(bal_asset2 == 2500, 4); // 3000 - 500
+    assert!(bal_asset2 == 1500, 4); // 2000 - 500
 
     coin::burn_for_testing(cond_1);
     coin::burn_for_testing(withdrawn);
@@ -2201,7 +2201,7 @@ fun split_asset_complete_set_2_for_testing<AssetType, StableType, Cond0, Cond1>(
         1,
         ctx,
     );
-    coin_escrow::finish_split_asset_progress(progress);
+    coin_escrow::finish_split_asset_progress(progress, escrow);
     (cond_0, cond_1)
 }
 
@@ -2223,7 +2223,7 @@ fun split_stable_complete_set_2_for_testing<AssetType, StableType, Cond0, Cond1>
         1,
         ctx,
     );
-    coin_escrow::finish_split_stable_progress(progress);
+    coin_escrow::finish_split_stable_progress(progress, escrow);
     (cond_0, cond_1)
 }
 
@@ -2251,7 +2251,7 @@ fun split_asset_complete_set_3_for_testing<AssetType, StableType, Cond0, Cond1, 
         2,
         ctx,
     );
-    coin_escrow::finish_split_asset_progress(progress);
+    coin_escrow::finish_split_asset_progress(progress, escrow);
     (cond_0, cond_1, cond_2)
 }
 
@@ -2833,16 +2833,27 @@ fun test_assert_quantum_invariant_passes() {
     let spot_stable = coin::mint_for_testing<TEST_COIN_B>(2000, ctx);
     coin_escrow::deposit_spot_coins(&mut escrow, spot_asset, spot_stable);
 
-    // Mint conditional coins (less than escrow balance)
+    // Mint conditional coins (equal to escrow balance for quantum invariant)
+    // Quantum liquidity: escrow == supply[i] for ALL outcomes
     let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
-        &mut escrow, 0, 500, ctx,
+        &mut escrow, 0, 1000, ctx,
     );
     let c1 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
-        &mut escrow, 1, 800, ctx,
+        &mut escrow, 1, 1000, ctx,
+    );
+    // Also mint stable conditionals to match escrow
+    let s0 = coin_escrow::mint_conditional_stable<TEST_COIN_A, TEST_COIN_B, COND_0_STABLE>(
+        &mut escrow, 0, 2000, ctx,
+    );
+    let s1 = coin_escrow::mint_conditional_stable<TEST_COIN_A, TEST_COIN_B, COND_1_STABLE>(
+        &mut escrow, 1, 2000, ctx,
     );
 
-    // Invariant should pass (escrow 1000 >= max supply 800)
+    // Invariant should pass (escrow == supply for all outcomes)
     coin_escrow::assert_quantum_invariant(&escrow);
+
+    coin::burn_for_testing(s0);
+    coin::burn_for_testing(s1);
 
     coin::burn_for_testing(c0);
     coin::burn_for_testing(c1);
@@ -2904,15 +2915,19 @@ fun test_assert_all_invariants_passes() {
         coin::into_balance(spot_stable),
     );
 
-    // Mint conditional coins
+    // Mint conditional coins (equal to escrow for quantum invariant)
     let c0 = coin_escrow::mint_conditional_asset<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
-        &mut escrow, 0, 500, ctx,
+        &mut escrow, 0, 1000, ctx,
+    );
+    let s0 = coin_escrow::mint_conditional_stable<TEST_COIN_A, TEST_COIN_B, COND_0_STABLE>(
+        &mut escrow, 0, 1000, ctx,
     );
 
     // Both invariants should pass
     coin_escrow::assert_all_invariants(&escrow);
 
     coin::burn_for_testing(c0);
+    coin::burn_for_testing(s0);
     test_utils::destroy(escrow);
     ts::end(scenario);
 }
@@ -3085,7 +3100,7 @@ fun test_supply_tracking_split_recombine() {
 }
 
 #[test]
-fun test_quantum_invariant_after_partial_burn() {
+fun test_quantum_invariant_after_partial_burn_and_withdraw() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
 
@@ -3106,7 +3121,7 @@ fun test_quantum_invariant_after_partial_burn() {
         &mut escrow, 0, 1000, ctx,
     );
 
-    // Invariant passes (1000 >= 1000)
+    // Invariant passes (1000 == 1000)
     coin_escrow::assert_quantum_invariant(&escrow);
 
     // Split the coin and burn half
@@ -3115,10 +3130,16 @@ fun test_quantum_invariant_after_partial_burn() {
         &mut escrow, 0, cond_half,
     );
 
-    // Supply should be 500
-    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 500, 0);
+    // Also withdraw to maintain quantum invariant (escrow == supply)
+    let withdrawn = coin_escrow::withdraw_asset_balance(&mut escrow, 500, ctx);
+    coin_escrow::decrement_user_backing(&mut escrow, 500);
+    coin::burn_for_testing(withdrawn);
 
-    // Invariant still passes (1000 >= 500)
+    // Supply should be 500, escrow should be 500
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 500, 0);
+    assert!(coin_escrow::get_escrowed_asset_balance(&escrow) == 500, 1);
+
+    // Invariant still passes (500 == 500)
     coin_escrow::assert_quantum_invariant(&escrow);
 
     coin::burn_for_testing(cond);
@@ -3197,6 +3218,223 @@ fun test_supply_tracks_both_asset_and_stable_independently() {
     assert!(coin_escrow::get_outcome_stable_supply(&escrow, 0) == 0, 3);
 
     coin::burn_for_testing(asset_coin);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+// === Atomic Deposit+Mint Flow Tests ===
+// These tests verify that the Progress pattern enforces the quantum invariant
+
+#[test]
+fun test_split_progress_maintains_quantum_invariant() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 2 outcomes
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // Perform atomic split via Progress pattern
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    let progress = coin_escrow::start_split_asset_progress(&mut escrow, spot_asset);
+
+    let (progress, c0) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        progress, &mut escrow, 0, ctx,
+    );
+    let (progress, c1) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        progress, &mut escrow, 1, ctx,
+    );
+    coin_escrow::finish_split_asset_progress(progress, &escrow);
+
+    // Quantum invariant should hold: escrow == supply for all outcomes
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    // Verify values
+    assert!(coin_escrow::get_escrowed_asset_balance(&escrow) == 1000, 0);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1000, 1);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 1000, 2);
+
+    coin::burn_for_testing(c0);
+    coin::burn_for_testing(c1);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_recombine_progress_maintains_quantum_invariant() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 2 outcomes
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // First, split to create conditional tokens
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    let progress = coin_escrow::start_split_asset_progress(&mut escrow, spot_asset);
+    let (progress, c0) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        progress, &mut escrow, 0, ctx,
+    );
+    let (progress, c1) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        progress, &mut escrow, 1, ctx,
+    );
+    coin_escrow::finish_split_asset_progress(progress, &escrow);
+
+    // Invariant holds after split
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    // Now recombine via Progress pattern
+    let progress = coin_escrow::start_recombine_asset_progress<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, c0,
+    );
+    let progress = coin_escrow::recombine_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        progress, &mut escrow, 1, c1,
+    );
+    let withdrawn = coin_escrow::finish_recombine_asset_progress(progress, &mut escrow, ctx);
+
+    // Quantum invariant should still hold: escrow == supply for all outcomes (both 0)
+    coin_escrow::assert_quantum_invariant(&escrow);
+
+    // Verify values are back to 0
+    assert!(coin_escrow::get_escrowed_asset_balance(&escrow) == 0, 0);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 0, 1);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 0, 2);
+    assert!(coin::value(&withdrawn) == 1000, 3);
+
+    coin::burn_for_testing(withdrawn);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_split_recombine_round_trip_maintains_invariant() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 3 outcomes to test more complex case
+    let market_state = create_test_market_state(3, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    let asset_cap_2 = create_blank_treasury_cap_for_testing<COND_2_ASSET>(ctx);
+    let stable_cap_2 = create_blank_treasury_cap_for_testing<COND_2_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 2, asset_cap_2, stable_cap_2);
+
+    // Split 500 tokens
+    let spot_asset = coin::mint_for_testing<TEST_COIN_A>(500, ctx);
+    let progress = coin_escrow::start_split_asset_progress(&mut escrow, spot_asset);
+    let (progress, c0) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        progress, &mut escrow, 0, ctx,
+    );
+    let (progress, c1) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        progress, &mut escrow, 1, ctx,
+    );
+    let (progress, c2) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_2_ASSET>(
+        progress, &mut escrow, 2, ctx,
+    );
+    coin_escrow::finish_split_asset_progress(progress, &escrow);
+
+    // Check invariant after split
+    coin_escrow::assert_quantum_invariant(&escrow);
+    assert!(coin_escrow::get_escrowed_asset_balance(&escrow) == 500, 0);
+
+    // Recombine back
+    let progress = coin_escrow::start_recombine_asset_progress<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        &mut escrow, 0, c0,
+    );
+    let progress = coin_escrow::recombine_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        progress, &mut escrow, 1, c1,
+    );
+    let progress = coin_escrow::recombine_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_2_ASSET>(
+        progress, &mut escrow, 2, c2,
+    );
+    let withdrawn = coin_escrow::finish_recombine_asset_progress(progress, &mut escrow, ctx);
+
+    // Check invariant after recombine
+    coin_escrow::assert_quantum_invariant(&escrow);
+    assert!(coin_escrow::get_escrowed_asset_balance(&escrow) == 0, 1);
+    assert!(coin::value(&withdrawn) == 500, 2);
+
+    coin::burn_for_testing(withdrawn);
+    test_utils::destroy(escrow);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_multiple_splits_maintain_quantum_invariant() {
+    let mut scenario = ts::begin(@0x1);
+    let ctx = ts::ctx(&mut scenario);
+
+    // Setup escrow with 2 outcomes
+    let market_state = create_test_market_state(2, ctx);
+    let mut escrow = coin_escrow::new<TEST_COIN_A, TEST_COIN_B>(market_state, ctx);
+
+    let asset_cap_0 = create_blank_treasury_cap_for_testing<COND_0_ASSET>(ctx);
+    let stable_cap_0 = create_blank_treasury_cap_for_testing<COND_0_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 0, asset_cap_0, stable_cap_0);
+
+    let asset_cap_1 = create_blank_treasury_cap_for_testing<COND_1_ASSET>(ctx);
+    let stable_cap_1 = create_blank_treasury_cap_for_testing<COND_1_STABLE>(ctx);
+    coin_escrow::register_conditional_caps(&mut escrow, 1, asset_cap_1, stable_cap_1);
+
+    // First split: 1000
+    let spot1 = coin::mint_for_testing<TEST_COIN_A>(1000, ctx);
+    let progress = coin_escrow::start_split_asset_progress(&mut escrow, spot1);
+    let (progress, c0_1) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        progress, &mut escrow, 0, ctx,
+    );
+    let (progress, c1_1) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        progress, &mut escrow, 1, ctx,
+    );
+    coin_escrow::finish_split_asset_progress(progress, &escrow);
+
+    coin_escrow::assert_quantum_invariant(&escrow);
+    assert!(coin_escrow::get_escrowed_asset_balance(&escrow) == 1000, 0);
+
+    // Second split: 500 more
+    let spot2 = coin::mint_for_testing<TEST_COIN_A>(500, ctx);
+    let progress = coin_escrow::start_split_asset_progress(&mut escrow, spot2);
+    let (progress, c0_2) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_0_ASSET>(
+        progress, &mut escrow, 0, ctx,
+    );
+    let (progress, c1_2) = coin_escrow::split_asset_progress_step<TEST_COIN_A, TEST_COIN_B, COND_1_ASSET>(
+        progress, &mut escrow, 1, ctx,
+    );
+    coin_escrow::finish_split_asset_progress(progress, &escrow);
+
+    // Invariant should hold with accumulated values
+    coin_escrow::assert_quantum_invariant(&escrow);
+    assert!(coin_escrow::get_escrowed_asset_balance(&escrow) == 1500, 1);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 0) == 1500, 2);
+    assert!(coin_escrow::get_outcome_asset_supply(&escrow, 1) == 1500, 3);
+
+    coin::burn_for_testing(c0_1);
+    coin::burn_for_testing(c1_1);
+    coin::burn_for_testing(c0_2);
+    coin::burn_for_testing(c1_2);
     test_utils::destroy(escrow);
     ts::end(scenario);
 }

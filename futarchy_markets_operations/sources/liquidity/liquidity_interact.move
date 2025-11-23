@@ -63,12 +63,15 @@ public fun empty_amm_and_return_to_dao<
     );
     let (conditional_asset_amt, conditional_stable_amt) = pool.empty_all_amm_liquidity(ctx);
 
-    // Withdraw spot tokens directly (AMM reserves are virtual, no actual coins to burn)
-    let asset_coin = coin_escrow::withdraw_asset_balance(escrow, conditional_asset_amt, ctx);
-    let stable_coin = coin_escrow::withdraw_stable_balance(escrow, conditional_stable_amt, ctx);
-
-    // Decrement LP backing tracking since DAO is withdrawing its liquidity
-    coin_escrow::decrement_lp_backing(escrow, conditional_asset_amt, conditional_stable_amt);
+    // Use lp_withdraw_quantum to properly decrement supplies and LP backing
+    // CRITICAL: Must decrement supplies to maintain quantum invariant post-finalization
+    // The invariant checks escrow >= supply for winning outcome
+    let (asset_coin, stable_coin) = coin_escrow::lp_withdraw_quantum(
+        escrow,
+        conditional_asset_amt,
+        conditional_stable_amt,
+        ctx,
+    );
 
     (asset_coin, stable_coin)
 }
@@ -401,14 +404,21 @@ public fun collect_protocol_fees<AssetType, StableType>(
         total_fees_collected = total_fees_collected + protocol_fee_stable;
     };
 
-    // Reset fees in the pool after collection
+    // Reset fees in the pool after collection and track collected fees for invariant
     if (protocol_fee_asset > 0 || protocol_fee_stable > 0) {
+        // Track collected fees in escrow for quantum invariant maintenance
+        coin_escrow::track_collected_protocol_fees(
+            escrow,
+            protocol_fee_asset,
+            protocol_fee_stable,
+        );
+
         let market_state = escrow.get_market_state_mut();
         let winning_pool = futarchy_markets_primitives::market_state::get_pool_mut_by_outcome(
             market_state,
             (winning_outcome as u8),
         );
-        winning_pool.reset_protocol_fees();
+        winning_pool.collect_protocol_fees();
 
         // Emit event
         event::emit(ProtocolFeesCollected {

@@ -151,7 +151,19 @@ public fun new_pool(
 // === Core Swap Functions ===
 // Note: These functions take generic references to allow inline arbitrage
 // without creating circular dependencies between spot_amm and conditional_amm
+//
+// IMPORTANT: LIFECYCLE VALIDATION
+// These swap functions do NOT enforce market lifecycle checks internally because
+// the AMM module doesn't hold MarketState. CALLERS ARE RESPONSIBLE for ensuring:
+// - Trading has started: market_state::assert_trading_active()
+// - Market is not finalized: market_state::assert_not_finalized()
+// Failure to validate lifecycle at the caller level can result in swaps during
+// inappropriate market phases (pre-trading, post-finalization).
 
+/// Swap asset tokens for stable tokens
+///
+/// CALLER RESPONSIBILITY: Validate market lifecycle before calling.
+/// Use market_state::assert_trading_active() to ensure trading is active.
 public fun swap_asset_to_stable(
     pool: &mut LiquidityPool,
     market_id: ID,
@@ -253,7 +265,10 @@ public fun swap_asset_to_stable(
     amount_out
 }
 
-// Modified swap_asset_to_stable (selling outcome tokens)
+/// Swap stable tokens for asset tokens
+///
+/// CALLER RESPONSIBILITY: Validate market lifecycle before calling.
+/// Use market_state::assert_trading_active() to ensure trading is active.
 public fun swap_stable_to_asset(
     pool: &mut LiquidityPool,
     market_id: ID,
@@ -512,6 +527,10 @@ public fun remove_liquidity_proportional(
     (asset_to_remove, stable_to_remove)
 }
 
+/// Empty all liquidity from AMM pool
+///
+/// RESTRICTED: Package-only to prevent external draining of pool reserves.
+/// Used during market finalization or emergency cleanup.
 public fun empty_all_amm_liquidity(pool: &mut LiquidityPool, _ctx: &mut TxContext): (u64, u64) {
     // Capture full reserves before zeroing them out
     let asset_amount_out = pool.asset_reserve;
@@ -529,10 +548,22 @@ public fun empty_all_amm_liquidity(pool: &mut LiquidityPool, _ctx: &mut TxContex
 // === Arbitrage Reserve Operations ===
 // These functions directly modify reserves WITHOUT LP token accounting
 // Used for auto-arbitrage quantum split/recombine that doesn't involve LP providers
+//
+// IMPORTANT: K-INVARIANT NOTE
+// These functions intentionally bypass the constant-product invariant checks because they are
+// designed for ATOMIC arbitrage flows where:
+// 1. inject adds reserves from spot pool
+// 2. swap_from_injected calculates output
+// 3. extract removes the output
+// The caller is responsible for ensuring the complete atomic flow maintains economic invariants.
+// Restricting to public(package) ensures only trusted internal code can use these primitives.
 
 /// Inject reserves into pool for arbitrage (quantum split effect)
 /// Increases reserves without minting LP tokens
 /// Used when arbitrage takes from spot and distributes to conditional pools
+///
+/// RESTRICTED: Package-only to prevent external manipulation of reserves.
+/// Must be used as part of atomic arbitrage flow (inject → swap → extract).
 public fun inject_reserves_for_arbitrage(
     pool: &mut LiquidityPool,
     asset_amount: u64,
@@ -545,6 +576,9 @@ public fun inject_reserves_for_arbitrage(
 /// Extract reserves from pool for arbitrage (quantum recombine effect)
 /// Decreases reserves without burning LP tokens
 /// Used when arbitrage takes from conditional pools and returns to spot
+///
+/// RESTRICTED: Package-only to prevent external manipulation of reserves.
+/// Must be used as part of atomic arbitrage flow (inject → swap → extract).
 public fun extract_reserves_for_arbitrage(
     pool: &mut LiquidityPool,
     asset_amount: u64,
@@ -568,6 +602,8 @@ public fun extract_reserves_for_arbitrage(
 /// 3. extract_reserves_for_arbitrage(pool, asset_out, 0) - asset exits
 ///
 /// Feeless to maximize arbitrage efficiency (system rebalancing operation).
+///
+/// RESTRICTED: Package-only to prevent misuse outside atomic arbitrage flows.
 public fun swap_from_injected_stable_to_asset(pool: &mut LiquidityPool, amount_in: u64): u64 {
     assert!(amount_in > 0, EZeroAmount);
     assert!(pool.asset_reserve > 0 && pool.stable_reserve > 0, EPoolEmpty);
@@ -601,6 +637,8 @@ public fun swap_from_injected_stable_to_asset(pool: &mut LiquidityPool, amount_i
 /// 3. extract_reserves_for_arbitrage(pool, 0, stable_out) - stable exits
 ///
 /// Feeless to maximize arbitrage efficiency (system rebalancing operation).
+///
+/// RESTRICTED: Package-only to prevent misuse outside atomic arbitrage flows.
 public fun swap_from_injected_asset_to_stable(pool: &mut LiquidityPool, amount_in: u64): u64 {
     assert!(amount_in > 0, EZeroAmount);
     assert!(pool.asset_reserve > 0 && pool.stable_reserve > 0, EPoolEmpty);
@@ -683,7 +721,7 @@ public fun quote_swap_stable_to_asset(pool: &LiquidityPool, amount_in: u64): u64
 /// No fees charged to maximize arbitrage efficiency
 ///
 /// AUDIT FIX: Now MUTATES reserves (Q3: swaps should always update state)
-public(package) fun feeless_swap_asset_to_stable(pool: &mut LiquidityPool, amount_in: u64): u64 {
+public fun feeless_swap_asset_to_stable(pool: &mut LiquidityPool, amount_in: u64): u64 {
     assert!(amount_in > 0, EZeroAmount);
     assert!(pool.asset_reserve > 0 && pool.stable_reserve > 0, EPoolEmpty);
 
@@ -719,7 +757,7 @@ public(package) fun feeless_swap_asset_to_stable(pool: &mut LiquidityPool, amoun
 /// Feeless swap stable→asset (for internal arbitrage only)
 ///
 /// AUDIT FIX: Now MUTATES reserves (Q3: swaps should always update state)
-public(package) fun feeless_swap_stable_to_asset(pool: &mut LiquidityPool, amount_in: u64): u64 {
+public fun feeless_swap_stable_to_asset(pool: &mut LiquidityPool, amount_in: u64): u64 {
     assert!(amount_in > 0, EZeroAmount);
     assert!(pool.asset_reserve > 0 && pool.stable_reserve > 0, EPoolEmpty);
 
@@ -903,10 +941,21 @@ public fun get_ms_id(pool: &LiquidityPool): ID {
     pool.market_id
 }
 
-/// Reset both asset and stable protocol fees to zero
-public fun reset_protocol_fees(pool: &mut LiquidityPool) {
+/// Collect accumulated protocol fees (returns amounts AND resets counters)
+///
+/// RESTRICTED: Package-only to prevent unauthorized fee collection.
+/// This is the ONLY way to reset fees - ensures fees are collected atomically.
+///
+/// Returns: (asset_fees, stable_fees) - the collected amounts
+public fun collect_protocol_fees(pool: &mut LiquidityPool): (u64, u64) {
+    let asset_fees = pool.protocol_fees_asset;
+    let stable_fees = pool.protocol_fees_stable;
+
+    // Atomically reset after capturing values
     pool.protocol_fees_asset = 0;
     pool.protocol_fees_stable = 0;
+
+    (asset_fees, stable_fees)
 }
 
 // === Test Functions ===

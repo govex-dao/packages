@@ -97,12 +97,14 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
             return existing_balance_opt
         };
 
-        // 1. Take stable from spot pool and use escrow as type converter
-        // Note: Escrow composition changes but total value is preserved
+        // 1. Take stable from spot pool and deposit to escrow
+        // CRITICAL: Must update supplies to maintain quantum invariant
         let stable_taken = unified_spot_pool::take_stable_for_arbitrage(spot_pool, arb_amount);
         coin_escrow::deposit_spot_liquidity(escrow, sui::balance::zero<AssetType>(), stable_taken);
         // Immediately decrement LP backing - arbitrage is internal, not LP deposit
         coin_escrow::decrement_lp_backing(escrow, 0, arb_amount);
+        // Update supplies to maintain invariant: escrow == supply + wrapped
+        coin_escrow::increment_supplies_for_all_outcomes(escrow, 0, arb_amount);
 
         // 2-5. Do all pool operations in one block
         let (asset_outs, min_asset) = {
@@ -154,10 +156,15 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
         };
 
         // 6. Withdraw asset from escrow and return to spot pool
+        // Decrement supplies by minimum (what we actually withdraw)
+        coin_escrow::decrement_supplies_for_all_outcomes(escrow, min_asset, 0);
         let asset_coin = coin_escrow::withdraw_asset_balance(escrow, min_asset, ctx);
         unified_spot_pool::return_asset_from_arbitrage(spot_pool, coin::into_balance(asset_coin));
 
         // 7. Create dust balance with extra asset per outcome
+        // CRITICAL: For sum-based invariant, we need to:
+        // - Decrement supply by extra (dust) amount per outcome
+        // - Increment wrapped by dust amount (so dust can be unwrapped later)
         let mut dust_balance = conditional_balance::new<AssetType, StableType>(
             market_id,
             (outcome_count as u8),
@@ -168,6 +175,11 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
             let asset_out = *vector::borrow(&asset_outs, i);
             let dust = asset_out - min_asset;
             if (dust > 0) {
+                // Decrement supply for this outcome's extra
+                coin_escrow::decrement_supply_for_outcome(escrow, i, true, dust);
+                // Increment wrapped so dust can be used in balance operations
+                coin_escrow::increment_wrapped_balance(escrow, i, true, dust);
+                // Add to balance tracker
                 conditional_balance::add_to_balance(&mut dust_balance, (i as u8), true, dust);
             };
             i = i + 1;
@@ -184,12 +196,14 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
             return existing_balance_opt
         };
 
-        // 1. Take asset from spot pool and use escrow as type converter
-        // Note: Escrow composition changes but total value is preserved
+        // 1. Take asset from spot pool and deposit to escrow
+        // CRITICAL: Must update supplies to maintain quantum invariant
         let asset_taken = unified_spot_pool::take_asset_for_arbitrage(spot_pool, arb_amount);
         coin_escrow::deposit_spot_liquidity(escrow, asset_taken, sui::balance::zero<StableType>());
         // Immediately decrement LP backing - arbitrage is internal, not LP deposit
         coin_escrow::decrement_lp_backing(escrow, arb_amount, 0);
+        // Update supplies to maintain invariant: escrow == supply + wrapped
+        coin_escrow::increment_supplies_for_all_outcomes(escrow, arb_amount, 0);
 
         // 2-5. Do all pool operations in one block
         let (stable_outs, min_stable) = {
@@ -241,10 +255,15 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
         };
 
         // 6. Withdraw stable from escrow and return to spot pool
+        // Decrement supplies by minimum (what we actually withdraw)
+        coin_escrow::decrement_supplies_for_all_outcomes(escrow, 0, min_stable);
         let stable_coin = coin_escrow::withdraw_stable_balance(escrow, min_stable, ctx);
         unified_spot_pool::return_stable_from_arbitrage(spot_pool, coin::into_balance(stable_coin));
 
         // 7. Create dust balance with extra stable per outcome
+        // CRITICAL: For sum-based invariant, we need to:
+        // - Decrement supply by extra (dust) amount per outcome
+        // - Increment wrapped by dust amount (so dust can be unwrapped later)
         let mut dust_balance = conditional_balance::new<AssetType, StableType>(
             market_id,
             (outcome_count as u8),
@@ -255,6 +274,11 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
             let stable_out = *vector::borrow(&stable_outs, i);
             let dust = stable_out - min_stable;
             if (dust > 0) {
+                // Decrement supply for this outcome's extra
+                coin_escrow::decrement_supply_for_outcome(escrow, i, false, dust);
+                // Increment wrapped so dust can be used in balance operations
+                coin_escrow::increment_wrapped_balance(escrow, i, false, dust);
+                // Add to balance tracker
                 conditional_balance::add_to_balance(&mut dust_balance, (i as u8), false, dust);
             };
             i = i + 1;
@@ -272,6 +296,9 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
         result_balance
     };
     option::destroy_none(existing_balance_opt);
+
+    // Validate quantum invariant after arbitrage to catch any supply tracking errors
+    coin_escrow::assert_quantum_invariant(escrow);
 
     option::some(final_balance)
 }
@@ -295,6 +322,9 @@ public fun burn_complete_set_and_withdraw_asset<AssetType, StableType>(
     let mut i = 0u64;
     while (i < outcome_count) {
         conditional_balance::sub_from_balance(balance, (i as u8), true, amount);
+        // CRITICAL: Decrement wrapped balance tracking for each outcome
+        // The amounts were in a balance object (tracked as wrapped), now being burned
+        coin_escrow::decrement_wrapped_balance(escrow, i, true, amount);
         i = i + 1;
     };
 
@@ -321,6 +351,9 @@ public fun burn_complete_set_and_withdraw_stable<AssetType, StableType>(
     let mut i = 0u64;
     while (i < outcome_count) {
         conditional_balance::sub_from_balance(balance, (i as u8), false, amount);
+        // CRITICAL: Decrement wrapped balance tracking for each outcome
+        // The amounts were in a balance object (tracked as wrapped), now being burned
+        coin_escrow::decrement_wrapped_balance(escrow, i, false, amount);
         i = i + 1;
     };
 

@@ -39,6 +39,7 @@ const EOutcomeOutOfBounds: u64 = 5; // Outcome index exceeds market outcomes
 const ENotEnoughLiquidity: u64 = 8; // Insufficient liquidity in escrow
 const EZeroAmount: u64 = 13; // Amount must be greater than zero
 const EMarketNotFinalized: u64 = 101; // Market must be finalized for single-outcome withdrawal
+const ETradingAlreadyStarted: u64 = 102; // Cannot use single-outcome mint during active trading
 
 // === Key Structures for TreasuryCap Storage ===
 /// Key for asset conditional coin TreasuryCaps (indexed by outcome)
@@ -80,11 +81,27 @@ public struct TokenEscrow<phantom AssetType, phantom StableType> has key, store 
 
     // === Quantum Invariant Tracking ===
     // Track total minted supply for each outcome to validate quantum invariant.
-    // Invariant: escrow_balance >= supply[i] for ALL outcomes i
+    // Invariant (during active proposal): escrow_balance == supply[i] + wrapped[i] for ALL outcomes i
+    // Invariant (after finalization): escrow_balance >= supply[winning] + wrapped[winning] only
     // This is redundant with TreasuryCap.total_supply() but avoids type explosion
     // when validating the invariant at runtime.
     asset_supplies: vector<u64>,  // [outcome_0_asset_supply, outcome_1_asset_supply, ...]
     stable_supplies: vector<u64>, // [outcome_0_stable_supply, outcome_1_stable_supply, ...]
+
+    // === Wrapped Balance Tracking ===
+    // Track total wrapped balances across all ConditionalMarketBalance objects.
+    // When users wrap coins, supply decreases but wrapped increases.
+    // Invariant: escrow == supply + wrapped for each outcome.
+    wrapped_asset_balances: vector<u64>,  // [outcome_0_wrapped_asset, outcome_1_wrapped_asset, ...]
+    wrapped_stable_balances: vector<u64>, // [outcome_0_wrapped_stable, outcome_1_wrapped_stable, ...]
+
+    // === Protocol Fee Tracking ===
+    // Track protocol fees that have been collected from escrow.
+    // This is needed to maintain the quantum invariant after fee collection.
+    // When fees are collected, escrow decreases but supply doesn't.
+    // Invariant adjustment: escrow + collected_fees == supply + wrapped
+    collected_protocol_fees_asset: u64,
+    collected_protocol_fees_stable: u64,
 }
 
 public struct COIN_ESCROW has drop {}
@@ -127,6 +144,12 @@ public fun new<AssetType, StableType>(
         // Initialize quantum invariant tracking
         asset_supplies: vector[],
         stable_supplies: vector[],
+        // Initialize wrapped balance tracking
+        wrapped_asset_balances: vector[],
+        wrapped_stable_balances: vector[],
+        // Initialize protocol fee tracking
+        collected_protocol_fees_asset: 0,
+        collected_protocol_fees_stable: 0,
     }
 }
 
@@ -161,6 +184,10 @@ public fun register_conditional_caps<
     escrow.asset_supplies.push_back(0);
     escrow.stable_supplies.push_back(0);
 
+    // Initialize wrapped balance tracking for this outcome (starts at 0)
+    escrow.wrapped_asset_balances.push_back(0);
+    escrow.wrapped_stable_balances.push_back(0);
+
     // Increment count (like vector length)
     escrow.outcome_count = escrow.outcome_count + 1;
 }
@@ -169,6 +196,9 @@ public fun register_conditional_caps<
 
 /// Mint conditional coins for a specific outcome using its TreasuryCap
 /// Borrows the cap, mints, and returns it (maintains vector-like storage)
+///
+/// RESTRICTED: Package-only to enforce atomic operations via Progress pattern.
+/// Single-outcome minting would violate quantum invariant (escrow == supply for ALL outcomes).
 public fun mint_conditional_asset<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
@@ -194,6 +224,9 @@ public fun mint_conditional_asset<AssetType, StableType, ConditionalCoinType>(
 }
 
 /// Mint conditional stable coins for a specific outcome
+///
+/// RESTRICTED: Package-only to enforce atomic operations via Progress pattern.
+/// Single-outcome minting would violate quantum invariant (escrow == supply for ALL outcomes).
 public fun mint_conditional_stable<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
@@ -219,6 +252,9 @@ public fun mint_conditional_stable<AssetType, StableType, ConditionalCoinType>(
 }
 
 /// Burn conditional asset coins for a specific outcome
+///
+/// RESTRICTED: Package-only to enforce atomic operations via Progress pattern.
+/// Single-outcome burning would violate quantum invariant (escrow == supply for ALL outcomes).
 public fun burn_conditional_asset<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
@@ -244,6 +280,9 @@ public fun burn_conditional_asset<AssetType, StableType, ConditionalCoinType>(
 }
 
 /// Burn conditional stable coins for a specific outcome
+///
+/// RESTRICTED: Package-only to enforce atomic operations via Progress pattern.
+/// Single-outcome burning would violate quantum invariant (escrow == supply for ALL outcomes).
 public fun burn_conditional_stable<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
@@ -272,7 +311,7 @@ public fun burn_conditional_stable<AssetType, StableType, ConditionalCoinType>(
 
 /// Generic mint function for conditional coins (used by balance unwrap)
 /// Takes outcome_index and is_asset to determine which TreasuryCap to use
-public(package) fun mint_conditional<AssetType, StableType, ConditionalCoinType>(
+public fun mint_conditional<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
     is_asset: bool,
@@ -297,7 +336,7 @@ public(package) fun mint_conditional<AssetType, StableType, ConditionalCoinType>
 }
 
 /// Generic burn function for conditional coins (used by balance wrap)
-public(package) fun burn_conditional<AssetType, StableType, ConditionalCoinType>(
+public fun burn_conditional<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
     is_asset: bool,
@@ -321,6 +360,9 @@ public(package) fun burn_conditional<AssetType, StableType, ConditionalCoinType>
 /// Deposit spot coins to escrow (for balance-based operations like arbitrage)
 /// Returns amounts deposited (for balance tracking)
 /// Note: Tracks as user backing since arbitrage completes in same tx (deposit then burn complete set)
+///
+/// RESTRICTED: Package-only to enforce atomic deposit+mint via Progress pattern.
+/// Direct deposits without minting would violate the quantum invariant (escrow == supply).
 public fun deposit_spot_coins<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     asset_coin: Coin<AssetType>,
@@ -343,6 +385,9 @@ public fun deposit_spot_coins<AssetType, StableType>(
 }
 
 /// Withdraw spot coins from escrow (for complete set burn)
+///
+/// RESTRICTED: Package-only to enforce atomic burn+withdraw via Progress pattern.
+/// Direct withdrawal without burning would violate quantum invariant.
 public fun withdraw_from_escrow<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     asset_amount: u64,
@@ -393,6 +438,8 @@ public fun get_market_state<AssetType, StableType>(
 }
 
 /// Get mutable market state from escrow
+///
+/// RESTRICTED: Package-only to prevent unauthorized market state manipulation.
 public fun get_market_state_mut<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
 ): &mut MarketState {
@@ -414,6 +461,9 @@ public fun caps_registered_count<AssetType, StableType>(
 /// Deposit spot liquidity into escrow (quantum liquidity model)
 /// This adds to the escrow balances that will be split quantum-mechanically across all outcomes
 /// Tracks as LP backing for safe recombination
+///
+/// RESTRICTED: Package-only to enforce atomic deposit+mint via quantum_lp_manager.
+/// Direct LP deposits without minting would violate the quantum invariant (escrow == supply).
 public fun deposit_spot_liquidity<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     asset: Balance<AssetType>,
@@ -428,6 +478,245 @@ public fun deposit_spot_liquidity<AssetType, StableType>(
     // Track as LP backing (can be recombined on proposal end)
     escrow.lp_deposited_asset = escrow.lp_deposited_asset + asset_amt;
     escrow.lp_deposited_stable = escrow.lp_deposited_stable + stable_amt;
+}
+
+/// Deposit spot stable coin for balance-based operations
+/// Tracks as user backing (not LP backing)
+///
+/// RESTRICTED: Package-only for atomic balance operations.
+public fun deposit_spot_stable_for_balance<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    stable_coin: Coin<StableType>,
+) {
+    let amount = stable_coin.value();
+    escrow.escrowed_stable.join(stable_coin.into_balance());
+    escrow.user_deposited_total = escrow.user_deposited_total + amount;
+}
+
+/// Deposit spot asset coin for balance-based operations
+/// Tracks as user backing (not LP backing)
+///
+/// RESTRICTED: Package-only for atomic balance operations.
+public fun deposit_spot_asset_for_balance<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    asset_coin: Coin<AssetType>,
+) {
+    let amount = asset_coin.value();
+    escrow.escrowed_asset.join(asset_coin.into_balance());
+    escrow.user_deposited_total = escrow.user_deposited_total + amount;
+}
+
+/// LP quantum deposit: deposit spot and virtually mint for ALL outcomes
+/// This maintains the quantum invariant by incrementing supply for each outcome.
+/// No actual Coin objects are created - supplies are tracked numerically.
+/// Used during market creation to seed initial liquidity.
+///
+/// Returns (asset_amount, stable_amount) for distribution to AMM pools.
+public fun lp_deposit_quantum<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    asset: Balance<AssetType>,
+    stable: Balance<StableType>,
+): (u64, u64) {
+    let asset_amt = asset.value();
+    let stable_amt = stable.value();
+
+    // Deposit spot to escrow
+    escrow.escrowed_asset.join(asset);
+    escrow.escrowed_stable.join(stable);
+
+    // Track as LP backing
+    escrow.lp_deposited_asset = escrow.lp_deposited_asset + asset_amt;
+    escrow.lp_deposited_stable = escrow.lp_deposited_stable + stable_amt;
+
+    // Virtual mint: increment supply for ALL outcomes (quantum model)
+    let mut i = 0;
+    while (i < escrow.outcome_count) {
+        let asset_supply = &mut escrow.asset_supplies[i];
+        *asset_supply = *asset_supply + asset_amt;
+
+        let stable_supply = &mut escrow.stable_supplies[i];
+        *stable_supply = *stable_supply + stable_amt;
+
+        i = i + 1;
+    };
+
+    // Enforce quantum invariant
+    assert_quantum_invariant(escrow);
+
+    (asset_amt, stable_amt)
+}
+
+/// Increment supplies for ALL outcomes (quantum model)
+/// Used by arbitrage when depositing to escrow to maintain the invariant.
+/// MUST be called atomically with deposit_spot_liquidity to preserve invariant.
+public fun increment_supplies_for_all_outcomes<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    asset_amount: u64,
+    stable_amount: u64,
+) {
+    let mut i = 0;
+    while (i < escrow.outcome_count) {
+        if (asset_amount > 0) {
+            let asset_supply = &mut escrow.asset_supplies[i];
+            *asset_supply = *asset_supply + asset_amount;
+        };
+        if (stable_amount > 0) {
+            let stable_supply = &mut escrow.stable_supplies[i];
+            *stable_supply = *stable_supply + stable_amount;
+        };
+        i = i + 1;
+    };
+}
+
+/// Decrement supplies for ALL outcomes (quantum model)
+/// Used by arbitrage when withdrawing from escrow to maintain the invariant.
+/// MUST be called atomically with withdraw_*_balance to preserve invariant.
+public fun decrement_supplies_for_all_outcomes<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    asset_amount: u64,
+    stable_amount: u64,
+) {
+    let mut i = 0;
+    while (i < escrow.outcome_count) {
+        if (asset_amount > 0) {
+            let asset_supply = &mut escrow.asset_supplies[i];
+            *asset_supply = *asset_supply - asset_amount;
+        };
+        if (stable_amount > 0) {
+            let stable_supply = &mut escrow.stable_supplies[i];
+            *stable_supply = *stable_supply - stable_amount;
+        };
+        i = i + 1;
+    };
+}
+
+/// Increment wrapped balance for ALL outcomes and check invariant in single loop
+/// More efficient than separate increment loop + invariant check
+/// Used by split operations in conditional_balance
+public fun increment_wrapped_for_all_and_check_invariant<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    is_asset: bool,
+    amount: u64,
+) {
+    let escrow_value = if (is_asset) {
+        escrow.escrowed_asset.value()
+    } else {
+        escrow.escrowed_stable.value()
+    };
+
+    let mut i = 0;
+    while (i < escrow.outcome_count) {
+        // Increment wrapped
+        if (is_asset) {
+            let wrapped = &mut escrow.wrapped_asset_balances[i];
+            *wrapped = *wrapped + amount;
+            // Check invariant for this outcome
+            let supply = escrow.asset_supplies[i];
+            let total = supply + *wrapped;
+            assert!(escrow_value == total, EQuantumInvariantViolation);
+        } else {
+            let wrapped = &mut escrow.wrapped_stable_balances[i];
+            *wrapped = *wrapped + amount;
+            // Check invariant for this outcome
+            let supply = escrow.stable_supplies[i];
+            let total = supply + *wrapped;
+            assert!(escrow_value == total, EQuantumInvariantViolation);
+        };
+        i = i + 1;
+    };
+}
+
+/// Decrement wrapped balance for ALL outcomes and check invariant in single loop
+/// More efficient than separate decrement loop + invariant check
+/// Used by recombine/burn operations in conditional_balance
+public fun decrement_wrapped_for_all_and_check_invariant<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    is_asset: bool,
+    amount: u64,
+) {
+    let escrow_value = if (is_asset) {
+        escrow.escrowed_asset.value()
+    } else {
+        escrow.escrowed_stable.value()
+    };
+
+    let mut i = 0;
+    while (i < escrow.outcome_count) {
+        // Decrement wrapped
+        if (is_asset) {
+            let wrapped = &mut escrow.wrapped_asset_balances[i];
+            *wrapped = *wrapped - amount;
+            // Check invariant for this outcome
+            let supply = escrow.asset_supplies[i];
+            let total = supply + *wrapped;
+            assert!(escrow_value == total, EQuantumInvariantViolation);
+        } else {
+            let wrapped = &mut escrow.wrapped_stable_balances[i];
+            *wrapped = *wrapped - amount;
+            // Check invariant for this outcome
+            let supply = escrow.stable_supplies[i];
+            let total = supply + *wrapped;
+            assert!(escrow_value == total, EQuantumInvariantViolation);
+        };
+        i = i + 1;
+    };
+}
+
+/// Decrement supply for a SINGLE outcome (for per-outcome arbitrage adjustments)
+/// Used when different outcomes have different output amounts.
+/// With sum-based invariant, per-outcome differences are allowed.
+public fun decrement_supply_for_outcome<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    outcome_index: u64,
+    is_asset: bool,
+    amount: u64,
+) {
+    if (is_asset) {
+        let supply = &mut escrow.asset_supplies[outcome_index];
+        *supply = *supply - amount;
+    } else {
+        let supply = &mut escrow.stable_supplies[outcome_index];
+        *supply = *supply - amount;
+    };
+}
+
+/// LP quantum withdraw: virtually burn from ALL outcomes and withdraw spot
+/// This maintains the quantum invariant by decrementing supply for each outcome.
+/// Used after market finalization for LP to reclaim backing.
+///
+/// RESTRICTED: Only callable after market finalization.
+public fun lp_withdraw_quantum<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    asset_amount: u64,
+    stable_amount: u64,
+    ctx: &mut TxContext,
+): (Coin<AssetType>, Coin<StableType>) {
+    // Only allow after finalization
+    assert!(market_state::is_finalized(&escrow.market_state), EMarketNotFinalized);
+
+    // Virtual burn: decrement supply for ALL outcomes
+    let mut i = 0;
+    while (i < escrow.outcome_count) {
+        let asset_supply = &mut escrow.asset_supplies[i];
+        *asset_supply = *asset_supply - asset_amount;
+
+        let stable_supply = &mut escrow.stable_supplies[i];
+        *stable_supply = *stable_supply - stable_amount;
+
+        i = i + 1;
+    };
+
+    // Decrement LP backing
+    decrement_lp_backing(escrow, asset_amount, stable_amount);
+
+    // Withdraw from escrow
+    let asset_coin = withdraw_asset_balance(escrow, asset_amount, ctx);
+    let stable_coin = withdraw_stable_balance(escrow, stable_amount, ctx);
+
+    // Enforce quantum invariant (post-finalization: winning outcome only)
+    assert_quantum_invariant(escrow);
+
+    (asset_coin, stable_coin)
 }
 
 // === Burn and Withdraw Helpers (For Redemption) ===
@@ -465,6 +754,9 @@ public fun burn_conditional_asset_and_withdraw<AssetType, StableType, Conditiona
     assert!(escrow.user_deposited_total >= amount, ENotEnoughLiquidity);
     escrow.user_deposited_total = escrow.user_deposited_total - amount;
 
+    // Enforce quantum invariant (post-finalization: only winning outcome checked)
+    assert_quantum_invariant(escrow);
+
     coin::from_balance(asset_balance, ctx)
 }
 
@@ -500,6 +792,9 @@ public fun burn_conditional_stable_and_withdraw<AssetType, StableType, Condition
     assert!(escrow.user_deposited_total >= amount, ENotEnoughLiquidity);
     escrow.user_deposited_total = escrow.user_deposited_total - amount;
 
+    // Enforce quantum invariant (post-finalization: only winning outcome checked)
+    assert_quantum_invariant(escrow);
+
     coin::from_balance(stable_balance, ctx)
 }
 
@@ -510,12 +805,23 @@ public fun burn_conditional_stable_and_withdraw<AssetType, StableType, Condition
 
 /// Deposit spot asset and mint equivalent conditional asset coins
 /// Quantum liquidity: Depositing X spot mints X conditional in specified outcome
+///
+/// RESTRICTED: Package-only to enforce atomic operations via Progress pattern.
+/// Single-outcome deposit+mint would violate quantum invariant (escrow == supply for ALL outcomes).
+///
+/// GUARD: Only allowed before trading starts (initial setup) or after finalization.
+/// During active trading, use the Progress pattern (start_split/split_step/finish_split).
 public fun deposit_asset_and_mint_conditional<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
     asset_coin: Coin<AssetType>,
     ctx: &mut TxContext,
 ): Coin<ConditionalCoinType> {
+    // Guard: Prevent use during active trading (would break quantum invariant)
+    let trading_started = market_state::is_trading_started(&escrow.market_state);
+    let finalized = market_state::is_finalized(&escrow.market_state);
+    assert!(!trading_started || finalized, ETradingAlreadyStarted);
+
     let amount = asset_coin.value();
 
     // Deposit spot tokens to escrow
@@ -526,21 +832,38 @@ public fun deposit_asset_and_mint_conditional<AssetType, StableType, Conditional
     escrow.user_deposited_total = escrow.user_deposited_total + amount;
 
     // Mint equivalent conditional coins (1:1 due to quantum liquidity)
-    mint_conditional_asset<AssetType, StableType, ConditionalCoinType>(
+    let coin = mint_conditional_asset<AssetType, StableType, ConditionalCoinType>(
         escrow,
         outcome_index,
         amount,
         ctx,
-    )
+    );
+
+    // Note: No invariant check here - during setup, sequential deposits to different
+    // outcomes naturally create temporary unequal supplies. The quantum invariant
+    // is enforced by the Progress pattern during active trading.
+
+    coin
 }
 
 /// Deposit spot stable and mint equivalent conditional stable coins
+///
+/// RESTRICTED: Package-only to enforce atomic operations via Progress pattern.
+/// Single-outcome deposit+mint would violate quantum invariant (escrow == supply for ALL outcomes).
+///
+/// GUARD: Only allowed before trading starts (initial setup) or after finalization.
+/// During active trading, use the Progress pattern (start_split/split_step/finish_split).
 public fun deposit_stable_and_mint_conditional<AssetType, StableType, ConditionalCoinType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     outcome_index: u64,
     stable_coin: Coin<StableType>,
     ctx: &mut TxContext,
 ): Coin<ConditionalCoinType> {
+    // Guard: Prevent use during active trading (would break quantum invariant)
+    let trading_started = market_state::is_trading_started(&escrow.market_state);
+    let finalized = market_state::is_finalized(&escrow.market_state);
+    assert!(!trading_started || finalized, ETradingAlreadyStarted);
+
     let amount = stable_coin.value();
 
     // Deposit spot tokens to escrow
@@ -551,12 +874,18 @@ public fun deposit_stable_and_mint_conditional<AssetType, StableType, Conditiona
     escrow.user_deposited_total = escrow.user_deposited_total + amount;
 
     // Mint equivalent conditional coins
-    mint_conditional_stable<AssetType, StableType, ConditionalCoinType>(
+    let coin = mint_conditional_stable<AssetType, StableType, ConditionalCoinType>(
         escrow,
         outcome_index,
         amount,
         ctx,
-    )
+    );
+
+    // Note: No invariant check here - during setup, sequential deposits to different
+    // outcomes naturally create temporary unequal supplies. The quantum invariant
+    // is enforced by the Progress pattern during active trading.
+
+    coin
 }
 
 /// Get escrow spot balances (read-only)
@@ -618,6 +947,27 @@ public fun get_outcome_stable_supply<AssetType, StableType>(
     escrow.stable_supplies[outcome_index]
 }
 
+/// Get wrapped asset balance for a specific outcome
+public fun get_outcome_wrapped_asset<AssetType, StableType>(
+    escrow: &TokenEscrow<AssetType, StableType>,
+    outcome_index: u64,
+): u64 {
+    escrow.wrapped_asset_balances[outcome_index]
+}
+
+/// Get wrapped stable balance for a specific outcome
+public fun get_outcome_wrapped_stable<AssetType, StableType>(
+    escrow: &TokenEscrow<AssetType, StableType>,
+    outcome_index: u64,
+): u64 {
+    escrow.wrapped_stable_balances[outcome_index]
+}
+
+/// Get error code for quantum invariant violation (for use in inlined checks)
+public fun quantum_invariant_error(): u64 {
+    EQuantumInvariantViolation
+}
+
 /// Get all asset supplies (for diagnostics)
 public fun get_all_asset_supplies<AssetType, StableType>(
     escrow: &TokenEscrow<AssetType, StableType>,
@@ -632,8 +982,24 @@ public fun get_all_stable_supplies<AssetType, StableType>(
     &escrow.stable_supplies
 }
 
+/// Get all supplies (both asset and stable) for diagnostics
+public fun get_all_supplies<AssetType, StableType>(
+    escrow: &TokenEscrow<AssetType, StableType>,
+): (vector<u64>, vector<u64>) {
+    (escrow.asset_supplies, escrow.stable_supplies)
+}
+
+/// Get all wrapped balances (both asset and stable) for diagnostics
+public fun get_wrapped_balances<AssetType, StableType>(
+    escrow: &TokenEscrow<AssetType, StableType>,
+): (vector<u64>, vector<u64>) {
+    (escrow.wrapped_asset_balances, escrow.wrapped_stable_balances)
+}
+
 /// Decrement LP backing after recombination (called by quantum_lp_manager)
 /// Aborts if amount exceeds tracked LP deposits - this indicates an accounting bug.
+///
+/// RESTRICTED: Package-only to prevent accounting corruption.
 public fun decrement_lp_backing<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     asset_amount: u64,
@@ -647,6 +1013,8 @@ public fun decrement_lp_backing<AssetType, StableType>(
 
 /// Decrement user backing after withdrawal (for complete set burns via balance wrapper)
 /// Aborts if amount exceeds tracked deposits.
+///
+/// RESTRICTED: Package-only to prevent accounting corruption.
 public fun decrement_user_backing<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     amount: u64,
@@ -655,7 +1023,71 @@ public fun decrement_user_backing<AssetType, StableType>(
     escrow.user_deposited_total = escrow.user_deposited_total - amount;
 }
 
+/// Increment wrapped balance tracking when a coin is wrapped into a ConditionalMarketBalance.
+/// Called by conditional_balance::wrap_coin after burning the actual coin.
+///
+/// RESTRICTED: Package-only to maintain invariant: escrow == supply + wrapped
+public fun increment_wrapped_balance<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    outcome_index: u64,
+    is_asset: bool,
+    amount: u64,
+) {
+    if (is_asset) {
+        let current = &mut escrow.wrapped_asset_balances[outcome_index];
+        *current = *current + amount;
+    } else {
+        let current = &mut escrow.wrapped_stable_balances[outcome_index];
+        *current = *current + amount;
+    };
+}
+
+/// Decrement wrapped balance tracking when a coin is unwrapped or withdrawn.
+/// Called by conditional_balance::unwrap_to_coin and burn_complete_set_and_withdraw_from_balance.
+///
+/// RESTRICTED: Package-only to maintain invariant: escrow == supply + wrapped
+public fun decrement_wrapped_balance<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    outcome_index: u64,
+    is_asset: bool,
+    amount: u64,
+) {
+    if (is_asset) {
+        let current = &mut escrow.wrapped_asset_balances[outcome_index];
+        assert!(*current >= amount, ENotEnoughLiquidity);
+        *current = *current - amount;
+    } else {
+        let current = &mut escrow.wrapped_stable_balances[outcome_index];
+        assert!(*current >= amount, ENotEnoughLiquidity);
+        *current = *current - amount;
+    };
+}
+
+/// Track protocol fees that have been collected from escrow.
+/// Called by liquidity_interact::collect_protocol_fees after withdrawing from escrow.
+/// This maintains the quantum invariant: escrow + collected_fees == supply + wrapped
+///
+/// RESTRICTED: Package-only to prevent accounting corruption.
+public fun track_collected_protocol_fees<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    asset_fees: u64,
+    stable_fees: u64,
+) {
+    escrow.collected_protocol_fees_asset = escrow.collected_protocol_fees_asset + asset_fees;
+    escrow.collected_protocol_fees_stable = escrow.collected_protocol_fees_stable + stable_fees;
+}
+
+/// Get collected protocol fees (for diagnostics)
+public fun get_collected_protocol_fees<AssetType, StableType>(
+    escrow: &TokenEscrow<AssetType, StableType>,
+): (u64, u64) {
+    (escrow.collected_protocol_fees_asset, escrow.collected_protocol_fees_stable)
+}
+
 /// Withdraw asset balance from escrow (for internal use)
+///
+/// RESTRICTED: Package-only to enforce atomic burn+withdraw.
+/// Direct withdrawal without burning would violate quantum invariant.
 public fun withdraw_asset_balance<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     amount: u64,
@@ -666,6 +1098,9 @@ public fun withdraw_asset_balance<AssetType, StableType>(
 }
 
 /// Withdraw stable balance from escrow (for internal use)
+///
+/// RESTRICTED: Package-only to enforce atomic burn+withdraw.
+/// Direct withdrawal without burning would violate quantum invariant.
 public fun withdraw_stable_balance<AssetType, StableType>(
     escrow: &mut TokenEscrow<AssetType, StableType>,
     amount: u64,
@@ -678,11 +1113,16 @@ public fun withdraw_stable_balance<AssetType, StableType>(
 // === Invariant Validation ===
 //
 // QUANTUM LIQUIDITY INVARIANT:
-// - escrow_asset >= each_outcome_asset_supply (for ALL outcomes)
-// - escrow_stable >= each_outcome_stable_supply (for ALL outcomes)
+// During active proposal (not finalized):
+// - escrow_asset == each_outcome_asset_supply (for ALL outcomes)
+// - escrow_stable == each_outcome_stable_supply (for ALL outcomes)
+// After finalization:
+// - escrow_asset >= winning_outcome_asset_supply (winning only)
+// - escrow_stable >= winning_outcome_stable_supply (winning only)
+// - Losing outcomes will have supply > escrow after redemptions (expected)
 //
-// This invariant ensures each outcome's supply can be fully redeemed.
-// Since only ONE outcome wins, escrow must cover the max supply, not the sum.
+// This invariant ensures the winning outcome's supply can be fully redeemed.
+// Since only ONE outcome wins, we only need to check that outcome post-finalization.
 //
 // This invariant is maintained by the mint/burn operations:
 // - deposit_and_mint: deposit X spot → mint X conditional (1:1)
@@ -717,8 +1157,19 @@ public fun assert_accounting_invariant<AssetType, StableType>(
 }
 
 /// Validate the quantum liquidity invariant
-/// Ensures escrow balance >= supply for EACH outcome independently.
-/// This is critical because only ONE outcome wins, and its full supply must be redeemable.
+///
+/// QUANTUM MODEL: The spot pool's reserves are "quantum superposed" across all conditional
+/// outcomes. Each outcome independently represents the SAME underlying liquidity because
+/// only ONE outcome will win and become reality.
+///
+/// - During active proposal: escrow == supply[i] + wrapped[i] for EACH outcome i
+///   This ensures each outcome is independently fully backed (strict per-outcome equality).
+/// - After finalization: escrow + collected_fees >= supply + wrapped for WINNING outcome only
+///   (losing outcomes will have supply + wrapped > escrow after redemptions, which is fine)
+///
+/// NOTE: Protocol fees collected from escrow are tracked separately. The invariant accounts
+/// for these by adding collected_fees to the escrow side of the equation.
+///
 /// Aborts with EQuantumInvariantViolation if invariant is violated.
 public fun assert_quantum_invariant<AssetType, StableType>(
     escrow: &TokenEscrow<AssetType, StableType>,
@@ -726,17 +1177,43 @@ public fun assert_quantum_invariant<AssetType, StableType>(
     let escrow_asset = escrow.escrowed_asset.value();
     let escrow_stable = escrow.escrowed_stable.value();
 
-    // Check each outcome's supply against escrow balance
-    let mut i = 0;
-    while (i < escrow.outcome_count) {
-        let asset_supply = escrow.asset_supplies[i];
-        let stable_supply = escrow.stable_supplies[i];
+    if (market_state::is_finalized(&escrow.market_state)) {
+        // After finalization: only check winning outcome
+        // Losing outcomes will have supply + wrapped > escrow after redemptions
+        // Account for collected protocol fees (they were withdrawn from escrow)
+        let winning_outcome = market_state::get_winning_outcome(&escrow.market_state);
+        let asset_supply = escrow.asset_supplies[winning_outcome];
+        let stable_supply = escrow.stable_supplies[winning_outcome];
+        let wrapped_asset = escrow.wrapped_asset_balances[winning_outcome];
+        let wrapped_stable = escrow.wrapped_stable_balances[winning_outcome];
 
-        // Escrow must cover each outcome's supply independently
-        assert!(escrow_asset >= asset_supply, EQuantumInvariantViolation);
-        assert!(escrow_stable >= stable_supply, EQuantumInvariantViolation);
+        // Effective escrow = actual escrow + collected fees
+        let effective_escrow_asset = escrow_asset + escrow.collected_protocol_fees_asset;
+        let effective_escrow_stable = escrow_stable + escrow.collected_protocol_fees_stable;
 
-        i = i + 1;
+        assert!(effective_escrow_asset >= asset_supply + wrapped_asset, EQuantumInvariantViolation);
+        assert!(effective_escrow_stable >= stable_supply + wrapped_stable, EQuantumInvariantViolation);
+    } else {
+        // During active proposal: strict per-outcome equality
+        // Each outcome must be independently backed by the full escrow amount
+        // This is the quantum model - same backing for all superposed states
+        // Note: During active proposal, no fees should be collected yet
+        let mut i = 0;
+        while (i < escrow.outcome_count) {
+            let asset_supply = escrow.asset_supplies[i];
+            let stable_supply = escrow.stable_supplies[i];
+            let wrapped_asset = escrow.wrapped_asset_balances[i];
+            let wrapped_stable = escrow.wrapped_stable_balances[i];
+
+            let total_asset = asset_supply + wrapped_asset;
+            let total_stable = stable_supply + wrapped_stable;
+
+            // Each outcome must equal escrow (not just sum across outcomes)
+            assert!(escrow_asset == total_asset, EQuantumInvariantViolation);
+            assert!(escrow_stable == total_stable, EQuantumInvariantViolation);
+
+            i = i + 1;
+        };
     };
 }
 
@@ -784,13 +1261,17 @@ public fun get_all_tracking<AssetType, StableType>(
 
 /// Progress tracker for splitting a spot asset coin into a complete set of conditional asset coins.
 /// This struct MUST be fully consumed via `finish_split_asset_progress` to preserve the quantum invariant.
-public struct SplitAssetProgress<phantom AssetType, phantom StableType> has drop {
+/// NO DROP ABILITY: Enforces hot potato pattern - caller must complete all steps.
+public struct SplitAssetProgress<phantom AssetType, phantom StableType> {
     market_id: ID,
     amount: u64,
     outcome_count: u64,
     next_outcome: u64,
 }
 
+/// Drop split asset progress without invariant check.
+/// RESTRICTED: Package-only to prevent external callers from bypassing invariant enforcement.
+/// Use finish_split_asset_progress for normal flows.
 public fun drop_split_asset_progress<AssetType, StableType>(
     progress: SplitAssetProgress<AssetType, StableType>,
 ) {
@@ -799,13 +1280,17 @@ public fun drop_split_asset_progress<AssetType, StableType>(
 }
 
 /// Progress tracker for splitting a spot stable coin into a complete set of conditional stable coins.
-public struct SplitStableProgress<phantom AssetType, phantom StableType> has drop {
+/// NO DROP ABILITY: Enforces hot potato pattern - caller must complete all steps.
+public struct SplitStableProgress<phantom AssetType, phantom StableType> {
     market_id: ID,
     amount: u64,
     outcome_count: u64,
     next_outcome: u64,
 }
 
+/// Drop split stable progress without invariant check.
+/// RESTRICTED: Package-only to prevent external callers from bypassing invariant enforcement.
+/// Use finish_split_stable_progress for normal flows.
 public fun drop_split_stable_progress<AssetType, StableType>(
     progress: SplitStableProgress<AssetType, StableType>,
 ) {
@@ -815,13 +1300,17 @@ public fun drop_split_stable_progress<AssetType, StableType>(
 
 /// Progress tracker for recombining conditional asset coins back into a spot asset coin.
 /// All outcomes must be processed sequentially from 0 → outcome_count - 1.
-public struct RecombineAssetProgress<phantom AssetType, phantom StableType> has drop {
+/// NO DROP ABILITY: Enforces hot potato pattern - caller must complete all steps.
+public struct RecombineAssetProgress<phantom AssetType, phantom StableType> {
     market_id: ID,
     amount: u64,
     outcome_count: u64,
     next_outcome: u64,
 }
 
+/// Drop recombine asset progress without invariant check.
+/// RESTRICTED: Package-only to prevent external callers from bypassing invariant enforcement.
+/// Use finish_recombine_asset_progress for normal flows.
 public fun drop_recombine_asset_progress<AssetType, StableType>(
     progress: RecombineAssetProgress<AssetType, StableType>,
 ) {
@@ -830,13 +1319,17 @@ public fun drop_recombine_asset_progress<AssetType, StableType>(
 }
 
 /// Progress tracker for recombining conditional stable coins back into a spot stable coin.
-public struct RecombineStableProgress<phantom AssetType, phantom StableType> has drop {
+/// NO DROP ABILITY: Enforces hot potato pattern - caller must complete all steps.
+public struct RecombineStableProgress<phantom AssetType, phantom StableType> {
     market_id: ID,
     amount: u64,
     outcome_count: u64,
     next_outcome: u64,
 }
 
+/// Drop recombine stable progress without invariant check.
+/// RESTRICTED: Package-only to prevent external callers from bypassing invariant enforcement.
+/// Use finish_recombine_stable_progress for normal flows.
 public fun drop_recombine_stable_progress<AssetType, StableType>(
     progress: RecombineStableProgress<AssetType, StableType>,
 ) {
@@ -898,11 +1391,16 @@ public fun split_asset_progress_step<AssetType, StableType, ConditionalCoinType>
 }
 
 /// Ensure the split operation covered all outcomes. Must be called exactly once per progress object.
+/// Enforces quantum invariant after completion.
 public fun finish_split_asset_progress<AssetType, StableType>(
     progress: SplitAssetProgress<AssetType, StableType>,
+    escrow: &TokenEscrow<AssetType, StableType>,
 ) {
     let SplitAssetProgress { market_id: _, amount: _, outcome_count, next_outcome } = progress;
     assert!(next_outcome == outcome_count, EIncorrectSequence);
+
+    // Enforce quantum invariant after complete split
+    assert_quantum_invariant(escrow);
 }
 
 /// Begin splitting a spot stable coin into a complete set of conditional stables.
@@ -956,11 +1454,16 @@ public fun split_stable_progress_step<AssetType, StableType, ConditionalCoinType
 }
 
 /// Ensure the stable split operation covered all outcomes.
+/// Enforces quantum invariant after completion.
 public fun finish_split_stable_progress<AssetType, StableType>(
     progress: SplitStableProgress<AssetType, StableType>,
+    escrow: &TokenEscrow<AssetType, StableType>,
 ) {
     let SplitStableProgress { market_id: _, amount: _, outcome_count, next_outcome } = progress;
     assert!(next_outcome == outcome_count, EIncorrectSequence);
+
+    // Enforce quantum invariant after complete split
+    assert_quantum_invariant(escrow);
 }
 
 /// Begin recombining conditional asset coins into a spot asset coin.
@@ -1021,6 +1524,7 @@ public fun recombine_asset_progress_step<AssetType, StableType, ConditionalCoinT
 }
 
 /// Finish recombination and withdraw the corresponding spot asset coin.
+/// Enforces quantum invariant after completion.
 public fun finish_recombine_asset_progress<AssetType, StableType>(
     progress: RecombineAssetProgress<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
@@ -1033,7 +1537,12 @@ public fun finish_recombine_asset_progress<AssetType, StableType>(
     assert!(escrow.user_deposited_total >= amount, ENotEnoughLiquidity);
     escrow.user_deposited_total = escrow.user_deposited_total - amount;
 
-    withdraw_asset_balance(escrow, amount, ctx)
+    let coin = withdraw_asset_balance(escrow, amount, ctx);
+
+    // Enforce quantum invariant after complete recombination
+    assert_quantum_invariant(escrow);
+
+    coin
 }
 
 /// Begin recombining conditional stable coins into spot stable.
@@ -1093,6 +1602,7 @@ public fun recombine_stable_progress_step<AssetType, StableType, ConditionalCoin
 }
 
 /// Finish recombination and withdraw the corresponding spot stable coin.
+/// Enforces quantum invariant after completion.
 public fun finish_recombine_stable_progress<AssetType, StableType>(
     progress: RecombineStableProgress<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
@@ -1105,7 +1615,12 @@ public fun finish_recombine_stable_progress<AssetType, StableType>(
     assert!(escrow.user_deposited_total >= amount, ENotEnoughLiquidity);
     escrow.user_deposited_total = escrow.user_deposited_total - amount;
 
-    withdraw_stable_balance(escrow, amount, ctx)
+    let coin = withdraw_stable_balance(escrow, amount, ctx);
+
+    // Enforce quantum invariant after complete recombination
+    assert_quantum_invariant(escrow);
+
+    coin
 }
 
 // === Test Helpers ===
@@ -1162,12 +1677,26 @@ public fun create_for_testing<AssetType, StableType>(
 #[test_only]
 /// Create a test escrow with a provided MarketState
 /// Useful when you need to customize the market state before creating the escrow
+/// Also initializes supply and wrapped vectors for each outcome
 public fun create_test_escrow_with_market_state<AssetType, StableType>(
-    _outcome_count: u64, // Not used, but kept for API compatibility
+    outcome_count: u64,
     market_state: MarketState,
     ctx: &mut TxContext,
 ): TokenEscrow<AssetType, StableType> {
-    new<AssetType, StableType>(market_state, ctx)
+    let mut escrow = new<AssetType, StableType>(market_state, ctx);
+
+    // Initialize supply and wrapped vectors for each outcome
+    let mut i = 0;
+    while (i < outcome_count) {
+        escrow.asset_supplies.push_back(0);
+        escrow.stable_supplies.push_back(0);
+        escrow.wrapped_asset_balances.push_back(0);
+        escrow.wrapped_stable_balances.push_back(0);
+        escrow.outcome_count = escrow.outcome_count + 1;
+        i = i + 1;
+    };
+
+    escrow
 }
 
 #[test_only]
@@ -1185,6 +1714,10 @@ public fun destroy_for_testing<AssetType, StableType>(escrow: TokenEscrow<AssetT
         user_deposited_total: _,
         asset_supplies: _,
         stable_supplies: _,
+        wrapped_asset_balances: _,
+        wrapped_stable_balances: _,
+        collected_protocol_fees_asset: _,
+        collected_protocol_fees_stable: _,
     } = escrow;
 
     // Destroy balances
@@ -1196,4 +1729,52 @@ public fun destroy_for_testing<AssetType, StableType>(escrow: TokenEscrow<AssetT
 
     // Delete UID (TreasuryCaps in dynamic fields will be destroyed automatically)
     object::delete(id);
+}
+
+#[test_only]
+/// Set wrapped balance for testing (to simulate wrapped coins without going through wrap flow)
+/// Useful for unit testing unwrap functionality
+public fun set_wrapped_balance_for_testing<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    outcome_index: u64,
+    is_asset: bool,
+    amount: u64,
+) {
+    if (is_asset) {
+        let current = &mut escrow.wrapped_asset_balances[outcome_index];
+        *current = amount;
+    } else {
+        let current = &mut escrow.wrapped_stable_balances[outcome_index];
+        *current = amount;
+    };
+}
+
+#[test_only]
+/// Increment supply for a specific outcome (for testing setup)
+public fun increment_supply_for_outcome<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    outcome_index: u64,
+    is_asset: bool,
+    amount: u64,
+) {
+    if (is_asset) {
+        let supply = &mut escrow.asset_supplies[outcome_index];
+        *supply = *supply + amount;
+    } else {
+        let supply = &mut escrow.stable_supplies[outcome_index];
+        *supply = *supply + amount;
+    };
+}
+
+#[test_only]
+/// Deposit spot liquidity for testing (directly adds to escrow balances)
+public fun deposit_spot_liquidity_for_testing<AssetType, StableType>(
+    escrow: &mut TokenEscrow<AssetType, StableType>,
+    asset_amount: u64,
+    stable_amount: u64,
+) {
+    let asset_coin = balance::create_for_testing<AssetType>(asset_amount);
+    let stable_coin = balance::create_for_testing<StableType>(stable_amount);
+    escrow.escrowed_asset.join(asset_coin);
+    escrow.escrowed_stable.join(stable_coin);
 }

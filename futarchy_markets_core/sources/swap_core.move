@@ -138,9 +138,6 @@ public fun swap_asset_to_stable<AssetType, StableType, AssetConditionalCoin, Sta
     )
 }
 
-// DELETED: swap_asset_to_stable_entry
-// Old entry function - replaced by swap_clean.move functions
-
 /// Swap conditional stable coins to conditional asset coins
 /// Requires valid SwapSession to ensure metrics are updated at end of PTB
 public fun swap_stable_to_asset<AssetType, StableType, AssetConditionalCoin, StableConditionalCoin>(
@@ -281,12 +278,6 @@ public fun swap_balance_asset_to_stable<AssetType, StableType>(
     );
     assert!((outcome_idx as u64) < market_outcome_count, EInvalidOutcome);
 
-    // Lazy init price leaderboard on first swap (after init actions complete)
-    // TODO: Re-enable when price_leaderboard functions are implemented
-    // if (!futarchy_markets_primitives::market_state::has_price_leaderboard(market_state)) {
-    //     futarchy_markets_primitives::market_state::init_price_leaderboard(market_state, ctx);
-    // };
-
     // Subtract from asset balance (input)
     // Note: sub_from_balance validates balance sufficiency internally
     conditional_balance::sub_from_balance(balance, outcome_idx, true, amount_in);
@@ -317,6 +308,12 @@ public fun swap_balance_asset_to_stable<AssetType, StableType>(
 
     // Add to stable balance (output)
     conditional_balance::add_to_balance(balance, outcome_idx, false, amount_out);
+
+    // CRITICAL: Update wrapped balance tracking to maintain quantum invariant
+    // When swapping in balance space, the wrapped amounts must transfer between asset/stable
+    // This ensures unwrap_to_coin can properly decrement the output type's wrapped balance
+    coin_escrow::decrement_wrapped_balance(escrow, (outcome_idx as u64), true, amount_in);
+    coin_escrow::increment_wrapped_balance(escrow, (outcome_idx as u64), false, amount_out);
 
     amount_out
 }
@@ -407,6 +404,12 @@ public fun swap_balance_stable_to_asset<AssetType, StableType>(
 
     // Add to asset balance (output)
     conditional_balance::add_to_balance(balance, outcome_idx, true, amount_out);
+
+    // CRITICAL: Update wrapped balance tracking to maintain quantum invariant
+    // When swapping in balance space, the wrapped amounts must transfer between asset/stable
+    // This ensures unwrap_to_coin can properly decrement the output type's wrapped balance
+    coin_escrow::decrement_wrapped_balance(escrow, (outcome_idx as u64), false, amount_in);
+    coin_escrow::increment_wrapped_balance(escrow, (outcome_idx as u64), true, amount_out);
 
     amount_out
 }

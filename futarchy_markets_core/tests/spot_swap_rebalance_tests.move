@@ -134,6 +134,34 @@ fun add_liquidity_to_conditional_pools(
         );
         i = i + 1;
     };
+
+    // Also update supply tracking to match AMM reserves
+    let mut i = 0;
+    while (i < outcome_count) {
+        coin_escrow::increment_supply_for_outcome(escrow, i, true, reserve_per_outcome);
+        coin_escrow::increment_supply_for_outcome(escrow, i, false, reserve_per_outcome);
+        i = i + 1;
+    };
+
+    // Also deposit to escrow to match
+    coin_escrow::deposit_spot_liquidity_for_testing(escrow, reserve_per_outcome, reserve_per_outcome);
+}
+
+#[test_only]
+/// Add extra liquidity to escrow and update supplies for all outcomes
+/// This maintains the quantum invariant: escrow == supply + wrapped
+fun deposit_extra_liquidity_to_escrow(
+    escrow: &mut TokenEscrow<TEST_COIN_A, TEST_COIN_B>,
+    asset_amount: u64,
+    stable_amount: u64,
+    ctx: &mut TxContext,
+) {
+    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(asset_amount, ctx);
+    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(stable_amount, ctx);
+    coin_escrow::deposit_spot_coins(escrow, asset_for_escrow, stable_for_escrow);
+
+    // Update supplies for all outcomes to maintain quantum invariant
+    coin_escrow::increment_supplies_for_all_outcomes(escrow, asset_amount, stable_amount);
 }
 
 #[test_only]
@@ -182,10 +210,8 @@ fun test_spot_swap_scenario_price_too_high() {
     let mut escrow = create_test_escrow_with_markets(2, 1_000_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
-    // Add liquidity to escrow for arbitrage
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    // Add liquidity to escrow for arbitrage (with supply tracking for quantum invariant)
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Verify spot price is outside conditional range initially
     let (min_cond_price, max_cond_price) = get_conditional_price_range(&escrow);
@@ -235,10 +261,8 @@ fun test_spot_swap_scenario_price_too_low() {
     let mut escrow = create_test_escrow_with_markets(2, 1_000_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
-    // Add liquidity to escrow for arbitrage
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(10_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(10_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    // Add liquidity to escrow for arbitrage (with supply tracking for quantum invariant)
+    deposit_extra_liquidity_to_escrow(&mut escrow, 10_000_000_000, 10_000_000_000, ctx);
 
     // Verify spot price is outside conditional range initially
     let (min_cond_price, max_cond_price) = get_conditional_price_range(&escrow);
@@ -286,10 +310,8 @@ fun test_spot_swap_scenario_already_in_range() {
     let mut escrow = create_test_escrow_with_markets(2, 1_000_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow, 1_000_000_000, ctx);
 
-    // Add liquidity to escrow
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(5_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(5_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    // Add liquidity to escrow (with supply tracking for quantum invariant)
+    deposit_extra_liquidity_to_escrow(&mut escrow, 5_000_000_000, 5_000_000_000, ctx);
 
     // Verify spot price is in conditional range initially
     let (min_cond_price, max_cond_price) = get_conditional_price_range(&escrow);
@@ -349,10 +371,8 @@ fun test_post_quantum_split_spot_swap() {
     let mut escrow = create_test_escrow_with_markets(2, 400_000_000, &clock, ctx);
     add_liquidity_to_conditional_pools(&mut escrow, 400_000_000, ctx);
 
-    // Add more liquidity to escrow for arbitrage operations
-    let asset_for_escrow = coin::mint_for_testing<TEST_COIN_A>(2_000_000_000, ctx);
-    let stable_for_escrow = coin::mint_for_testing<TEST_COIN_B>(2_000_000_000, ctx);
-    coin_escrow::deposit_spot_coins(&mut escrow, asset_for_escrow, stable_for_escrow);
+    // Add more liquidity to escrow for arbitrage operations (with supply tracking)
+    deposit_extra_liquidity_to_escrow(&mut escrow, 2_000_000_000, 2_000_000_000, ctx);
 
     // Simulate a spot swap: stable → asset (100 stable)
     // This will move spot price significantly due to low liquidity

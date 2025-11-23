@@ -421,7 +421,7 @@ fun test_check_price_under_max() {
 }
 
 #[test]
-fun test_reset_protocol_fees() {
+fun test_collect_protocol_fees() {
     let (mut scenario, mut clock) = start();
     clock.set_for_testing(1000);
 
@@ -436,11 +436,22 @@ fun test_reset_protocol_fees() {
     );
 
     // Initially zero
-    assert!(conditional_amm::get_protocol_fees(&pool) == 0, 0);
+    assert!(conditional_amm::get_protocol_fees_asset(&pool) == 0, 0);
+    assert!(conditional_amm::get_protocol_fees_stable(&pool) == 0, 1);
 
-    // Reset should work (keeps it at zero)
-    conditional_amm::reset_protocol_fees(&mut pool);
-    assert!(conditional_amm::get_protocol_fees(&pool) == 0, 1);
+    // Set some fees for testing
+    conditional_amm::set_protocol_fees_for_testing(&mut pool, 100, 200);
+    assert!(conditional_amm::get_protocol_fees_asset(&pool) == 100, 2);
+    assert!(conditional_amm::get_protocol_fees_stable(&pool) == 200, 3);
+
+    // Collect should return fees AND reset to zero
+    let (asset_fees, stable_fees) = conditional_amm::collect_protocol_fees(&mut pool);
+    assert!(asset_fees == 100, 4);
+    assert!(stable_fees == 200, 5);
+
+    // After collection, fees should be zero
+    assert!(conditional_amm::get_protocol_fees_asset(&pool) == 0, 6);
+    assert!(conditional_amm::get_protocol_fees_stable(&pool) == 0, 7);
 
     conditional_amm::destroy_for_testing(pool);
     end(scenario, clock);

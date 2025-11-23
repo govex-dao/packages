@@ -816,7 +816,7 @@ async function main() {
     swap2Tx.moveCall({
       target: `${primitivesPackageId}::coin_escrow::finish_split_stable_progress`,
       typeArguments: [assetType, stableType],
-      arguments: [splitProgress],
+      arguments: [splitProgress, getSharedEscrowRef(swap2Tx)],
     });
 
     const acceptOutcome = conditionalOutcomes.find((o) => o.index === ACCEPT_OUTCOME_INDEX);
@@ -920,124 +920,105 @@ async function main() {
     console.log();
   } else {
     console.log("📊 SWAP 2: Balance-based conditional swap (stable → outcome 1 asset ONLY)...");
+    console.log("   Note: Balance-based swaps require conditional coin types for quantum invariant");
 
-    const coins2 = await sdk.client.getCoins({
-      owner: activeAddress,
-      coinType: stableType,
-    });
+    // Balance-based swaps still need conditional coin types to maintain quantum invariant
+    // The "balance-based" refers to holding positions in a ConditionalMarketBalance
+    // instead of individual typed Coin objects
+    if (!conditionalCoinsInfo || conditionalOutcomes.length === 0) {
+      console.log("⚠️  SKIPPED: Balance-based swaps require conditional coin types to be deployed");
+      console.log("   Run: npm run deploy-conditional-coins");
+      console.log();
+    } else {
+      const coins2 = await sdk.client.getCoins({
+        owner: activeAddress,
+        coinType: stableType,
+      });
 
-    const swap2Tx = new Transaction();
-    const [firstCoin2, ...restCoins2] = coins2.data.map((c) => swap2Tx.object(c.coinObjectId));
-    if (restCoins2.length > 0) {
-      swap2Tx.mergeCoins(firstCoin2, restCoins2);
+      const swap2Tx = new Transaction();
+      const [firstCoin2, ...restCoins2] = coins2.data.map((c) => swap2Tx.object(c.coinObjectId));
+      if (restCoins2.length > 0) {
+        swap2Tx.mergeCoins(firstCoin2, restCoins2);
+      }
+
+      const [stableCoin2] = swap2Tx.splitCoins(firstCoin2, [swap2Tx.pure.u64(swapAmount2)]);
+
+      // Step 1: Create swap session (hot potato)
+      const session = swap2Tx.moveCall({
+        target: `${marketsPackageId}::swap_core::begin_swap_session`,
+        typeArguments: [assetType, stableType],
+        arguments: [getSharedEscrowRef(swap2Tx)],
+      });
+
+      // Step 2: Get market state ID and create ConditionalMarketBalance
+      const marketStateId2 = swap2Tx.moveCall({
+        target: `${primitivesPackageId}::coin_escrow::market_state_id`,
+        typeArguments: [assetType, stableType],
+        arguments: [getSharedEscrowRef(swap2Tx)],
+      });
+
+      const balance = swap2Tx.moveCall({
+        target: `${primitivesPackageId}::conditional_balance::new`,
+        typeArguments: [assetType, stableType],
+        arguments: [
+          marketStateId2,
+          swap2Tx.pure.u8(2), // outcome_count = 2
+        ],
+      });
+
+      // Step 3: Use atomic split_stable_to_balance (single call for all outcomes!)
+      // This replaces the N-call pattern: start_split → N×split_step → finish_split → N×wrap_coin
+      swap2Tx.moveCall({
+        target: `${primitivesPackageId}::conditional_balance::split_stable_to_balance`,
+        typeArguments: [assetType, stableType],
+        arguments: [
+          getSharedEscrowRef(swap2Tx),
+          balance,
+          stableCoin2,
+        ],
+      });
+
+      // Step 4: Swap ONLY in outcome 1 AMM (stable → asset)
+      swap2Tx.moveCall({
+        target: `${marketsPackageId}::swap_core::swap_balance_stable_to_asset`,
+        typeArguments: [assetType, stableType],
+        arguments: [
+          session,
+          getSharedEscrowRef(swap2Tx),
+          balance,
+          swap2Tx.pure.u8(1), // outcome_index = 1 (Accept ONLY!)
+          swap2Tx.pure.u64(swapAmount2),
+          swap2Tx.pure.u64(0), // min_amount_out
+          swap2Tx.sharedObjectRef({
+            objectId: "0x6",
+            initialSharedVersion: 1,
+            mutable: false,
+          }),
+        ],
+      });
+
+      // Step 5: Finalize session (consumes hot potato)
+      swap2Tx.moveCall({
+        target: `${marketsPackageId}::swap_core::finalize_swap_session`,
+        typeArguments: [assetType, stableType],
+        arguments: [session, getSharedEscrowRef(swap2Tx)],
+      });
+
+      // Step 6: Transfer balance NFT to recipient
+      swap2Tx.transferObjects([balance], swap2Tx.pure.address(activeAddress));
+      swap2Tx.transferObjects([firstCoin2], swap2Tx.pure.address(activeAddress));
+
+      await executeTransaction(sdk, swap2Tx, {
+        network: "devnet",
+        description: "Balance-based conditional swap",
+        showObjectChanges: true,
+      });
+
+      console.log(`✅ Conditional swap complete (${Number(swapAmount2) / 1e9} stable → outcome 1 asset)`);
+      console.log("   Swapped ONLY in Accept market (outcome 1) using balance-based flow");
+      console.log("   This pushes TWAP toward Accept winning!");
+      console.log();
     }
-
-    const [stableCoin2] = swap2Tx.splitCoins(firstCoin2, [swap2Tx.pure.u64(swapAmount2)]);
-
-    // Step 1: Create swap session (hot potato)
-    const session = swap2Tx.moveCall({
-      target: `${marketsPackageId}::swap_core::begin_swap_session`,
-      typeArguments: [assetType, stableType],
-      arguments: [getSharedEscrowRef(swap2Tx)],
-    });
-
-    // Step 2: Get market state ID
-    const marketStateId2 = swap2Tx.moveCall({
-      target: `${primitivesPackageId}::coin_escrow::market_state_id`,
-      typeArguments: [assetType, stableType],
-      arguments: [getSharedEscrowRef(swap2Tx)],
-    });
-
-    // Step 3: Create ConditionalMarketBalance
-    const balance = swap2Tx.moveCall({
-      target: `${primitivesPackageId}::conditional_balance::new`,
-      typeArguments: [assetType, stableType],
-      arguments: [
-        marketStateId2,
-        swap2Tx.pure.u8(2), // outcome_count = 2
-      ],
-    });
-
-    // Step 4: Deposit spot stable to escrow (quantum - backs ALL outcomes)
-    const zeroAssetCoin = swap2Tx.moveCall({
-      target: "0x2::coin::zero",
-      typeArguments: [assetType],
-      arguments: [],
-    });
-
-    swap2Tx.moveCall({
-      target: `${primitivesPackageId}::coin_escrow::deposit_spot_coins`,
-      typeArguments: [assetType, stableType],
-      arguments: [
-        getSharedEscrowRef(swap2Tx),
-        zeroAssetCoin,
-        stableCoin2,
-      ],
-    });
-
-    // Step 5: Add stable to balance for BOTH outcomes (quantum - same amount in both)
-    swap2Tx.moveCall({
-      target: `${primitivesPackageId}::conditional_balance::add_to_balance`,
-      typeArguments: [assetType, stableType],
-      arguments: [
-        balance,
-        swap2Tx.pure.u8(0),
-        swap2Tx.pure.bool(false), // is_asset = false (stable)
-        swap2Tx.pure.u64(swapAmount2),
-      ],
-    });
-
-    swap2Tx.moveCall({
-      target: `${primitivesPackageId}::conditional_balance::add_to_balance`,
-      typeArguments: [assetType, stableType],
-      arguments: [
-        balance,
-        swap2Tx.pure.u8(1),
-        swap2Tx.pure.bool(false), // is_asset = false (stable)
-        swap2Tx.pure.u64(swapAmount2),
-      ],
-    });
-
-    // Step 6: Swap ONLY in outcome 1 AMM (stable → asset)
-    swap2Tx.moveCall({
-      target: `${marketsPackageId}::swap_core::swap_balance_stable_to_asset`,
-      typeArguments: [assetType, stableType],
-      arguments: [
-        session,
-        getSharedEscrowRef(swap2Tx),
-        balance,
-        swap2Tx.pure.u8(1), // outcome_index = 1 (Accept ONLY!)
-        swap2Tx.pure.u64(swapAmount2),
-        swap2Tx.pure.u64(0), // min_amount_out
-        swap2Tx.sharedObjectRef({
-          objectId: "0x6",
-          initialSharedVersion: 1,
-          mutable: false,
-        }),
-      ],
-    });
-
-    // Step 7: Finalize session (consumes hot potato)
-    swap2Tx.moveCall({
-      target: `${marketsPackageId}::swap_core::finalize_swap_session`,
-      typeArguments: [assetType, stableType],
-      arguments: [session, getSharedEscrowRef(swap2Tx)],
-    });
-
-    // Step 8: Transfer balance NFT to recipient
-    swap2Tx.transferObjects([balance], swap2Tx.pure.address(activeAddress));
-    swap2Tx.transferObjects([firstCoin2], swap2Tx.pure.address(activeAddress));
-
-    await executeTransaction(sdk, swap2Tx, {
-      network: "devnet",
-      description: "Balance-based conditional swap",
-      showObjectChanges: true,
-    });
-
-    console.log(`✅ Conditional swap complete (${Number(swapAmount2) / 1e9} stable → outcome 1 asset)`);
-    console.log("   Swapped ONLY in Accept market (outcome 1) using balance-based flow");
-    console.log("   This pushes TWAP toward Accept winning!");
-    console.log();
   }
 
   // ============================================================================

@@ -450,6 +450,234 @@ export class ConditionalBalance {
     });
   }
 
+  // === Atomic Balance Operations (Quantum Invariant Safe) ===
+
+  /**
+   * Atomically split spot stable to balance for ALL outcomes.
+   *
+   * Single call replaces the N-call pattern:
+   * deposit → N×add_to_balance
+   *
+   * Maintains quantum invariant automatically by incrementing wrapped
+   * balance for all outcomes in a single transaction.
+   *
+   * @param tx - Transaction
+   * @param config - Split configuration
+   * @returns Amount deposited (u64)
+   *
+   * @example
+   * ```typescript
+   * const amount = ConditionalBalance.splitStableToBalance(tx, {
+   *   primitivesPackageId,
+   *   assetType,
+   *   stableType,
+   *   escrowId: "0xescrow...",
+   *   balanceObj: balance,
+   *   stableCoin: coin,
+   * });
+   * ```
+   */
+  static splitStableToBalance(
+    tx: Transaction,
+    config: {
+      primitivesPackageId: string;
+      assetType: string;
+      stableType: string;
+      escrowId: string;
+      balanceObj: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['object']>;
+      stableCoin: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['splitCoins']>[number];
+    }
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: TransactionUtils.buildTarget(
+        config.primitivesPackageId,
+        'conditional_balance',
+        'split_stable_to_balance'
+      ),
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [
+        tx.object(config.escrowId),
+        config.balanceObj as ReturnType<Transaction['moveCall']>,
+        config.stableCoin as ReturnType<Transaction['moveCall']>,
+      ],
+    });
+  }
+
+  /**
+   * Atomically split spot asset to balance for ALL outcomes.
+   *
+   * Single call replaces the N-call pattern:
+   * deposit → N×add_to_balance
+   *
+   * Maintains quantum invariant automatically.
+   *
+   * @param tx - Transaction
+   * @param config - Split configuration
+   * @returns Amount deposited (u64)
+   */
+  static splitAssetToBalance(
+    tx: Transaction,
+    config: {
+      primitivesPackageId: string;
+      assetType: string;
+      stableType: string;
+      escrowId: string;
+      balanceObj: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['object']>;
+      assetCoin: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['splitCoins']>[number];
+    }
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: TransactionUtils.buildTarget(
+        config.primitivesPackageId,
+        'conditional_balance',
+        'split_asset_to_balance'
+      ),
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [
+        tx.object(config.escrowId),
+        config.balanceObj as ReturnType<Transaction['moveCall']>,
+        config.assetCoin as ReturnType<Transaction['moveCall']>,
+      ],
+    });
+  }
+
+  /**
+   * Atomically recombine balance to spot stable.
+   *
+   * Requires equal balance across ALL outcomes (complete set requirement).
+   * Single call replaces: N×sub_from_balance → withdraw pattern.
+   *
+   * Maintains quantum invariant automatically.
+   *
+   * @param tx - Transaction
+   * @param config - Recombine configuration
+   * @returns Spot stable coin
+   *
+   * @example
+   * ```typescript
+   * const stableCoin = ConditionalBalance.recombineToStable(tx, {
+   *   primitivesPackageId,
+   *   assetType,
+   *   stableType,
+   *   escrowId: "0xescrow...",
+   *   balanceObj: balance,
+   *   amount: 1000000000n,
+   * });
+   * tx.transferObjects([stableCoin], recipient);
+   * ```
+   */
+  static recombineToStable(
+    tx: Transaction,
+    config: {
+      primitivesPackageId: string;
+      assetType: string;
+      stableType: string;
+      escrowId: string;
+      balanceObj: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['object']>;
+      amount: bigint | number;
+    }
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: TransactionUtils.buildTarget(
+        config.primitivesPackageId,
+        'conditional_balance',
+        'recombine_balance_to_stable'
+      ),
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [
+        tx.object(config.escrowId),
+        config.balanceObj as ReturnType<Transaction['moveCall']>,
+        tx.pure.u64(config.amount),
+      ],
+    });
+  }
+
+  /**
+   * Atomically recombine balance to spot asset.
+   *
+   * Requires equal balance across ALL outcomes (complete set requirement).
+   * Single call replaces: N×sub_from_balance → withdraw pattern.
+   *
+   * Maintains quantum invariant automatically.
+   *
+   * @param tx - Transaction
+   * @param config - Recombine configuration
+   * @returns Spot asset coin
+   */
+  static recombineToAsset(
+    tx: Transaction,
+    config: {
+      primitivesPackageId: string;
+      assetType: string;
+      stableType: string;
+      escrowId: string;
+      balanceObj: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['object']>;
+      amount: bigint | number;
+    }
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: TransactionUtils.buildTarget(
+        config.primitivesPackageId,
+        'conditional_balance',
+        'recombine_balance_to_asset'
+      ),
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [
+        tx.object(config.escrowId),
+        config.balanceObj as ReturnType<Transaction['moveCall']>,
+        tx.pure.u64(config.amount),
+      ],
+    });
+  }
+
+  /**
+   * Burn complete set from balance and withdraw spot coins.
+   *
+   * Finds minimum balance across all outcomes and withdraws that amount.
+   * Used after trading to exit positions.
+   *
+   * @param tx - Transaction
+   * @param config - Burn configuration
+   * @returns [amount, assetCoin, stableCoin] tuple
+   *
+   * @example
+   * ```typescript
+   * const [amount, assetCoin, stableCoin] = ConditionalBalance.burnCompleteSetAndWithdraw(tx, {
+   *   primitivesPackageId,
+   *   assetType,
+   *   stableType,
+   *   escrowId: "0xescrow...",
+   *   balanceObj: balance,
+   *   isAsset: true, // Withdraw as asset
+   * });
+   * ```
+   */
+  static burnCompleteSetAndWithdraw(
+    tx: Transaction,
+    config: {
+      primitivesPackageId: string;
+      assetType: string;
+      stableType: string;
+      escrowId: string;
+      balanceObj: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['object']>;
+      isAsset: boolean;
+    }
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: TransactionUtils.buildTarget(
+        config.primitivesPackageId,
+        'conditional_balance',
+        'burn_complete_set_and_withdraw_from_balance'
+      ),
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [
+        tx.object(config.escrowId),
+        config.balanceObj as ReturnType<Transaction['moveCall']>,
+        tx.pure.bool(config.isAsset),
+      ],
+    });
+  }
+
   /**
    * Unwrap balance to typed conditional coin
    *

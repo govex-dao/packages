@@ -191,7 +191,7 @@ public fun get_pool_mut_by_outcome(state: &mut MarketState, outcome_idx: u8): &m
 }
 
 /// Get all pools (for cleanup/migration)
-public(package) fun extract_amm_pools(state: &mut MarketState): vector<LiquidityPool> {
+public fun extract_amm_pools(state: &mut MarketState): vector<LiquidityPool> {
     state.amm_pools.extract()
 }
 
@@ -218,6 +218,10 @@ public fun outcome_count(state: &MarketState): u64 {
 }
 
 // === View Functions (Predicates) ===
+public fun is_trading_started(state: &MarketState): bool {
+    state.status.trading_started
+}
+
 public fun is_trading_active(state: &MarketState): bool {
     state.status.trading_started && !state.status.trading_ended
 }

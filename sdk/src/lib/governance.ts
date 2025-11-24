@@ -28,7 +28,7 @@ export interface CreateProposalConfig {
     usedQuota: boolean; // Track if proposal used admin budget
 
     // Actions for YES/Accept outcome (optional)
-    intentSpecForYes?: any; // Optional vector<ActionSpec> for outcome 1 (YES/Accept) - outcome 0 = Reject/No
+    intentSpecForYes?: any; // Optional vector<ActionSpec> for outcome 1 - N (YES/Accept/[Name]) - outcome 0 = Reject/No
 }
 
 /**

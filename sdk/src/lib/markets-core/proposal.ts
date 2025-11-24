@@ -77,7 +77,6 @@ export class Proposal {
       protocolPackageId: string; // For ActionSpec type
       assetType: string;
       stableType: string;
-      proposalIdFromQueue: string;
       daoAccountId: string; // ALL governance config read from here
       treasuryAddress: string;
       title: string;
@@ -102,7 +101,6 @@ export class Proposal {
       target: TransactionUtils.buildTarget(config.marketsCorePackageId, 'proposal', 'new_premarket'),
       typeArguments: [config.assetType, config.stableType],
       arguments: [
-        tx.object(config.proposalIdFromQueue),
         tx.object(config.daoAccountId),
         tx.pure.address(config.treasuryAddress),
         tx.pure.string(config.title),

@@ -108,6 +108,64 @@ export class GovernancePTBExecutor {
   }
 
   /**
+   * Begin execution using escrow reference (alternative to beginExecution)
+   *
+   * This variant extracts MarketState from the TokenEscrow internally,
+   * avoiding object reference conflicts in complex PTBs where you already
+   * have the escrow reference.
+   *
+   * @param tx - Transaction to add the call to
+   * @param config - Execution configuration with escrowId instead of marketStateId
+   * @returns TransactionArgument for Executable hot potato
+   *
+   * @example
+   * ```typescript
+   * const tx = new Transaction();
+   *
+   * // Use when you have escrow reference and want to avoid PTB reference issues
+   * const executable = GovernancePTBExecutor.beginExecutionWithEscrow(tx, {
+   *   governancePackageId,
+   *   daoId,
+   *   proposalId,
+   *   escrowId,
+   *   registryId,
+   *   assetType,
+   *   stableType,
+   *   clock: '0x6',
+   * });
+   * ```
+   */
+  static beginExecutionWithEscrow(
+    tx: Transaction,
+    config: {
+      governancePackageId: string;
+      daoId: string;
+      proposalId: string;
+      escrowId: string;
+      registryId: string;
+      assetType: string;
+      stableType: string;
+      clock?: string;
+    }
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: TransactionUtils.buildTarget(
+        config.governancePackageId,
+        'ptb_executor',
+        'begin_execution_with_escrow'
+      ),
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [
+        tx.object(config.daoId), // account
+        tx.object(config.registryId), // registry
+        tx.object(config.proposalId), // proposal
+        tx.object(config.escrowId), // escrow
+        tx.object(config.clock || '0x6'), // clock
+      ],
+    });
+  }
+
+  /**
    * Finalize execution of proposal actions (Step 3 of 3)
    *
    * Consumes the Executable hot potato and confirms all actions were executed.

@@ -16,6 +16,13 @@ import { ProposalEscrowOperations } from "../lib/proposal-escrow";
 import { IntentJanitorOperations } from "../lib/governance-actions/intent-janitor";
 import { DAODissolutionOperations } from "../lib/dao-actions/dao-dissolution-actions";
 import { QueryHelper } from "../lib/queries";
+import { DAOOperations } from "../lib/operations/dao-operations";
+import { VaultOperations } from "../lib/operations/vault-operations";
+import { CurrencyOperations } from "../lib/operations/currency-operations";
+import { ActionBuilders } from "../lib/operations/action-builders";
+import { DAOInfoHelper } from "../lib/operations/dao-info-helper";
+import { MarketsHighLevelOperations } from "../lib/operations/markets-operations";
+import { TransferOperations } from "../lib/operations/transfer-operations";
 
 /**
  * Configuration options for FutarchySDK initialization
@@ -59,6 +66,15 @@ export class FutarchySDK {
     public intentJanitor: IntentJanitorOperations;
     public daoDissolution: DAODissolutionOperations;
     public query: QueryHelper;
+
+    // NEW: High-level operations (user-friendly APIs)
+    public dao: DAOOperations;
+    public vault: VaultOperations;
+    public currency: CurrencyOperations;
+    public actions: ActionBuilders;
+    public daoInfo: DAOInfoHelper;
+    public marketsSimple: MarketsHighLevelOperations;
+    public transfer: TransferOperations;
 
     // Convenience properties for commonly used package IDs
     public packageRegistryId: string;
@@ -196,6 +212,54 @@ export class FutarchySDK {
             client,
             futarchyActionsPackageId
         );
+
+        // Initialize NEW high-level operations
+        const futarchyCorePackageId = deployments.getPackageId("futarchy_core")!;
+        const accountActionsPackageId = deployments.getPackageId("AccountActions")!;
+
+        this.dao = new DAOOperations({
+            client,
+            accountProtocolPackageId: protocolPackageId,
+            futarchyCorePackageId,
+            packageRegistryId: packageRegistry.objectId,
+        });
+
+        this.vault = new VaultOperations({
+            client,
+            accountActionsPackageId,
+            futarchyCorePackageId,
+            packageRegistryId: packageRegistry.objectId,
+        });
+
+        this.currency = new CurrencyOperations({
+            client,
+            accountActionsPackageId,
+            futarchyCorePackageId,
+            packageRegistryId: packageRegistry.objectId,
+        });
+
+        this.actions = new ActionBuilders({
+            accountActionsPackageId,
+            futarchyActionsPackageId,
+            futarchyCorePackageId,
+            oracleActionsPackageId,
+            governanceActionsPackageId,
+        });
+
+        this.daoInfo = new DAOInfoHelper(client);
+
+        this.marketsSimple = new MarketsHighLevelOperations({
+            client,
+            marketsPackageId: marketsCorePackageId,
+            marketsCorePackageId,
+        });
+
+        this.transfer = new TransferOperations({
+            client,
+            accountActionsPackageId,
+            futarchyCorePackageId,
+            packageRegistryId: packageRegistry.objectId,
+        });
     }
 
     /**

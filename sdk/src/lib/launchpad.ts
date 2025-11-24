@@ -271,6 +271,102 @@ export class LaunchpadOperations {
     }
 
     /**
+     * Clear all staged success specs (allows re-staging from scratch)
+     * Must be called before intents are locked
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
+     * @returns Transaction for clearing success specs
+     *
+     * @example
+     * ```typescript
+     * // Clear previously staged success intents to start fresh
+     * const tx = launchpad.clearSuccessSpecs(
+     *   raiseId,
+     *   creatorCapId,
+     *   "0x123::mycoin::MYCOIN",
+     *   "0x2::sui::SUI"
+     * );
+     * ```
+     */
+    clearSuccessSpecs(
+        raiseId: string,
+        creatorCapId: string,
+        raiseTokenType: string,
+        stableCoinType: string
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "clear_success_specs"
+        );
+
+        tx.moveCall({
+            target,
+            typeArguments: [raiseTokenType, stableCoinType],
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(creatorCapId), // creator_cap
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Clear all staged failure specs (allows re-staging from scratch)
+     * Must be called before intents are locked
+     *
+     * @param raiseId - Raise object ID
+     * @param creatorCapId - CreatorCap object ID
+     * @param raiseTokenType - Full type path for raise token
+     * @param stableCoinType - Full type path for stable coin
+     * @returns Transaction for clearing failure specs
+     *
+     * @example
+     * ```typescript
+     * // Clear previously staged failure intents to start fresh
+     * const tx = launchpad.clearFailureSpecs(
+     *   raiseId,
+     *   creatorCapId,
+     *   "0x123::mycoin::MYCOIN",
+     *   "0x2::sui::SUI"
+     * );
+     * ```
+     */
+    clearFailureSpecs(
+        raiseId: string,
+        creatorCapId: string,
+        raiseTokenType: string,
+        stableCoinType: string
+    ): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        const target = TransactionUtils.buildTarget(
+            this.launchpadPackageId,
+            "launchpad",
+            "clear_failure_specs"
+        );
+
+        tx.moveCall({
+            target,
+            typeArguments: [raiseTokenType, stableCoinType],
+            arguments: [
+                tx.object(raiseId), // raise
+                tx.object(creatorCapId), // creator_cap
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
      * Lock intents and start the raise (must be called after preCreateDaoForRaise)
      *
      * @param raiseId - Raise object ID
@@ -605,6 +701,238 @@ export class LaunchpadOperations {
         });
 
         return tx;
+    }
+
+    // ============================================================================
+    // Two-Outcome Intent Staging (Static PTB Helpers)
+    // ============================================================================
+
+    /**
+     * Stage success intent for launchpad raise
+     *
+     * Adds action specs to execute when raise succeeds.
+     * Use with ActionSpecBuilder to build the actions.
+     *
+     * @param tx - Transaction
+     * @param config - Staging configuration
+     *
+     * @example
+     * ```typescript
+     * const tx = new Transaction();
+     * const builder = ActionSpecBuilder.new(tx, actionsPackageId);
+     *
+     * StreamInitActions.addCreateStream(tx, builder, actionsPackageId, {...});
+     *
+     * LaunchpadOperations.stageSuccessIntent(tx, {
+     *   launchpadPackageId,
+     *   raiseId,
+     *   registryId,
+     *   creatorCapId,
+     *   assetType,
+     *   stableType,
+     *   builder,
+     * });
+     * ```
+     */
+    static stageSuccessIntent(
+        tx: Transaction,
+        config: {
+            launchpadPackageId: string;
+            raiseId: string;
+            registryId: string;
+            creatorCapId: string;
+            assetType: string;
+            stableType: string;
+            builder: ReturnType<Transaction['moveCall']>;
+            clock?: string;
+        }
+    ): void {
+        tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                config.launchpadPackageId,
+                'launchpad',
+                'stage_success_intent'
+            ),
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.raiseId),
+                tx.object(config.registryId),
+                tx.object(config.creatorCapId),
+                config.builder,
+                tx.object(config.clock || '0x6'),
+            ],
+        });
+    }
+
+    /**
+     * Stage failure intent for launchpad raise
+     *
+     * Adds action specs to execute when raise fails.
+     * Commonly used to return TreasuryCap and metadata to creator.
+     *
+     * @param tx - Transaction
+     * @param config - Staging configuration
+     */
+    static stageFailureIntent(
+        tx: Transaction,
+        config: {
+            launchpadPackageId: string;
+            raiseId: string;
+            registryId: string;
+            creatorCapId: string;
+            assetType: string;
+            stableType: string;
+            builder: ReturnType<Transaction['moveCall']>;
+            clock?: string;
+        }
+    ): void {
+        tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                config.launchpadPackageId,
+                'launchpad',
+                'stage_failure_intent'
+            ),
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.raiseId),
+                tx.object(config.registryId),
+                tx.object(config.creatorCapId),
+                config.builder,
+                tx.object(config.clock || '0x6'),
+            ],
+        });
+    }
+
+    // ============================================================================
+    // DAO Creation Flow (Static PTB Helpers)
+    // ============================================================================
+
+    /**
+     * Settle raise before DAO creation
+     *
+     * Determines if raise succeeded or failed based on total raised vs minimum.
+     *
+     * @param tx - Transaction
+     * @param config - Settlement configuration
+     */
+    static settleRaise(
+        tx: Transaction,
+        config: {
+            launchpadPackageId: string;
+            raiseId: string;
+            assetType: string;
+            stableType: string;
+            clock?: string;
+        }
+    ): void {
+        tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                config.launchpadPackageId,
+                'launchpad',
+                'settle_raise'
+            ),
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.raiseId),
+                tx.object(config.clock || '0x6'),
+            ],
+        });
+    }
+
+    /**
+     * Begin DAO creation from launchpad raise
+     *
+     * Creates unshared DAO that will be finalized in same PTB.
+     *
+     * @param tx - Transaction
+     * @param config - DAO creation configuration
+     * @returns Unshared Account object
+     */
+    static beginDaoCreation(
+        tx: Transaction,
+        config: {
+            launchpadPackageId: string;
+            raiseId: string;
+            factoryId: string;
+            registryId: string;
+            assetType: string;
+            stableType: string;
+            clock?: string;
+        }
+    ): ReturnType<Transaction['moveCall']> {
+        return tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                config.launchpadPackageId,
+                'launchpad',
+                'begin_dao_creation'
+            ),
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.raiseId),
+                tx.object(config.factoryId),
+                tx.object(config.registryId),
+                tx.object(config.clock || '0x6'),
+            ],
+        });
+    }
+
+    /**
+     * Finalize and share DAO from launchpad raise
+     *
+     * Completes DAO creation and shares it. JIT converts staged specs to Intent.
+     *
+     * @param tx - Transaction
+     * @param config - Finalization configuration
+     */
+    static finalizeAndShareDao(
+        tx: Transaction,
+        config: {
+            launchpadPackageId: string;
+            raiseId: string;
+            unsharedDao: ReturnType<Transaction['moveCall']>;
+            registryId: string;
+            assetType: string;
+            stableType: string;
+            clock?: string;
+        }
+    ): void {
+        tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                config.launchpadPackageId,
+                'launchpad',
+                'finalize_and_share_dao'
+            ),
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.raiseId),
+                config.unsharedDao,
+                tx.object(config.registryId),
+                tx.object(config.clock || '0x6'),
+            ],
+        });
+    }
+
+    /**
+     * Get launchpad intent witness
+     *
+     * Creates witness for executing launchpad intents.
+     *
+     * @param tx - Transaction
+     * @param launchpadPackageId - Package ID
+     * @returns LaunchpadIntent witness
+     */
+    static getLaunchpadIntentWitness(
+        tx: Transaction,
+        launchpadPackageId: string
+    ): ReturnType<Transaction['moveCall']> {
+        return tx.moveCall({
+            target: TransactionUtils.buildTarget(
+                launchpadPackageId,
+                'launchpad',
+                'launchpad_intent_witness'
+            ),
+            arguments: [],
+        });
     }
 
     /**

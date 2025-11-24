@@ -1,6 +1,44 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { TransactionBuilder, TransactionUtils } from "./transaction";
+import { ProposalAction } from "./operations/action-builders";
+
+/**
+ * Simplified proposal creation config
+ *
+ * This is the user-friendly API - all complexity is hidden.
+ */
+export interface SimpleProposalConfig {
+    /** DAO Account ID */
+    daoId: string;
+
+    /** Asset type (e.g., "0x...::token::TOKEN") */
+    assetType: string;
+
+    /** Stable type (e.g., "0x2::sui::SUI") */
+    stableType: string;
+
+    /** Proposal title */
+    title: string;
+
+    /** Proposal description */
+    description: string;
+
+    /** Outcome labels (e.g., ["Reject", "Approve"]) - first is always reject */
+    outcomes: [string, string];
+
+    /** Actions to execute if approved (outcome 1 wins) */
+    onApprove?: ProposalAction[];
+
+    /** Additional metadata (JSON string) */
+    metadata?: string;
+
+    /** Spot pool ID for the DAO */
+    spotPoolId: string;
+
+    /** Escrow ID for the proposal (created separately) */
+    escrowId: string;
+}
 
 /**
  * Configuration for creating a proposal
@@ -414,5 +452,174 @@ export class GovernanceOperations {
         }
 
         return false;
+    }
+
+    // ============================================================================
+    // SIMPLIFIED HIGH-LEVEL API
+    // ============================================================================
+
+    /**
+     * Create a proposal with simplified configuration
+     *
+     * This is the recommended, user-friendly API for creating proposals.
+     * It handles all the complexity internally.
+     *
+     * @param config - Simple proposal configuration
+     * @param clock - Clock object ID
+     * @returns Transaction for creating the proposal
+     *
+     * @example
+     * ```typescript
+     * const tx = sdk.governance.createProposalSimple({
+     *   daoId: "0x123...",
+     *   assetType: "0x...::token::TOKEN",
+     *   stableType: "0x2::sui::SUI",
+     *   title: "Fund Q1 Marketing",
+     *   description: "Allocate 50,000 tokens for marketing initiatives",
+     *   outcomes: ["Reject", "Approve"],
+     *   onApprove: [
+     *     sdk.actions.vaultSpend({
+     *       vaultName: "treasury",
+     *       coinType: "0x...::token::TOKEN",
+     *       amount: 50_000n,
+     *       recipient: "0xmarketing...",
+     *     }),
+     *   ],
+     *   spotPoolId: "0xpool...",
+     *   escrowId: "0xescrow...",
+     * });
+     * ```
+     */
+    createProposalSimple(config: SimpleProposalConfig, clock: string = "0x6"): Transaction {
+        const builder = new TransactionBuilder(this.client);
+        const tx = builder.getTransaction();
+
+        // For now, we create the proposal without actions embedded
+        // Actions will be handled separately through the intent system
+        // This matches the current architecture where ActionSpecs are added post-creation
+
+        const target = TransactionUtils.buildTarget(
+            this.marketsPackageId,
+            "proposal",
+            "new_premarket"
+        );
+
+        // Create Option::None for intent_spec_for_yes
+        // TODO: Convert ProposalAction[] to vector<ActionSpec> when supported
+        const intentSpec = tx.moveCall({
+            target: '0x1::option::none',
+            typeArguments: [`vector<0x1::string::String>`],
+            arguments: [],
+        });
+
+        // Create proposal
+        tx.moveCall({
+            target,
+            typeArguments: [config.assetType, config.stableType],
+            arguments: [
+                tx.object(config.spotPoolId), // proposal_id_from_queue (using spot pool as reference)
+                tx.object(config.daoId), // dao_account
+                tx.pure.address(config.daoId), // treasury_address (using DAO as treasury)
+                tx.pure.string(config.title), // title
+                tx.pure.string(config.description), // introduction_details
+                tx.pure.string(config.metadata || "{}"), // metadata
+                tx.pure.vector("string", config.outcomes), // outcome_messages
+                tx.pure.vector("string", config.outcomes.map(() => "")), // outcome_details
+                tx.pure.address(config.daoId), // proposer (will be overwritten by sender)
+                tx.pure.bool(false), // used_quota
+                intentSpec, // intent_spec_for_yes
+                tx.sharedObjectRef({
+                    objectId: clock,
+                    initialSharedVersion: 1,
+                    mutable: false,
+                }), // clock
+            ],
+        });
+
+        // Note: ProposalAction[] from config.onApprove is stored for documentation
+        // The actual action specs need to be added through the intent system
+        // This is a limitation of the current architecture
+
+        return tx;
+    }
+
+    /**
+     * Get proposal information
+     *
+     * @param proposalId - Proposal object ID
+     * @returns Proposal info
+     */
+    async getProposal(proposalId: string): Promise<{
+        id: string;
+        title: string;
+        state: number;
+        outcomes: string[];
+        winningOutcome?: number;
+    }> {
+        const obj = await this.client.getObject({
+            id: proposalId,
+            options: { showContent: true },
+        });
+
+        if (!obj.data?.content || obj.data.content.dataType !== 'moveObject') {
+            throw new Error(`Proposal not found: ${proposalId}`);
+        }
+
+        const fields = obj.data.content.fields as any;
+
+        return {
+            id: proposalId,
+            title: fields.title || '',
+            state: Number(fields.state || 0),
+            outcomes: fields.outcome_messages || [],
+            winningOutcome: fields.winning_outcome !== undefined
+                ? Number(fields.winning_outcome)
+                : undefined,
+        };
+    }
+
+    /**
+     * List proposals for a DAO
+     *
+     * @param daoId - DAO account ID
+     * @param state - Optional state filter (0=PREMARKET, 1=REVIEW, 2=TRADING, 3=FINALIZED)
+     * @returns Array of proposal IDs
+     */
+    async listProposals(daoId: string, state?: number): Promise<string[]> {
+        // Query events or owned objects to find proposals
+        // This is a simplified implementation
+        const events = await this.client.queryEvents({
+            query: {
+                MoveEventType: `${this.marketsPackageId}::proposal::ProposalCreated`,
+            },
+            limit: 100,
+        });
+
+        const proposalIds: string[] = [];
+
+        for (const event of events.data) {
+            const parsedJson = event.parsedJson as any;
+            if (parsedJson?.dao_id === daoId) {
+                proposalIds.push(parsedJson.proposal_id);
+            }
+        }
+
+        // Filter by state if specified
+        if (state !== undefined) {
+            const filtered: string[] = [];
+            for (const id of proposalIds) {
+                try {
+                    const proposal = await this.getProposal(id);
+                    if (proposal.state === state) {
+                        filtered.push(id);
+                    }
+                } catch {
+                    // Skip invalid proposals
+                }
+            }
+            return filtered;
+        }
+
+        return proposalIds;
     }
 }

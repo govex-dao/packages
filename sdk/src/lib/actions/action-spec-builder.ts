@@ -44,4 +44,25 @@ export class ActionSpecBuilder {
       arguments: [],
     });
   }
+
+  /**
+   * Convert builder to vector of ActionSpecs
+   *
+   * Use this when you need to pass specs to proposal outcome setters.
+   *
+   * @param tx - Transaction
+   * @param actionsPackageId - Package ID for AccountActions
+   * @param builder - ActionSpec builder
+   * @returns Vector of ActionSpecs
+   */
+  static intoVector(
+    tx: Transaction,
+    actionsPackageId: string,
+    builder: ReturnType<Transaction['moveCall']>
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: `${actionsPackageId}::action_spec_builder::into_vector`,
+      arguments: [builder],
+    });
+  }
 }

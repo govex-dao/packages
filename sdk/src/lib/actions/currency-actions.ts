@@ -174,4 +174,136 @@ export class CurrencyInitActions {
       ],
     });
   }
+
+  /**
+   * Add action to mint tokens
+   *
+   * Mints new tokens using the DAO's TreasuryCap.
+   *
+   * @param tx - Transaction
+   * @param builder - ActionSpec builder
+   * @param actionsPackageId - Package ID for account_actions
+   * @param config - Mint configuration
+   */
+  static addMint(
+    tx: Transaction,
+    builder: ReturnType<Transaction['moveCall']>,
+    actionsPackageId: string,
+    config: {
+      amount: bigint | number;
+      coinType: string;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${actionsPackageId}::currency_init_actions::add_mint_spec`,
+      typeArguments: [config.coinType],
+      arguments: [
+        builder,
+        tx.pure.u64(config.amount),
+      ],
+    });
+  }
+
+  /**
+   * Add action to burn tokens
+   *
+   * Burns tokens using the DAO's TreasuryCap.
+   *
+   * @param tx - Transaction
+   * @param builder - ActionSpec builder
+   * @param actionsPackageId - Package ID for account_actions
+   * @param config - Burn configuration
+   */
+  static addBurn(
+    tx: Transaction,
+    builder: ReturnType<Transaction['moveCall']>,
+    actionsPackageId: string,
+    config: {
+      amount: bigint | number;
+      coinType: string;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${actionsPackageId}::currency_init_actions::add_burn_spec`,
+      typeArguments: [config.coinType],
+      arguments: [
+        builder,
+        tx.pure.u64(config.amount),
+      ],
+    });
+  }
+
+  /**
+   * Add action to disable currency capabilities
+   *
+   * Permanently disables specific currency operations.
+   *
+   * @param tx - Transaction
+   * @param builder - ActionSpec builder
+   * @param actionsPackageId - Package ID for account_actions
+   * @param config - Disable configuration
+   */
+  static addDisable(
+    tx: Transaction,
+    builder: ReturnType<Transaction['moveCall']>,
+    actionsPackageId: string,
+    config: {
+      coinType: string;
+      mint: boolean;
+      burn: boolean;
+      updateSymbol: boolean;
+      updateName: boolean;
+      updateDescription: boolean;
+      updateIconUrl: boolean;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${actionsPackageId}::currency_init_actions::add_disable_spec`,
+      typeArguments: [config.coinType],
+      arguments: [
+        builder,
+        tx.pure.bool(config.mint),
+        tx.pure.bool(config.burn),
+        tx.pure.bool(config.updateSymbol),
+        tx.pure.bool(config.updateName),
+        tx.pure.bool(config.updateDescription),
+        tx.pure.bool(config.updateIconUrl),
+      ],
+    });
+  }
+
+  /**
+   * Add action to update coin metadata
+   *
+   * Updates the coin's symbol, name, description, or icon URL.
+   *
+   * @param tx - Transaction
+   * @param builder - ActionSpec builder
+   * @param actionsPackageId - Package ID for account_actions
+   * @param config - Update configuration
+   */
+  static addUpdate(
+    tx: Transaction,
+    builder: ReturnType<Transaction['moveCall']>,
+    actionsPackageId: string,
+    config: {
+      coinType: string;
+      symbol?: string;
+      name?: string;
+      description?: string;
+      iconUrl?: string;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${actionsPackageId}::currency_init_actions::add_update_spec`,
+      typeArguments: [config.coinType],
+      arguments: [
+        builder,
+        tx.pure.option('vector<u8>', config.symbol ? Array.from(new TextEncoder().encode(config.symbol)) : null),
+        tx.pure.option('vector<u8>', config.name ? Array.from(new TextEncoder().encode(config.name)) : null),
+        tx.pure.option('vector<u8>', config.description ? Array.from(new TextEncoder().encode(config.description)) : null),
+        tx.pure.option('vector<u8>', config.iconUrl ? Array.from(new TextEncoder().encode(config.iconUrl)) : null),
+      ],
+    });
+  }
 }

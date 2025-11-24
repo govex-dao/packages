@@ -145,6 +145,219 @@ export class LaunchpadIntentExecutor {
       ],
     });
   }
+
+  // ============================================================================
+  // Do Init Actions (Step 2 - Execute specific action types)
+  // ============================================================================
+
+  /**
+   * Execute stream creation action
+   *
+   * @param tx - Transaction
+   * @param config - Execution configuration
+   */
+  static doInitCreateStream(
+    tx: Transaction,
+    config: {
+      accountActionsPackageId: string;
+      futarchyCorePackageId: string;
+      launchpadPackageId: string;
+      executable: ReturnType<Transaction['moveCall']>;
+      accountId: string;
+      registryId: string;
+      coinType: string;
+      versionWitness: ReturnType<Transaction['moveCall']>;
+      intentWitness: ReturnType<Transaction['moveCall']>;
+      clock?: string;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${config.accountActionsPackageId}::vault::do_init_create_stream`,
+      typeArguments: [
+        `${config.futarchyCorePackageId}::futarchy_config::FutarchyConfig`,
+        `${config.launchpadPackageId}::launchpad_outcome::LaunchpadOutcome`,
+        config.coinType,
+        `${config.launchpadPackageId}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        config.executable,
+        tx.object(config.accountId),
+        tx.object(config.registryId),
+        tx.object(config.clock || '0x6'),
+        config.versionWitness,
+        config.intentWitness,
+      ],
+    });
+  }
+
+  /**
+   * Execute pool creation with mint action
+   *
+   * @param tx - Transaction
+   * @param config - Execution configuration
+   */
+  static doInitCreatePoolWithMint(
+    tx: Transaction,
+    config: {
+      futarchyActionsPackageId: string;
+      futarchyCorePackageId: string;
+      launchpadPackageId: string;
+      executable: ReturnType<Transaction['moveCall']>;
+      accountId: string;
+      registryId: string;
+      assetType: string;
+      stableType: string;
+      versionWitness: ReturnType<Transaction['moveCall']>;
+      intentWitness: ReturnType<Transaction['moveCall']>;
+      clock?: string;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${config.futarchyActionsPackageId}::liquidity_init_actions::do_init_create_pool_with_mint`,
+      typeArguments: [
+        `${config.futarchyCorePackageId}::futarchy_config::FutarchyConfig`,
+        `${config.launchpadPackageId}::launchpad_outcome::LaunchpadOutcome`,
+        config.assetType,
+        config.stableType,
+        `${config.launchpadPackageId}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        config.executable,
+        tx.object(config.accountId),
+        tx.object(config.registryId),
+        tx.object(config.clock || '0x6'),
+        config.versionWitness,
+        config.intentWitness,
+      ],
+    });
+  }
+
+  /**
+   * Execute trading params update action
+   *
+   * @param tx - Transaction
+   * @param config - Execution configuration
+   */
+  static doUpdateTradingParams(
+    tx: Transaction,
+    config: {
+      futarchyActionsPackageId: string;
+      launchpadPackageId: string;
+      executable: ReturnType<Transaction['moveCall']>;
+      accountId: string;
+      registryId: string;
+      versionWitness: ReturnType<Transaction['moveCall']>;
+      intentWitness: ReturnType<Transaction['moveCall']>;
+      clock?: string;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${config.futarchyActionsPackageId}::config_actions::do_update_trading_params`,
+      typeArguments: [
+        `${config.launchpadPackageId}::launchpad_outcome::LaunchpadOutcome`,
+        `${config.launchpadPackageId}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        config.executable,
+        tx.object(config.accountId),
+        tx.object(config.registryId),
+        config.versionWitness,
+        config.intentWitness,
+        tx.object(config.clock || '0x6'),
+      ],
+    });
+  }
+
+  /**
+   * Execute TWAP config update action
+   *
+   * @param tx - Transaction
+   * @param config - Execution configuration
+   */
+  static doUpdateTwapConfig(
+    tx: Transaction,
+    config: {
+      futarchyActionsPackageId: string;
+      launchpadPackageId: string;
+      executable: ReturnType<Transaction['moveCall']>;
+      accountId: string;
+      registryId: string;
+      versionWitness: ReturnType<Transaction['moveCall']>;
+      intentWitness: ReturnType<Transaction['moveCall']>;
+      clock?: string;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${config.futarchyActionsPackageId}::config_actions::do_update_twap_config`,
+      typeArguments: [
+        `${config.launchpadPackageId}::launchpad_outcome::LaunchpadOutcome`,
+        `${config.launchpadPackageId}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        config.executable,
+        tx.object(config.accountId),
+        tx.object(config.registryId),
+        config.versionWitness,
+        config.intentWitness,
+        tx.object(config.clock || '0x6'),
+      ],
+    });
+  }
+
+  /**
+   * Execute return treasury cap action (for failure path)
+   *
+   * @param tx - Transaction
+   * @param config - Execution configuration
+   */
+  static doInitReturnTreasuryCap(
+    tx: Transaction,
+    config: {
+      accountActionsPackageId: string;
+      futarchyCorePackageId: string;
+      launchpadPackageId: string;
+      executable: ReturnType<Transaction['moveCall']>;
+      accountId: string;
+      registryId: string;
+      coinType: string;
+      versionWitness: ReturnType<Transaction['moveCall']>;
+      intentWitness: ReturnType<Transaction['moveCall']>;
+    }
+  ): void {
+    tx.moveCall({
+      target: `${config.accountActionsPackageId}::currency::do_init_remove_treasury_cap`,
+      typeArguments: [
+        `${config.futarchyCorePackageId}::futarchy_config::FutarchyConfig`,
+        `${config.launchpadPackageId}::launchpad_outcome::LaunchpadOutcome`,
+        config.coinType,
+        `${config.launchpadPackageId}::launchpad::LaunchpadIntent`,
+      ],
+      arguments: [
+        config.executable,
+        tx.object(config.accountId),
+        tx.object(config.registryId),
+        config.versionWitness,
+        config.intentWitness,
+      ],
+    });
+  }
+
+  /**
+   * Get version witness for action execution
+   *
+   * @param tx - Transaction
+   * @param accountActionsPackageId - Package ID
+   * @returns VersionWitness
+   */
+  static getVersionWitness(
+    tx: Transaction,
+    accountActionsPackageId: string
+  ): ReturnType<Transaction['moveCall']> {
+    return tx.moveCall({
+      target: `${accountActionsPackageId}::version::current`,
+      arguments: [],
+    });
+  }
 }
 
 /**

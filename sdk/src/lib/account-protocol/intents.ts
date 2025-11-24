@@ -537,7 +537,7 @@ export class Intents {
    * @param intents - The Intents collection
    * @returns The count
    */
-  static length(
+  static getLength(
     tx: Transaction,
     accountProtocolPackageId: string,
     intents: ReturnType<Transaction['moveCall']>

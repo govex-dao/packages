@@ -184,7 +184,8 @@ export class FutarchySDK {
             client,
             marketsCorePackageId,
             governancePackageId,
-            packageRegistry.objectId
+            packageRegistry.objectId,
+            protocolPackageId
         );
 
         // Initialize proposal sponsorship operations

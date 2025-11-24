@@ -75,17 +75,20 @@ export class GovernanceOperations {
     private marketsPackageId: string;
     private governancePackageId: string;
     private packageRegistryId: string;
+    private protocolPackageId: string;
 
     constructor(
         client: SuiClient,
         marketsPackageId: string,
         governancePackageId: string,
-        packageRegistryId: string
+        packageRegistryId: string,
+        protocolPackageId: string
     ) {
         this.client = client;
         this.marketsPackageId = marketsPackageId;
         this.governancePackageId = governancePackageId;
         this.packageRegistryId = packageRegistryId;
+        this.protocolPackageId = protocolPackageId;
     }
 
     /**
@@ -118,7 +121,7 @@ export class GovernanceOperations {
         // TODO: Support actual ActionSpec when intentSpecForYes is provided
         const intentSpec = tx.moveCall({
             target: '0x1::option::none',
-            typeArguments: [`vector<0x1::string::String>`], // Placeholder - should be ActionSpec
+            typeArguments: [`vector<${this.protocolPackageId}::intents::ActionSpec>`],
             arguments: [],
         });
 

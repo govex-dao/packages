@@ -217,14 +217,11 @@ async function main() {
     arguments: [],
   });
 
-  const referenceProposalId = "0x0000000000000000000000000000000000000000000000000000000000000001";
-
   // NEW SECURE SIGNATURE: All governance params now read from DAO config
   createTx.moveCall({
     target: `${marketsPackageId}::proposal::new_premarket`,
     typeArguments: [assetType, stableType],
     arguments: [
-      createTx.object(referenceProposalId), // proposal_id_from_queue
       createTx.object(daoAccountId), // dao_account (reads ALL config from here)
       createTx.pure.address(activeAddress), // treasury_address
       createTx.pure.string("Fund Team Development with Conditional Trading"), // title

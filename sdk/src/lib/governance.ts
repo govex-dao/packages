@@ -1,44 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient } from "@mysten/sui/client";
 import { TransactionBuilder, TransactionUtils } from "./transaction";
-import { ProposalAction } from "./operations/action-builders";
-
-/**
- * Simplified proposal creation config
- *
- * This is the user-friendly API - all complexity is hidden.
- */
-export interface SimpleProposalConfig {
-    /** DAO Account ID */
-    daoId: string;
-
-    /** Asset type (e.g., "0x...::token::TOKEN") */
-    assetType: string;
-
-    /** Stable type (e.g., "0x2::sui::SUI") */
-    stableType: string;
-
-    /** Proposal title */
-    title: string;
-
-    /** Proposal description */
-    description: string;
-
-    /** Outcome labels (e.g., ["Reject", "Approve"]) - first is always reject */
-    outcomes: [string, string];
-
-    /** Actions to execute if approved (outcome 1 wins) */
-    onApprove?: ProposalAction[];
-
-    /** Additional metadata (JSON string) */
-    metadata?: string;
-
-    /** Spot pool ID for the DAO */
-    spotPoolId: string;
-
-    /** Escrow ID for the proposal (created separately) */
-    escrowId: string;
-}
 
 /**
  * Configuration for creating a proposal
@@ -67,9 +29,6 @@ export interface CreateProposalConfig {
 
     // Actions for YES/Accept outcome (optional)
     intentSpecForYes?: any; // Optional vector<ActionSpec> for outcome 1 (YES/Accept) - outcome 0 = Reject/No
-
-    // Reference ID (vestigial field, can be any ID - no queue system exists)
-    referenceProposalId: string; // Optional reference ID for tracking purposes
 }
 
 /**
@@ -168,7 +127,6 @@ export class GovernanceOperations {
             target,
             typeArguments: [config.assetType, config.stableType],
             arguments: [
-                tx.object(config.referenceProposalId), // proposal_id_from_queue
                 tx.object(config.daoAccountId), // dao_account (ALL config read from here)
                 tx.pure.address(config.treasuryAddress), // treasury_address
                 tx.pure.string(config.title), // title
@@ -452,95 +410,6 @@ export class GovernanceOperations {
         }
 
         return false;
-    }
-
-    // ============================================================================
-    // SIMPLIFIED HIGH-LEVEL API
-    // ============================================================================
-
-    /**
-     * Create a proposal with simplified configuration
-     *
-     * This is the recommended, user-friendly API for creating proposals.
-     * It handles all the complexity internally.
-     *
-     * @param config - Simple proposal configuration
-     * @param clock - Clock object ID
-     * @returns Transaction for creating the proposal
-     *
-     * @example
-     * ```typescript
-     * const tx = sdk.governance.createProposalSimple({
-     *   daoId: "0x123...",
-     *   assetType: "0x...::token::TOKEN",
-     *   stableType: "0x2::sui::SUI",
-     *   title: "Fund Q1 Marketing",
-     *   description: "Allocate 50,000 tokens for marketing initiatives",
-     *   outcomes: ["Reject", "Approve"],
-     *   onApprove: [
-     *     sdk.actions.vaultSpend({
-     *       vaultName: "treasury",
-     *       coinType: "0x...::token::TOKEN",
-     *       amount: 50_000n,
-     *       recipient: "0xmarketing...",
-     *     }),
-     *   ],
-     *   spotPoolId: "0xpool...",
-     *   escrowId: "0xescrow...",
-     * });
-     * ```
-     */
-    createProposalSimple(config: SimpleProposalConfig, clock: string = "0x6"): Transaction {
-        const builder = new TransactionBuilder(this.client);
-        const tx = builder.getTransaction();
-
-        // For now, we create the proposal without actions embedded
-        // Actions will be handled separately through the intent system
-        // This matches the current architecture where ActionSpecs are added post-creation
-
-        const target = TransactionUtils.buildTarget(
-            this.marketsPackageId,
-            "proposal",
-            "new_premarket"
-        );
-
-        // Create Option::None for intent_spec_for_yes
-        // TODO: Convert ProposalAction[] to vector<ActionSpec> when supported
-        const intentSpec = tx.moveCall({
-            target: '0x1::option::none',
-            typeArguments: [`vector<0x1::string::String>`],
-            arguments: [],
-        });
-
-        // Create proposal
-        tx.moveCall({
-            target,
-            typeArguments: [config.assetType, config.stableType],
-            arguments: [
-                tx.object(config.spotPoolId), // proposal_id_from_queue (using spot pool as reference)
-                tx.object(config.daoId), // dao_account
-                tx.pure.address(config.daoId), // treasury_address (using DAO as treasury)
-                tx.pure.string(config.title), // title
-                tx.pure.string(config.description), // introduction_details
-                tx.pure.string(config.metadata || "{}"), // metadata
-                tx.pure.vector("string", config.outcomes), // outcome_messages
-                tx.pure.vector("string", config.outcomes.map(() => "")), // outcome_details
-                tx.pure.address(config.daoId), // proposer (will be overwritten by sender)
-                tx.pure.bool(false), // used_quota
-                intentSpec, // intent_spec_for_yes
-                tx.sharedObjectRef({
-                    objectId: clock,
-                    initialSharedVersion: 1,
-                    mutable: false,
-                }), // clock
-            ],
-        });
-
-        // Note: ProposalAction[] from config.onApprove is stored for documentation
-        // The actual action specs need to be added through the intent system
-        // This is a limitation of the current architecture
-
-        return tx;
     }
 
     /**

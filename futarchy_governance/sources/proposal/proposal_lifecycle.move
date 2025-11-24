@@ -87,14 +87,6 @@ public(package) fun new_proposal_intent_executed(
     }
 }
 
-/// Emitted when the next proposal is reserved (locked) into PREMARKET
-public struct ProposalReserved has copy, drop {
-    queued_proposal_id: ID,
-    premarket_proposal_id: ID,
-    dao_id: ID,
-    timestamp: u64,
-}
-
 // === Public Functions ===
 
 /// Finalizes a proposal's market and determines the winning outcome

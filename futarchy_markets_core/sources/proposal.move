@@ -114,7 +114,6 @@ public struct OutcomeData has store {
 /// Core proposal object that owns AMM pools
 public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     id: UID,
-    queued_proposal_id: ID,
     state: u8,
     dao_id: ID,
     proposer: address, // The original proposer.
@@ -222,8 +221,6 @@ public struct ProposalOutcomeAdded has copy, drop {
 /// ALL trading/governance parameters come from DAO config (governance-controlled).
 #[allow(lint(share_owned))]
 public fun new_premarket<AssetType, StableType>(
-    // Proposal ID originating from queue
-    proposal_id_from_queue: ID,
     dao_account: &account::Account, // Read ALL DAO config from this
     treasury_address: address,
     title: String,
@@ -276,7 +273,6 @@ public fun new_premarket<AssetType, StableType>(
 
     let proposal = Proposal<AssetType, StableType> {
         id,
-        queued_proposal_id: proposal_id_from_queue,
         state: STATE_PREMARKET,
         dao_id: object::id(dao_account),
         proposer,
@@ -1420,7 +1416,6 @@ public fun new_for_testing<AssetType, StableType>(
     Proposal {
         id: object::new(ctx),
         dao_id: object::id_from_address(dao_id),
-        queued_proposal_id: object::id_from_address(@0x0),
         state: STATE_PREMARKET,
         proposer,
         liquidity_provider,
@@ -1851,7 +1846,6 @@ public fun create_test_proposal<AssetType, StableType>(
 public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetType, StableType>) {
     let Proposal {
         id,
-        queued_proposal_id: _,
         state: _,
         dao_id: _,
         proposer: _,

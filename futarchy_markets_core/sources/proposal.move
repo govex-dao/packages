@@ -51,6 +51,24 @@ const EPriceVerificationFailed: u64 = 21;
 const ECannotSetActionsForRejectOutcome: u64 = 22;
 const EInvalidAssetType: u64 = 23;
 const EInvalidStableType: u64 = 24;
+const EInsufficientFee: u64 = 25;
+const ECannotSponsorReject: u64 = 26;
+
+// === Witness for Sponsorship Authorization ===
+
+/// Authorization witness proving that sponsorship permission checks have been performed
+/// Can only be created by futarchy_governance::proposal_sponsorship module
+/// Consumed when calling protected sponsorship functions
+/// This struct lives in proposal module to avoid circular dependencies
+public struct SponsorshipAuth has drop {}
+
+/// Create a SponsorshipAuth witness
+/// PUBLIC so proposal_sponsorship can call it (they're in different packages)
+/// SECURITY: Only proposal_sponsorship module should call this, after performing all permission checks
+/// The witness is consumed immediately when passed to protected functions
+public fun create_sponsorship_auth(): SponsorshipAuth {
+    SponsorshipAuth {}
+}
 
 // === Constants ===
 
@@ -105,7 +123,6 @@ public struct OutcomeData has store {
     outcome_count: u64,
     outcome_messages: vector<String>,
     outcome_creators: vector<address>,
-    outcome_creator_fees: vector<u64>, // Track fees paid by each outcome creator (for refunds)
     intent_specs: vector<Option<vector<ActionSpec>>>, // Direct use of protocol ActionSpec
     actions_per_outcome: vector<u64>,
     winning_outcome: Option<u64>,
@@ -121,10 +138,12 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     withdraw_only_mode: bool, // When true, return liquidity to provider instead of auto-reinvesting
     /// Track if proposal used admin quota/budget (excludes from creator rewards)
     used_quota: bool,
-    /// Track who sponsored this proposal (if any)
-    sponsored_by: Option<address>,
-    /// Track the threshold reduction applied by sponsorship
-    sponsor_threshold_reduction: SignedU128,
+    /// Track the sponsored threshold for each outcome (None = use base threshold, Some = sponsored)
+    outcome_sponsor_thresholds: vector<Option<SignedU128>>,
+    /// Track if sponsor quota was already used for this proposal (one use sponsors all outcomes)
+    sponsor_quota_used_for_proposal: bool,
+    /// Track who used the sponsor quota (for refunds on eviction)
+    sponsor_quota_user: Option<address>,
     // Market-related fields (pools now live in MarketState)
     escrow_id: Option<ID>,
     market_state_id: Option<ID>,
@@ -144,10 +163,11 @@ public struct Proposal<phantom AssetType, phantom StableType> has key, store {
     // Fee-related fields
     amm_total_fee_bps: u64,
     conditional_liquidity_ratio_percent: u64, // Ratio of spot liquidity to split to conditional markets (base 100, not bps!)
-    fee_escrow: Balance<StableType>, // DAO-level fees held for refund to losing outcome creators
+    fee_escrow: Balance<StableType>, // Proposal fees held for refund to proposer if any accept wins
+    total_fee_paid: u64, // Total fee paid by proposer (for refund calculation)
     treasury_address: address,
     // Governance parameters (read from DAO config during creation)
-    max_outcomes: u64, // Maximum number of outcomes allowed (prevents governance bypass when adding outcomes)
+    max_outcomes: u64, // Maximum number of outcomes allowed
 }
 
 /// A scoped witness proving that a particular (proposal, outcome) had an IntentSpec.
@@ -195,22 +215,6 @@ public struct ProposalMarketInitialized has copy, drop {
     timestamp: u64,
 }
 
-public struct ProposalOutcomeMutated has copy, drop {
-    proposal_id: ID,
-    dao_id: ID,
-    outcome_idx: u64,
-    old_creator: address,
-    new_creator: address,
-    timestamp: u64,
-}
-
-public struct ProposalOutcomeAdded has copy, drop {
-    proposal_id: ID,
-    dao_id: ID,
-    new_outcome_idx: u64,
-    creator: address,
-    timestamp: u64,
-}
 
 // Early resolution events moved to early_resolve.move
 
@@ -230,10 +234,14 @@ public fun new_premarket<AssetType, StableType>(
     outcome_details: vector<String>,
     proposer: address,
     used_quota: bool, // Track if proposal used admin budget
+    fee_payment: Coin<StableType>, // Proposal fee (creation_fee + per_outcome fees)
     intent_spec_for_yes: Option<vector<ActionSpec>>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
+    // Capture fee amount before consuming coin
+    let total_fee_paid = fee_payment.value();
+    let fee_balance = fee_payment.into_balance();
     let id = object::new(ctx);
     let actual_proposal_id = object::uid_to_inner(&id);
     let outcome_count = outcome_messages.length();
@@ -268,8 +276,20 @@ public fun new_premarket<AssetType, StableType>(
     // Governance parameters
     let max_outcomes = futarchy_config::max_outcomes(futarchy_cfg);
 
-    // Validate outcome count
+    // Validate outcome count (must have at least Reject + Accept)
+    assert!(outcome_count >= 2, EInvalidOutcome);
     assert!(outcome_count <= max_outcomes, ETooManyOutcomes);
+
+    // Validate fee payment
+    let creation_fee = futarchy_config::proposal_creation_fee(futarchy_cfg);
+    let per_outcome_fee = futarchy_config::proposal_fee_per_outcome(futarchy_cfg);
+    let additional_outcome_fee = if (outcome_count <= 2) {
+        0
+    } else {
+        (outcome_count - 2) * per_outcome_fee
+    };
+    let expected_fee = creation_fee + additional_outcome_fee;
+    assert!(total_fee_paid >= expected_fee, EInsufficientFee);
 
     let proposal = Proposal<AssetType, StableType> {
         id,
@@ -279,8 +299,9 @@ public fun new_premarket<AssetType, StableType>(
         liquidity_provider: option::none(),
         withdraw_only_mode: false,
         used_quota,
-        sponsored_by: option::none(), // No sponsorship by default
-        sponsor_threshold_reduction: signed::from_u64(0), // No reduction by default
+        outcome_sponsor_thresholds: vector::tabulate!(outcome_count, |_| option::none<SignedU128>()),
+        sponsor_quota_used_for_proposal: false,
+        sponsor_quota_user: option::none(),
         escrow_id: option::none(),
         market_state_id: option::none(),
         conditional_treasury_caps: bag::new(ctx),
@@ -313,16 +334,16 @@ public fun new_premarket<AssetType, StableType>(
             outcome_count,
             outcome_messages,
             outcome_creators: vector::tabulate!(outcome_count, |_| proposer),
-            outcome_creator_fees: vector::tabulate!(outcome_count, |_| 0u64), // Initialize with 0 fees
             intent_specs: vector::tabulate!(outcome_count, |_| option::none<vector<ActionSpec>>()),
             actions_per_outcome: vector::tabulate!(outcome_count, |_| 0),
             winning_outcome: option::none(),
         },
         amm_total_fee_bps,
         conditional_liquidity_ratio_percent,
-        fee_escrow: balance::zero(), // No DAO fees for premarket proposals yet
+        fee_escrow: fee_balance, // Proposal fees deposited atomically
+        total_fee_paid, // Total fee paid by proposer
         treasury_address,
-        max_outcomes, // Stored from DAO config to prevent governance bypass
+        max_outcomes,
     };
 
     transfer::public_share_object(proposal);
@@ -482,89 +503,6 @@ public fun create_conditional_amm_pools<AssetType, StableType>(
     };
 }
 
-/// Step 3: Initialize market with pre-configured escrow
-/// Called after create_escrow_for_market() and N calls to register_outcome_caps_with_escrow()
-#[allow(lint(share_owned, self_transfer))]
-/// Internal function: Adds a new outcome during the premarket phase.
-/// fee_paid: The fee paid by the outcome creator (for potential refund if their outcome wins)
-///
-/// SECURITY: max_outcomes is read from proposal (set from DAO config during creation).
-/// This prevents governance bypass where callers could override the DAO's max_outcomes limit.
-///
-/// SECURITY: asset_amount and stable_amount parameters REMOVED - these are calculated during
-/// market initialization from quantum split of spot pool (see create_conditional_amm_pools).
-/// Allowing callers to specify arbitrary amounts would be a governance bypass.
-public fun add_outcome<AssetType, StableType>(
-    proposal: &mut Proposal<AssetType, StableType>,
-    message: String,
-    detail: String,
-    creator: address,
-    fee_paid: u64,
-    clock: &Clock,
-) {
-    // SECURITY: Only allow adding outcomes in PREMARKET state
-    assert!(proposal.state == STATE_PREMARKET, EInvalidState);
-
-    // Check that we're not exceeding the maximum number of outcomes (from DAO config)
-    assert!(proposal.outcome_data.outcome_count < proposal.max_outcomes, ETooManyOutcomes);
-
-    proposal.outcome_data.outcome_messages.push_back(message);
-    proposal.details.push_back(detail);
-    // NOTE: asset_amounts and stable_amounts are NOT stored here
-    // They are calculated during create_conditional_amm_pools() from spot pool reserves
-    proposal.outcome_data.outcome_creators.push_back(creator);
-    proposal.outcome_data.outcome_creator_fees.push_back(fee_paid); // Track the fee paid
-
-    // Initialize action count for new outcome
-    proposal.outcome_data.actions_per_outcome.push_back(0);
-
-    // Initialize IntentSpec slot as empty
-    proposal.outcome_data.intent_specs.push_back(option::none());
-
-    let new_idx = proposal.outcome_data.outcome_count;
-    proposal.outcome_data.outcome_count = new_idx + 1;
-
-    event::emit(ProposalOutcomeAdded {
-        proposal_id: get_id(proposal),
-        dao_id: get_dao_id(proposal),
-        new_outcome_idx: new_idx,
-        creator,
-        timestamp: clock.timestamp_ms(),
-    });
-}
-
-/// Add an outcome to a PREMARKET proposal with DAO-level fee payment
-/// The fee is deposited into the proposal's escrow for potential refund if the outcome loses
-///
-/// SECURITY: max_outcomes is read from proposal (set from DAO config) to prevent governance bypass
-/// SECURITY: asset_amount and stable_amount parameters REMOVED to prevent governance bypass
-/// Liquidity amounts are calculated during market initialization from quantum split of spot pool
-public entry fun add_outcome_with_fee<AssetType, StableType>(
-    proposal: &mut Proposal<AssetType, StableType>,
-    fee_payment: Coin<StableType>,
-    message: String,
-    detail: String,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Get the actual fee paid
-    let fee_paid = fee_payment.value();
-
-    // Deposit DAO-level fee into proposal's escrow
-    proposal.fee_escrow.join(fee_payment.into_balance());
-
-    // Add the outcome with tracked fee (max_outcomes read from proposal)
-    // NOTE: No asset/stable amounts passed - calculated from spot pool during init
-    add_outcome(
-        proposal,
-        message,
-        detail,
-        ctx.sender(),
-        fee_paid,
-        clock,
-    );
-}
-
 /// Initializes the market-related fields of the proposal.
 /// Pools are now stored in MarketState, not Proposal
 public fun initialize_market_fields<AssetType, StableType>(
@@ -601,8 +539,8 @@ public fun emit_market_initialized(
     });
 }
 
-/// Takes the escrowed DAO-level fee balance out of the proposal
-/// Used for refunding fees to losing outcome creators
+/// Takes the escrowed fee balance out of the proposal
+/// Used for refunding fees to proposer if any accept wins
 public fun take_fee_escrow<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
 ): Balance<StableType> {
@@ -1123,7 +1061,8 @@ public fun finalize_proposal<AssetType, StableType>(
     // For a simple YES/NO proposal, compare the YES TWAP to the threshold
     let winning_outcome = if (twap_prices.length() >= 2) {
         let yes_twap = *twap_prices.borrow(OUTCOME_ACCEPTED);
-        let threshold = get_effective_twap_threshold(proposal);
+        // Get threshold for outcome 1 (ACCEPTED)
+        let threshold = get_effective_twap_threshold_for_outcome(proposal, OUTCOME_ACCEPTED);
         let yes_signed = signed::from_u128(yes_twap);
 
         // If YES TWAP exceeds threshold, YES wins
@@ -1164,20 +1103,11 @@ public fun get_outcome_creator<AssetType, StableType>(
     *vector::borrow(&proposal.outcome_data.outcome_creators, outcome_index)
 }
 
-/// Get the fee paid by the creator for a specific outcome
-public fun get_outcome_creator_fee<AssetType, StableType>(
+/// Get the total fee paid by proposer (for refunds)
+public fun get_total_fee_paid<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
-    outcome_index: u64,
 ): u64 {
-    assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
-    *vector::borrow(&proposal.outcome_data.outcome_creator_fees, outcome_index)
-}
-
-/// Get all outcome creator fees
-public fun get_outcome_creator_fees<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>,
-): &vector<u64> {
-    &proposal.outcome_data.outcome_creator_fees
+    proposal.total_fee_paid
 }
 
 /// Get proposal start time for early resolve calculations
@@ -1354,35 +1284,6 @@ public fun clear_intent_spec_for_outcome<AssetType, StableType>(
     };
 }
 
-/// Emits the ProposalOutcomeMutated event
-public fun emit_outcome_mutated(
-    proposal_id: ID,
-    dao_id: ID,
-    outcome_idx: u64,
-    old_creator: address,
-    new_creator: address,
-    timestamp: u64,
-) {
-    event::emit(ProposalOutcomeMutated {
-        proposal_id,
-        dao_id,
-        outcome_idx,
-        old_creator,
-        new_creator,
-        timestamp,
-    });
-}
-
-public fun set_outcome_creator<AssetType, StableType>(
-    proposal: &mut Proposal<AssetType, StableType>,
-    outcome_idx: u64,
-    creator: address,
-) {
-    assert!(outcome_idx < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
-    let creator_ref = vector::borrow_mut(&mut proposal.outcome_data.outcome_creators, outcome_idx);
-    *creator_ref = creator;
-}
-
 // === Test Functions ===
 
 #[test_only]
@@ -1421,8 +1322,9 @@ public fun new_for_testing<AssetType, StableType>(
         liquidity_provider,
         withdraw_only_mode: false,
         used_quota: false, // Default to false for testing
-        sponsored_by: option::none(), // No sponsorship by default
-        sponsor_threshold_reduction: signed::from_u64(0), // No reduction by default
+        outcome_sponsor_thresholds: vector::tabulate!(outcome_count as u64, |_| option::none<SignedU128>()),
+        sponsor_quota_used_for_proposal: false,
+        sponsor_quota_user: option::none(),
         escrow_id: option::none(),
         market_state_id: option::none(),
         conditional_treasury_caps: bag::new(ctx),
@@ -1455,7 +1357,6 @@ public fun new_for_testing<AssetType, StableType>(
             outcome_count: outcome_count as u64,
             outcome_messages,
             outcome_creators,
-            outcome_creator_fees: vector::tabulate!(outcome_count as u64, |_| 0u64), // Initialize with 0 fees
             intent_specs,
             actions_per_outcome: vector::tabulate!(outcome_count as u64, |_| 0),
             winning_outcome,
@@ -1463,6 +1364,7 @@ public fun new_for_testing<AssetType, StableType>(
         amm_total_fee_bps,
         conditional_liquidity_ratio_percent: 50, // 50% (base 100, not bps!)
         fee_escrow: balance::zero(), // No fees for test proposals
+        total_fee_paid: 0, // No fees for test proposals
         treasury_address,
         max_outcomes,
     }
@@ -1685,103 +1587,108 @@ public fun borrow_uid<AssetType, StableType>(proposal: &Proposal<AssetType, Stab
 
 // === Sponsorship Functions ===
 
-/// Get the sponsor address (if any)
-public fun get_sponsored_by<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>,
-): Option<address> {
-    proposal.sponsored_by
-}
-
-/// Get the threshold reduction applied by sponsorship
-public fun get_sponsor_threshold_reduction<AssetType, StableType>(
-    proposal: &Proposal<AssetType, StableType>,
-): SignedU128 {
-    proposal.sponsor_threshold_reduction
-}
-
-/// Check if proposal is sponsored
+/// Check if ANY outcome in the proposal is sponsored (for backward compatibility)
 public fun is_sponsored<AssetType, StableType>(proposal: &Proposal<AssetType, StableType>): bool {
-    proposal.sponsored_by.is_some()
+    let mut i = 0u64;
+    while (i < proposal.outcome_sponsor_thresholds.length()) {
+        if (proposal.outcome_sponsor_thresholds.borrow(i).is_some()) {
+            return true
+        };
+        i = i + 1;
+    };
+    false
 }
 
-/// Set sponsorship information on a proposal
-/// Can be called at any time before proposal is finalized
-/// SECURITY: Only callable before proposal is finalized
-public fun set_sponsorship<AssetType, StableType>(
+/// Check if a specific outcome is sponsored
+public fun is_outcome_sponsored<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+    outcome_index: u64,
+): bool {
+    assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
+    proposal.outcome_sponsor_thresholds.borrow(outcome_index).is_some()
+}
+
+/// Set sponsorship threshold for a specific outcome
+/// SECURITY: Requires SponsorshipAuth witness - only proposal_sponsorship module can create this
+/// SECURITY: Cannot sponsor outcome 0 (reject) - reject must always use base threshold
+public fun set_outcome_sponsorship<AssetType, StableType>(
+    proposal: &mut Proposal<AssetType, StableType>,
+    outcome_index: u64,
+    sponsored_threshold: SignedU128,
+    _auth: SponsorshipAuth, // Witness proves authorization - consumed here
+) {
+    // Cannot sponsor finalized proposals
+    assert!(proposal.state != STATE_FINALIZED, EInvalidState);
+    assert!(outcome_index > 0, ECannotSponsorReject); // Reject cannot be sponsored
+    assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
+
+    // Check if already sponsored
+    let threshold_opt = proposal.outcome_sponsor_thresholds.borrow_mut(outcome_index);
+    assert!(threshold_opt.is_none(), EAlreadySponsored);
+
+    // Set the sponsored threshold
+    *threshold_opt = option::some(sponsored_threshold);
+}
+
+/// Mark that sponsor quota has been used for this proposal and record who used it
+/// SECURITY: Requires SponsorshipAuth witness - only proposal_sponsorship module can create this
+public fun mark_sponsor_quota_used<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     sponsor: address,
-    threshold_reduction: SignedU128,
+    _auth: SponsorshipAuth, // Witness proves authorization - consumed here
 ) {
-    // Only restriction: cannot sponsor finalized proposals
-    assert!(proposal.state != STATE_FINALIZED, EInvalidState);
-
-    // Prevent double-sponsorship
-    assert!(proposal.sponsored_by.is_none(), EAlreadySponsored);
-
-    proposal.sponsored_by = option::some(sponsor);
-    proposal.sponsor_threshold_reduction = threshold_reduction;
+    proposal.sponsor_quota_used_for_proposal = true;
+    proposal.sponsor_quota_user = option::some(sponsor);
 }
 
-/// Clear sponsorship information (for refunds on eviction/cancellation)
-/// SECURITY: Can be called to reset sponsorship
-public fun clear_sponsorship<AssetType, StableType>(
-    proposal: &mut Proposal<AssetType, StableType>,
-) {
-    proposal.sponsored_by = option::none();
-    proposal.sponsor_threshold_reduction = signed::from_u64(0);
-}
-
-/// Get the effective TWAP threshold for this proposal (base threshold - sponsor reduction)
-/// Note: Thresholds CAN be negative in futarchy (allowing proposals to pass if TWAP goes below threshold)
-/// The reduction is applied as: effective = base - reduction
-/// If the reduction would make the threshold excessively negative, cap at a reasonable minimum
-public fun get_effective_twap_threshold<AssetType, StableType>(
+/// Check if sponsor quota has already been used for this proposal
+public fun is_sponsor_quota_used<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
-): SignedU128 {
-    let base_threshold = proposal.twap_config.twap_threshold;
+): bool {
+    proposal.sponsor_quota_used_for_proposal
+}
 
-    // If not sponsored, return base threshold
-    if (!proposal.sponsored_by.is_some()) {
-        return base_threshold
+/// Get the sponsor who used quota for this proposal (if any)
+public fun get_sponsor_quota_user<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+): Option<address> {
+    proposal.sponsor_quota_user
+}
+
+/// Clear all sponsorships (for refunds on eviction/cancellation)
+/// SECURITY: Requires SponsorshipAuth witness - only proposal_sponsorship module can create this
+/// Note: Skips outcome 0 (reject) since it can never be sponsored anyway
+public fun clear_all_sponsorships<AssetType, StableType>(
+    proposal: &mut Proposal<AssetType, StableType>,
+    _auth: SponsorshipAuth, // Witness proves authorization - consumed here
+) {
+    let mut i = 1u64; // Start at 1 to skip outcome 0 (reject)
+    while (i < proposal.outcome_sponsor_thresholds.length()) {
+        *proposal.outcome_sponsor_thresholds.borrow_mut(i) = option::none();
+        i = i + 1;
     };
+    proposal.sponsor_quota_used_for_proposal = false;
+    proposal.sponsor_quota_user = option::none();
+}
 
-    // Apply sponsorship reduction
-    let reduction = &proposal.sponsor_threshold_reduction;
+/// Get the effective TWAP threshold for a specific outcome
+/// If outcome is sponsored, returns the sponsored threshold
+/// Otherwise returns the base threshold from DAO config
+public fun get_effective_twap_threshold_for_outcome<AssetType, StableType>(
+    proposal: &Proposal<AssetType, StableType>,
+    outcome_index: u64,
+): SignedU128 {
+    assert!(outcome_index < proposal.outcome_data.outcome_count, EOutcomeOutOfBounds);
 
-    // Handle the subtraction: base - reduction
-    // Case 1: Both same sign
-    let base_neg = signed::is_negative(&base_threshold);
-    let red_neg = signed::is_negative(reduction);
-    let base_mag = signed::magnitude(&base_threshold);
-    let red_mag = signed::magnitude(reduction);
+    // Check if this outcome is sponsored
+    let threshold_opt = proposal.outcome_sponsor_thresholds.borrow(outcome_index);
 
-    if (base_neg == red_neg) {
-        // Same sign: base - reduction = base + (-reduction)
-        // Positive - Positive: subtract magnitudes
-        // Negative - Negative: add magnitudes (more negative)
-        if (!base_neg) {
-            // Both positive: base - reduction
-            if (base_mag >= red_mag) {
-                signed::from_parts(base_mag - red_mag, false)
-            } else {
-                // Result would be negative
-                signed::from_parts(red_mag - base_mag, true)
-            }
-        } else {
-            // Both negative: -(|base| + |reduction|)
-            signed::from_parts(base_mag + red_mag, true)
-        }
+    if (threshold_opt.is_some()) {
+        // Use sponsored threshold
+        *threshold_opt.borrow()
     } else {
-        // Different signs: base - reduction = base + (-reduction)
-        // Positive - Negative: add magnitudes (more positive)
-        // Negative - Positive: subtract magnitudes (more negative)
-        if (!base_neg) {
-            // Positive base, negative reduction: base - (-red) = base + red
-            signed::from_parts(base_mag + red_mag, false)
-        } else {
-            // Negative base, positive reduction: -|base| - red = -(|base| + red)
-            signed::from_parts(base_mag + red_mag, true)
-        }
+        // Use base threshold from DAO config
+        proposal.twap_config.twap_threshold
     }
 }
 
@@ -1852,8 +1759,9 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
         liquidity_provider: _,
         withdraw_only_mode: _,
         used_quota: _,
-        sponsored_by: _,
-        sponsor_threshold_reduction: _,
+        outcome_sponsor_thresholds: _,
+        sponsor_quota_used_for_proposal: _,
+        sponsor_quota_user: _,
         escrow_id: _,
         market_state_id: _,
         conditional_treasury_caps,
@@ -1886,7 +1794,6 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
             outcome_count: _,
             outcome_messages: _,
             outcome_creators: _,
-            outcome_creator_fees: _,
             intent_specs: _,
             actions_per_outcome: _,
             winning_outcome: _,
@@ -1894,6 +1801,7 @@ public fun destroy_for_testing<AssetType, StableType>(proposal: Proposal<AssetTy
         amm_total_fee_bps: _,
         conditional_liquidity_ratio_percent: _,
         fee_escrow,
+        total_fee_paid: _,
         treasury_address: _,
         max_outcomes: _,
     } = proposal;

@@ -67,7 +67,6 @@ export class LaunchpadOperations {
     constructor(
         client: SuiClient,
         launchpadPackageId: string,
-        _factoryPackageId: string, // Passed for consistency but not used
         factoryObjectId: string,
         factoryInitialSharedVersion: number,
         packageRegistryId: string,
@@ -76,7 +75,6 @@ export class LaunchpadOperations {
     ) {
         this.client = client;
         this.launchpadPackageId = launchpadPackageId;
-        // _factoryPackageId is not stored as it's not needed for launchpad operations
         this.factoryObjectId = factoryObjectId;
         this.factoryInitialSharedVersion = factoryInitialSharedVersion;
         this.packageRegistryId = packageRegistryId;

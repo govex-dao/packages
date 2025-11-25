@@ -150,7 +150,6 @@ export class FutarchySDK {
         this.launchpad = new LaunchpadOperations(
             client,
             factoryPackageId, // launchpad is in same package as factory
-            factoryPackageId,
             factoryObject.objectId,
             factoryObject.initialSharedVersion,
             packageRegistry.objectId,
@@ -160,6 +159,7 @@ export class FutarchySDK {
 
         // Initialize fee manager operations
         const marketsCorePackageId = deployments.getPackageId("futarchy_markets_core")!;
+        const futarchyCorePackageId = deployments.getPackageId("futarchy_core")!;
         this.feeManager = new FeeManagerOperations(
             client,
             feeManager.objectId,
@@ -171,7 +171,8 @@ export class FutarchySDK {
         this.oracleActions = new OracleActionsOperations(
             client,
             oracleActionsPackageId,
-            packageRegistry.objectId
+            packageRegistry.objectId,
+            futarchyCorePackageId
         );
 
         // Initialize markets operations
@@ -215,7 +216,6 @@ export class FutarchySDK {
         );
 
         // Initialize NEW high-level operations
-        const futarchyCorePackageId = deployments.getPackageId("futarchy_core")!;
         const accountActionsPackageId = deployments.getPackageId("AccountActions")!;
 
         this.dao = new DAOOperations({

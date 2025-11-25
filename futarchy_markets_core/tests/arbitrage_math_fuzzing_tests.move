@@ -134,13 +134,12 @@ fun test_fuzzing_high_dimensional_markets() {
         };
 
         // Run optimizer (should complete without gas issues)
-        let (x_star, p_star, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
+        let (x_star, p_star, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
             ASSET,
             STABLE,
         >(
             &spot_pool,
             &cond_pools,
-            0,
             0,
         );
 
@@ -152,7 +151,7 @@ fun test_fuzzing_high_dimensional_markets() {
         if (p_star > 0) {
             assert!(x_star > 0, E);
             // Direction is valid (boolean)
-            let _ = is_stc; // Used
+            let _ = is_cts; // Used
         };
 
         // Cleanup
@@ -224,13 +223,12 @@ fun test_fuzzing_max_dimensional_markets() {
 
         // Run optimizer on WORST possible market configuration
         // This forces maximum ternary search iterations across all 50 pools
-        let (x_star, p_star, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
+        let (x_star, p_star, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
             ASSET,
             STABLE,
         >(
             &spot_pool,
             &cond_pools,
-            0,
             0,
         );
 
@@ -241,7 +239,7 @@ fun test_fuzzing_max_dimensional_markets() {
         // PROPERTY: If profit found, direction should be valid
         if (p_star > 0) {
             assert!(x_star > 0, E);
-            let _ = is_stc; // Used
+            let _ = is_cts; // Used
         };
 
         // Cleanup
@@ -296,13 +294,12 @@ fun test_fuzzing_max_conditionals() {
         };
 
         // Run optimizer (should handle this efficiently)
-        let (x_star, p_star, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
+        let (x_star, p_star, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
             ASSET,
             STABLE,
         >(
             &spot_pool,
             &cond_pools,
-            0,
             0,
         );
 
@@ -313,7 +310,7 @@ fun test_fuzzing_max_conditionals() {
         // PROPERTY: If profit found, direction should be valid
         if (p_star > 0) {
             assert!(x_star > 0, E);
-            let _ = is_stc; // Used
+            let _ = is_cts; // Used
         };
 
         // Cleanup
@@ -387,13 +384,12 @@ fun test_fuzzing_extreme_values() {
         };
 
         // PROPERTY: Should not abort on overflow (saturates gracefully)
-        let (x_star, p_star, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
+        let (x_star, p_star, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes<
             ASSET,
             STABLE,
         >(
             &spot_pool,
             &cond_pools,
-            0,
             0,
         );
 

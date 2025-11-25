@@ -144,7 +144,7 @@ const MIN_COARSE_THRESHOLD: u64 = 3;
 // === Public API ===
 
 /// **PRIMARY N-OUTCOME FUNCTION** - Compute optimal arbitrage (FEELESS)
-/// Returns (optimal_amount, expected_profit, is_spot_to_cond)
+/// Returns (optimal_amount, expected_profit, is_cond_to_spot)
 ///
 /// **NOTE**: This function now uses FEELESS calculations for internal arbitrage.
 /// Uses smart bounding for efficiency (95%+ gas reduction).
@@ -153,21 +153,24 @@ const MIN_COARSE_THRESHOLD: u64 = 3;
 /// 1. Spot → Conditional: Buy from spot, sell to ALL conditionals, burn complete set
 /// 2. Conditional → Spot: Buy from ALL conditionals, recombine, sell to spot
 /// 3. Compare profits, return better direction
+///
+/// **Direction Flag (is_cond_to_spot)**:
+/// - true = Conditional→Spot: Buy from conditional pools, recombine, sell to spot
+/// - false = Spot→Conditional: Buy from spot, split, sell to conditional pools
 public fun compute_optimal_arbitrage_for_n_outcomes<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
-    _min_profit: u64, // Kept for API compatibility (ignored in feeless)
 ): (u64, u128, bool) {
     // Delegate to feeless implementation with smart bounding
-    let (amount, is_spot_to_cond) = compute_optimal_arbitrage_feeless_with_hint(
+    let (amount, is_cond_to_spot) = compute_optimal_arbitrage_feeless_with_hint(
         spot,
         conditionals,
         user_swap_output,
     );
 
     // Return with amount as "profit" since feeless doesn't track actual profit
-    (amount, (amount as u128), is_spot_to_cond)
+    (amount, (amount as u128), is_cond_to_spot)
 }
 
 /// Compute optimal Spot → Conditional arbitrage (FEELESS with smart bounding)
@@ -175,7 +178,6 @@ public fun compute_optimal_spot_to_conditional<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
-    _min_profit: u64, // Kept for API compatibility (ignored in feeless)
 ): (u64, u128) {
     // Delegate to feeless implementation with smart bounding
     compute_optimal_spot_to_conditional_feeless_with_hint(spot, conditionals, user_swap_output)
@@ -186,7 +188,6 @@ public fun compute_optimal_conditional_to_spot<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
-    _min_profit: u64, // Kept for API compatibility (ignored in feeless)
 ): (u64, u128) {
     // Delegate to feeless implementation with smart bounding
     compute_optimal_conditional_to_spot_feeless_with_hint(spot, conditionals, user_swap_output)
@@ -201,10 +202,13 @@ public fun compute_optimal_spot_arbitrage<AssetType, StableType>(
     spot_swap_is_stable_to_asset: bool,
 ): (u64, u128) {
     // Use feeless implementation
-    let (amount, is_spot_to_cond) = compute_optimal_arbitrage_feeless(spot, conditionals);
+    let (amount, is_cond_to_spot) = compute_optimal_arbitrage_feeless(spot, conditionals);
 
     // Return based on direction match
-    if (spot_swap_is_stable_to_asset == is_spot_to_cond) {
+    // is_cond_to_spot=true means buying from conditionals = asset→stable on spot
+    // spot_swap_is_stable_to_asset=true means the opposite direction
+    // So they match when they're different (XOR)
+    if (spot_swap_is_stable_to_asset != is_cond_to_spot) {
         (amount, (amount as u128))
     } else {
         (0, 0) // Direction mismatch
@@ -218,7 +222,9 @@ public fun compute_optimal_spot_arbitrage<AssetType, StableType>(
 /// Uses user_swap_output hint to narrow search space (95%+ gas reduction).
 /// Key insight: Max arbitrage ≤ swap that created the imbalance!
 ///
-/// Returns: (optimal_amount, is_spot_to_cond)
+/// Returns: (optimal_amount, is_cond_to_spot)
+/// - is_cond_to_spot=true: Buy from conditional pools, recombine, sell to spot
+/// - is_cond_to_spot=false: Buy from spot, split, sell to conditional pools
 fun compute_optimal_arbitrage_feeless_with_hint<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
@@ -243,11 +249,11 @@ fun compute_optimal_arbitrage_feeless_with_hint<AssetType, StableType>(
         user_swap_output,
     );
 
-    // Return more profitable direction
+    // Return more profitable direction (now with corrected naming)
     if (profit_stc >= profit_cts) {
-        (x_stc, true) // Spot → Conditional
+        (x_stc, false) // Spot → Conditional = NOT cond_to_spot
     } else {
-        (x_cts, false) // Conditional → Spot
+        (x_cts, true) // Conditional → Spot = IS cond_to_spot
     }
 }
 
@@ -259,7 +265,9 @@ fun compute_optimal_arbitrage_feeless_with_hint<AssetType, StableType>(
 ///
 /// Uses same ternary search logic but with alpha=beta=BPS_SCALE (no fees)
 ///
-/// Returns: (optimal_amount, is_spot_to_cond)
+/// Returns: (optimal_amount, is_cond_to_spot)
+/// - is_cond_to_spot=true: Buy from conditional pools, recombine, sell to spot
+/// - is_cond_to_spot=false: Buy from spot, split, sell to conditional pools
 public fun compute_optimal_arbitrage_feeless<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,

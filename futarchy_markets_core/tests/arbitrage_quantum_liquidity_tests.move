@@ -81,8 +81,7 @@ fun test_quantum_cost_max_not_sum_two_pools() {
     let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
         &spot_pool,
         &conditionals,
-        0,
-        0,
+        0
     );
 
     // If the old SUM behavior was used:
@@ -155,8 +154,7 @@ fun test_quantum_cost_max_of_three() {
     let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
         &spot_pool,
         &conditionals,
-        0,
-        0,
+        0
     );
 
     // With correct MAX behavior, should find opportunities
@@ -216,8 +214,7 @@ fun test_quantum_cost_max_with_ten_pools() {
     let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
         &spot_pool,
         &conditionals,
-        0,
-        0,
+        0
     );
 
     // With MAX: finds opportunities
@@ -344,8 +341,7 @@ fun test_quantum_cost_max_with_fifty_pools() {
     let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
         &spot_pool,
         &conditionals,
-        0,
-        0,
+        0
     );
 
     // With MAX: finds opportunities despite 50 pools
@@ -413,8 +409,7 @@ fun test_quantum_cost_all_equal() {
     let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
         &spot_pool,
         &conditionals,
-        0,
-        0,
+        0
     );
 
     // Should find arbitrage if it exists
@@ -481,8 +476,7 @@ fun test_max_finds_more_opportunities_than_sum_would() {
     let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
         &spot_pool,
         &conditionals,
-        0,
-        0,
+        0
     );
 
     // With correct MAX behavior: should find profitable arbitrage
@@ -573,7 +567,6 @@ fun test_worst_case_massive_search_space() {
         &spot_pool,
         &conditionals,
         0, // No user swap hint - global search
-        0,
     );
 
     // With equal reserves, arbitrage should be zero or negligible
@@ -600,7 +593,6 @@ fun test_worst_case_massive_search_space() {
         &spot_pool,
         &conditionals,
         massive_user_swap, // Hint: search near max
-        0,
     );
 
     // STEP 3: Verify result makes sense
@@ -708,8 +700,7 @@ fun test_ternary_search_stability() {
         let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
             &spot_pool,
             &conditionals,
-            search_space,
-            0,
+            search_space
         );
 
         // Verify search completed (any result is fine - we're testing no timeout)
@@ -777,8 +768,7 @@ fun test_ternary_search_stability_spot_to_cond() {
         let (amount, profit) = arbitrage_math::compute_optimal_spot_to_conditional(
             &spot_pool,
             &conditionals,
-            search_space,
-            0,
+            search_space
         );
 
         // Verify search completed without timeout
@@ -857,8 +847,7 @@ fun test_worst_case_tiny_search_space() {
     let (amount, profit) = arbitrage_math::compute_optimal_conditional_to_spot(
         &spot_pool,
         &conditionals,
-        tiny_user_swap,
-        0,
+        tiny_user_swap
     );
 
     // Should complete quickly regardless of floor

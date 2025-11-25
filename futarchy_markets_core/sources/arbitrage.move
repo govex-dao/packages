@@ -59,12 +59,12 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
 ): option::Option<ConditionalMarketBalance<AssetType, StableType>> {
     // Get market info and compute optimal arbitrage using FEELESS math
     // (internal arbitrage doesn't charge fees - just moving liquidity between pools)
-    let (arb_amount, is_spot_to_cond, market_id, outcome_count) = {
+    let (arb_amount, is_cond_to_spot, market_id, outcome_count) = {
         let market_state = coin_escrow::get_market_state(escrow);
         let pools = market_state::borrow_amm_pools(market_state);
 
         // Use feeless computation since internal arbitrage has no fees
-        let (arb_amount, is_spot_to_cond) = arbitrage_math::compute_optimal_arbitrage_feeless(
+        let (arb_amount, is_cond_to_spot) = arbitrage_math::compute_optimal_arbitrage_feeless(
             spot_pool,
             pools,
         );
@@ -72,7 +72,7 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
         let market_id = market_state::market_id(market_state);
         let outcome_count = market_state::outcome_count(market_state);
 
-        (arb_amount, is_spot_to_cond, market_id, outcome_count)
+        (arb_amount, is_cond_to_spot, market_id, outcome_count)
     };
 
     // If no profitable arbitrage found, return existing balance or None
@@ -84,10 +84,9 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
     let (spot_asset, spot_stable) = unified_spot_pool::get_reserves(spot_pool);
 
     // Execute arbitrage based on direction
-    // NOTE: We invert is_spot_to_cond because the math model's naming is opposite to execution flow
-    // - Math's "Spot→Cond" = spot is cheap = execution should sell spot asset
-    // - Math's "Cond→Spot" = cond is cheap = execution should buy from cond
-    let result_balance = if (!is_spot_to_cond) {
+    // is_cond_to_spot=true: Buy from conditional pools, recombine, sell to spot
+    // is_cond_to_spot=false: Buy from spot, split, sell to conditional pools
+    let result_balance = if (is_cond_to_spot) {
         // Direction: Conditional price too LOW (cond asset is cheap)
         // Action: Buy asset from conditional pools using stable
         // Flow: spot stable → cond stable → cond asset → spot asset

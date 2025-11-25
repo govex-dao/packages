@@ -346,24 +346,17 @@ export class VaultOperations {
    * ```
    */
   async getBalance(
-    daoId: string,
+    _daoId: string,
     _vaultName: string,
     _coinType: string
   ): Promise<bigint> {
-    // Query the DAO object and find the vault
-    const obj = await this.client.getObject({
-      id: daoId,
-      options: { showContent: true },
-    });
-
-    if (!obj.data?.content || obj.data.content.dataType !== 'moveObject') {
-      throw new Error(`DAO not found: ${daoId}`);
-    }
-
-    // TODO: Parse vault dynamic field to get balance
-    // This requires resolving the dynamic field for the vault name
-    // For now, return 0 as placeholder
-    return 0n;
+    // This requires resolving dynamic fields which is complex
+    // Use devInspect with a view function instead
+    throw new Error(
+      'getBalance is not yet implemented. ' +
+      'Vault balances require dynamic field resolution. ' +
+      'Consider using on-chain view functions via devInspect.'
+    );
   }
 
   /**
@@ -470,8 +463,11 @@ export class VaultOperations {
     _vaultName: string,
     _coinType: string
   ): Promise<boolean> {
-    // TODO: Query vault dynamic field to check approved types
-    // For now, return false as placeholder
-    return false;
+    // This requires resolving dynamic fields which is complex
+    throw new Error(
+      'isCoinTypeApproved is not yet implemented. ' +
+      'Checking approved types requires dynamic field resolution. ' +
+      'Consider using on-chain view functions via devInspect.'
+    );
   }
 }

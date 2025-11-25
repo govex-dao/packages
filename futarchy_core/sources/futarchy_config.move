@@ -528,6 +528,14 @@ public fun max_outcomes(config: &FutarchyConfig): u64 {
     dao_config::max_outcomes(dao_config::governance_config(&config.config))
 }
 
+public fun proposal_creation_fee(config: &FutarchyConfig): u64 {
+    dao_config::proposal_creation_fee(dao_config::governance_config(&config.config))
+}
+
+public fun proposal_fee_per_outcome(config: &FutarchyConfig): u64 {
+    dao_config::proposal_fee_per_outcome(dao_config::governance_config(&config.config))
+}
+
 public fun enable_premarket_reservation_lock(config: &FutarchyConfig): bool {
     dao_config::enable_premarket_reservation_lock(dao_config::governance_config(&config.config))
 }

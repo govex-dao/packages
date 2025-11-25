@@ -119,31 +119,27 @@ fun test_proposal_state_transitions() {
 }
 
 #[test]
-fun test_sponsorship_flag_operations() {
+fun test_per_outcome_sponsorship_flag_operations() {
     let mut scenario = ts::begin(USER_ADDR);
     let ctx = scenario.ctx();
 
     let clock = create_test_clock(1000, ctx);
-    let mut proposal = create_test_proposal_in_state(STATE_REVIEW, ctx);
+    let proposal = create_test_proposal_in_state(STATE_REVIEW, ctx);
 
-    // Initially not sponsored
+    // Initially not sponsored (no outcomes sponsored)
     assert!(!proposal::is_sponsored(&proposal), 0);
+    assert!(!proposal::is_outcome_sponsored(&proposal, 0), 1);
+    assert!(!proposal::is_outcome_sponsored(&proposal, 1), 2);
 
-    // Set sponsorship
-    let threshold_reduction = signed::from_u128(100000000000000000u128); // 0.1
-    proposal::set_sponsorship(&mut proposal, SPONSOR_ADDR, threshold_reduction);
+    // Per-outcome sponsorship requires SponsorshipAuth witness
+    // which can only be created by proposal_sponsorship module
+    // See per_outcome_sponsorship_integration_tests.move for full sponsorship tests
 
-    // Now should be sponsored
-    assert!(proposal::is_sponsored(&proposal), 1);
+    // Test quota tracking flags
+    assert!(!proposal::is_sponsor_quota_used(&proposal), 3);
 
-    // Get sponsor
-    let sponsor_opt = proposal::get_sponsored_by(&proposal);
-    assert!(sponsor_opt.is_some(), 2);
-    assert!(*sponsor_opt.borrow() == SPONSOR_ADDR, 3);
-
-    // Clear sponsorship
-    proposal::clear_sponsorship(&mut proposal);
-    assert!(!proposal::is_sponsored(&proposal), 4);
+    let sponsor_opt = proposal::get_sponsor_quota_user(&proposal);
+    assert!(sponsor_opt.is_none(), 4);
 
     test_utils::destroy(proposal);
     clock.destroy_for_testing();
@@ -151,26 +147,27 @@ fun test_sponsorship_flag_operations() {
 }
 
 #[test]
-fun test_effective_threshold_with_sponsorship() {
+fun test_per_outcome_effective_threshold() {
     let mut scenario = ts::begin(USER_ADDR);
     let ctx = scenario.ctx();
 
     let clock = create_test_clock(1000, ctx);
-    let mut proposal = create_test_proposal_in_state(STATE_REVIEW, ctx);
+    let proposal = create_test_proposal_in_state(STATE_REVIEW, ctx);
 
-    // Get base threshold
+    // Get base threshold from DAO config
     let base_threshold = proposal::get_twap_threshold(&proposal);
 
-    // Apply sponsorship reduction
-    let reduction = signed::from_u128(100000000000000000u128); // 0.1 reduction
-    proposal::set_sponsorship(&mut proposal, SPONSOR_ADDR, reduction);
+    // When no sponsorship, get_effective_twap_threshold_for_outcome returns base threshold
+    let outcome_0_effective = proposal::get_effective_twap_threshold_for_outcome(&proposal, 0);
+    let outcome_1_effective = proposal::get_effective_twap_threshold_for_outcome(&proposal, 1);
 
-    // Effective threshold should be base - reduction
-    let effective = proposal::get_effective_twap_threshold(&proposal);
+    // Both should equal base threshold (no sponsorship applied yet)
+    assert!(signed::magnitude(&outcome_0_effective) == signed::magnitude(&base_threshold), 0);
+    assert!(signed::magnitude(&outcome_1_effective) == signed::magnitude(&base_threshold), 1);
 
-    // Verify effective threshold is different from base
-    // (Actual comparison would require signed arithmetic)
-    assert!(proposal::is_sponsored(&proposal), 0);
+    // Per-outcome sponsorship with custom thresholds requires SponsorshipAuth witness
+    // which can only be created by proposal_sponsorship module
+    // See per_outcome_sponsorship_integration_tests.move for sponsored threshold tests
 
     test_utils::destroy(proposal);
     clock.destroy_for_testing();

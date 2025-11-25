@@ -1,0 +1,180 @@
+// Copyright (c) Govex DAO LLC
+// SPDX-License-Identifier: BUSL-1.1
+
+/*
+ * ATTACK SCENARIOS THAT WON'T COMPILE
+ *
+ * This file demonstrates various attacks that are PREVENTED BY THE TYPE SYSTEM.
+ * This file has a .move.example extension so it won't be compiled.
+ * If you try to compile it (by renaming to .move), you will see compilation errors.
+ *
+ * This proves the security of the witness pattern.
+ */
+
+#[test_only]
+module futarchy_governance::attack_scenarios_wont_compile;
+
+use futarchy_markets_core::proposal::{Self, Proposal, SponsorshipAuth};
+use futarchy_types::signed;
+use sui::test_scenario::{Self as ts};
+
+const ATTACKER: address = @0xBAD;
+const VICTIM: address = @0x9000;
+
+// === ATTACK #1: Steal Refunds ===
+
+#[test]
+fun attack_steal_refund() {
+    let mut scenario = ts::begin(ATTACKER);
+
+    // Victim Alice sponsors a proposal, uses her quota
+    // proposal.sponsor_quota_user = Some(VICTIM)
+
+    let mut proposal = get_some_proposal(); // hypothetical
+
+    // Attacker Bob tries to overwrite the sponsor to steal refund
+    proposal::mark_sponsor_quota_used(&mut proposal, ATTACKER, ???);
+    //                                                          ^^^
+    // COMPILATION ERROR: Cannot construct SponsorshipAuth
+    //
+    // Error: "Unbound type 'SponsorshipAuth' in current scope"
+    // or: "SponsorshipAuth cannot be constructed in this module"
+
+    ts::end(scenario);
+}
+
+// === ATTACK #2: Denial of Service ===
+
+#[test]
+fun attack_dos_clear_sponsorships() {
+    let mut scenario = ts::begin(ATTACKER);
+
+    // Victim Alice sponsors outcomes 1, 2, 3 and pays her quota
+    let mut proposal = get_some_proposal(); // hypothetical
+
+    // Attacker Bob tries to clear the sponsorships for free
+    proposal::clear_all_sponsorships(&mut proposal, ???);
+    //                                              ^^^
+    // COMPILATION ERROR: Cannot construct SponsorshipAuth
+    //
+    // This prevents Bob from erasing Alice's paid-for sponsorship
+
+    ts::end(scenario);
+}
+
+// === ATTACK #3: Free Sponsorship ===
+
+#[test]
+fun attack_free_sponsorship() {
+    let mut scenario = ts::begin(ATTACKER);
+
+    let mut proposal = get_some_proposal(); // hypothetical
+    let threshold = signed::from_u64(0); // Set threshold to 0 for easy pass
+
+    // Attacker Bob tries to sponsor without quota
+    proposal::set_outcome_sponsorship(&mut proposal, 1, threshold, ???);
+    //                                                              ^^^
+    // COMPILATION ERROR: Cannot construct SponsorshipAuth
+    //
+    // Bob must go through sponsor_outcome() which checks quota
+    // But he can't bypass the quota check because he needs the witness
+
+    ts::end(scenario);
+}
+
+// === ATTACK #4: Create Witness ===
+
+#[test]
+fun attack_forge_witness() {
+    let mut scenario = ts::begin(ATTACKER);
+
+    // Attacker Bob tries to create a witness to bypass security
+    let fake_auth = SponsorshipAuth {};
+    //               ^^^^^^^^^^^^^^^^
+    // COMPILATION ERROR: Cannot construct SponsorshipAuth
+    //
+    // Error: "struct SponsorshipAuth has no public constructor"
+    // or: "Cannot construct struct from a different module"
+    //
+    // This is the KEY security guarantee:
+    // Only the module that defines SponsorshipAuth can construct it
+    // And proposal module doesn't construct it - only proposal_sponsorship does
+
+    // Even if Bob could create the witness, he can't do anything malicious
+    // because proposal_sponsorship has already done all the security checks
+
+    ts::end(scenario);
+}
+
+// === ATTACK #5: Reuse Witness ===
+
+#[test]
+fun attack_reuse_witness() {
+    let mut scenario = ts::begin(ATTACKER);
+
+    // Assume Bob somehow got a witness (impossible, but let's imagine)
+    let auth = get_witness_somehow(); // hypothetical
+
+    let mut proposal = get_some_proposal(); // hypothetical
+    let threshold = signed::from_u64(0);
+
+    // Use witness once
+    proposal::set_outcome_sponsorship(&mut proposal, 1, threshold, auth);
+
+    // Try to reuse witness
+    proposal::set_outcome_sponsorship(&mut proposal, 2, threshold, auth);
+    //                                                              ^^^^
+    // COMPILATION ERROR: use of moved value 'auth'
+    //
+    // Witnesses have `drop` ability only (no `copy`)
+    // They are consumed when passed to a function
+    // Cannot be reused - must create a new one each time
+    //
+    // And only proposal_sponsorship can create them!
+
+    ts::end(scenario);
+}
+
+// === ATTACK #6: Store Witness for Later ===
+
+#[test]
+fun attack_store_witness() {
+    let mut scenario = ts::begin(ATTACKER);
+
+    let auth = get_witness_somehow(); // hypothetical
+
+    // Try to store witness in a struct for later use
+    let stored_witness = StoredAuth { auth };
+    //                                 ^^^^
+    // COMPILATION ERROR: ability constraint not satisfied
+    //
+    // Error: "SponsorshipAuth does not have 'store' ability"
+    //
+    // Witnesses cannot be stored in structs or tables
+    // They must be used immediately
+    // This prevents stockpiling witnesses
+
+    ts::end(scenario);
+}
+
+public struct StoredAuth has store {
+    auth: SponsorshipAuth // This field declaration itself won't compile
+}
+
+// === SUMMARY ===
+
+/*
+ * ALL OF THE ABOVE ATTACKS FAIL AT COMPILE TIME
+ *
+ * This demonstrates that the security is provided by Move's type system, not runtime checks.
+ *
+ * Key properties of SponsorshipAuth:
+ * 1. No public constructor -> Only proposal_sponsorship can create
+ * 2. Only `drop` ability -> Cannot copy or store
+ * 3. Consumed on use -> Cannot reuse
+ * 4. Type checked at compile time -> No runtime bypass possible
+ *
+ * This is why we don't need traditional "test the attack fails" tests.
+ * If attack code compiles, there's no attack.
+ * If attack code doesn't compile, the type system already prevented it.
+ */

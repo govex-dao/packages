@@ -833,14 +833,24 @@ fun test_swap_with_auto_arb_using_entry_function() {
     let mut escrow = create_test_escrow_with_markets(2, 1000, &clock, ctx);
 
     // CRITICAL: Fund the escrow to back the conditional pools
-    // Each pool will have cond_asset and cond_stable reserves
-    // With 2 outcomes, we need to back both pools
-    let escrow_asset_backing = cond_asset * 2; // 2M total
-    let escrow_stable_backing = cond_stable * 2; // 2k total
+    // QUANTUM MODEL: escrow must equal the supply for EACH outcome independently
+    // All outcomes share the same backing (quantum superposition)
+    // So escrow = supply_per_outcome, NOT sum of all outcomes
+    let escrow_asset_backing = cond_asset;  // 1B (same as each outcome's supply)
+    let escrow_stable_backing = cond_stable; // 1M (same as each outcome's supply)
     coin_escrow::deposit_spot_coins(
         &mut escrow,
         coin::mint_for_testing<TEST_COIN_A>(escrow_asset_backing, ctx),
         coin::mint_for_testing<TEST_COIN_B>(escrow_stable_backing, ctx),
+    );
+
+    // CRITICAL: Initialize supplies to match conditional pool reserves
+    // The arbitrage decrement_supplies_for_all_outcomes requires supplies to be set
+    // Each outcome gets supply == escrow (quantum invariant)
+    coin_escrow::increment_supplies_for_all_outcomes(
+        &mut escrow,
+        cond_asset,   // asset supply per outcome (matches AMM reserves)
+        cond_stable,  // stable supply per outcome (matches AMM reserves)
     );
 
     let market_state = coin_escrow::get_market_state_mut(&mut escrow);

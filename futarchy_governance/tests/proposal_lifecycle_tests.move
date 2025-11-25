@@ -141,29 +141,28 @@ fun test_calculate_winning_outcome_rejects() {
 }
 
 #[test]
-fun test_effective_threshold_with_sponsorship() {
+fun test_effective_threshold_with_per_outcome_sponsorship() {
     let mut scenario = ts::begin(USER_ADDR);
     let ctx = scenario.ctx();
 
     let clock = create_test_clock(1000000, ctx);
-    let mut proposal = create_test_proposal_with_outcomes(2, ctx);
+    let proposal = create_test_proposal_with_outcomes(2, ctx);
 
     // Base threshold is 0.5
     let base_threshold = proposal::get_twap_threshold(&proposal);
     assert!(signed::magnitude(&base_threshold) == 500000000000000000u128, 0);
 
-    // Apply sponsorship: reduce threshold by 0.1
-    let reduction = signed::from_u128(100000000000000000u128);
-    proposal::set_sponsorship(&mut proposal, @0x5999, reduction);
+    // Per-outcome sponsorship tests are in per_outcome_sponsorship_integration_tests.move
+    // Cannot test set_outcome_sponsorship() here because it requires SponsorshipAuth witness
+    // which can only be created by proposal_sponsorship module
 
-    // Effective threshold should be 0.5 - 0.1 = 0.4
-    let effective = proposal::get_effective_twap_threshold(&proposal);
+    // Test per-outcome threshold getter with unsponsored outcome
+    // When no sponsorship, should return base threshold
+    let outcome_0_threshold = proposal::get_effective_twap_threshold_for_outcome(&proposal, 0);
+    assert!(signed::magnitude(&outcome_0_threshold) == signed::magnitude(&base_threshold), 1);
 
-    // Verify sponsorship is active
-    assert!(proposal::is_sponsored(&proposal), 1);
-
-    // Effective threshold should be lower than base
-    // (exact comparison requires signed arithmetic)
+    let outcome_1_threshold = proposal::get_effective_twap_threshold_for_outcome(&proposal, 1);
+    assert!(signed::magnitude(&outcome_1_threshold) == signed::magnitude(&base_threshold), 2);
 
     test_utils::destroy(proposal);
     clock.destroy_for_testing();

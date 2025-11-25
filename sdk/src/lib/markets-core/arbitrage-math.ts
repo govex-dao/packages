@@ -33,7 +33,7 @@ export class ArbitrageMath {
   /**
    * PRIMARY N-OUTCOME FUNCTION - Compute optimal arbitrage after user swap
    *
-   * Returns (optimal_amount, expected_profit, is_spot_to_cond)
+   * Returns (optimal_amount, expected_profit, is_cond_to_spot)
    *
    * SMART BOUNDING OPTIMIZATION:
    * Uses user's swap output as upper bound (1.1x for safety margin).
@@ -49,11 +49,15 @@ export class ArbitrageMath {
    * 2. Conditional → Spot: Buy from ALL conditionals, recombine, sell to spot
    * 3. Compare profits, return better direction
    *
+   * Direction Flag (is_cond_to_spot):
+   * - true = Conditional→Spot: Buy from conditional pools, recombine, sell to spot
+   * - false = Spot→Conditional: Buy from spot, split, sell to conditional pools
+   *
    * Performance: O(log(1.1*user_output) × N) = ~95%+ gas reduction vs global search
    *
    * @param tx - Transaction
    * @param config - Configuration
-   * @returns Tuple of (optimal_amount: u64, expected_profit: u128, is_spot_to_cond: bool)
+   * @returns Tuple of (optimal_amount: u64, expected_profit: u128, is_cond_to_spot: bool)
    */
   static computeOptimalArbitrageForNOutcomes(
     tx: Transaction,
@@ -64,7 +68,6 @@ export class ArbitrageMath {
       spot: ReturnType<Transaction['moveCall']>;
       conditionals: ReturnType<Transaction['moveCall']>;
       userSwapOutput: bigint; // Hint from user's swap (0 = use global bound)
-      minProfit: bigint;
     }
   ): ReturnType<Transaction['moveCall']> {
     return tx.moveCall({
@@ -74,7 +77,6 @@ export class ArbitrageMath {
         config.spot,
         config.conditionals,
         tx.pure.u64(config.userSwapOutput),
-        tx.pure.u64(config.minProfit),
       ],
     });
   }
@@ -98,7 +100,6 @@ export class ArbitrageMath {
       spot: ReturnType<Transaction['moveCall']>;
       conditionals: ReturnType<Transaction['moveCall']>;
       userSwapOutput: bigint; // Hint: 0 = use global bound
-      minProfit: bigint;
     }
   ): ReturnType<Transaction['moveCall']> {
     return tx.moveCall({
@@ -108,7 +109,6 @@ export class ArbitrageMath {
         config.spot,
         config.conditionals,
         tx.pure.u64(config.userSwapOutput),
-        tx.pure.u64(config.minProfit),
       ],
     });
   }
@@ -132,7 +132,6 @@ export class ArbitrageMath {
       spot: ReturnType<Transaction['moveCall']>;
       conditionals: ReturnType<Transaction['moveCall']>;
       userSwapOutput: bigint; // Hint: 0 = use global bound
-      minProfit: bigint;
     }
   ): ReturnType<Transaction['moveCall']> {
     return tx.moveCall({
@@ -142,7 +141,6 @@ export class ArbitrageMath {
         config.spot,
         config.conditionals,
         tx.pure.u64(config.userSwapOutput),
-        tx.pure.u64(config.minProfit),
       ],
     });
   }

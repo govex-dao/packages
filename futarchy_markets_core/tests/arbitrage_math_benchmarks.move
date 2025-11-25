@@ -99,8 +99,7 @@ fun test_benchmark_gas_scaling() {
         ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
             &spot_pool,
             &conditional_pools,
-            0,
-            0,
+            0
         );
 
         // Validation: Should find profitable arbitrage
@@ -155,8 +154,7 @@ fun test_benchmark_pool_configurations() {
     let (_amt1, profit1, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_1,
         &competitive_pools,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_pool_1);
@@ -214,8 +212,7 @@ fun test_benchmark_pool_configurations() {
     let (_amt2, profit2, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_2,
         &dominated_pools,
-        0,
-        0,
+        0
     );
 
     // Both should find profit (validation)
@@ -253,8 +250,7 @@ fun test_benchmark_tiny_reserves() {
     let (_amt_tiny, profit_tiny, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_tiny,
         &conds_tiny,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_tiny);
@@ -295,8 +291,7 @@ fun test_benchmark_upper_bound_199() {
     let (_amt_199, profit_199, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_199,
         &conds_199,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_199);
@@ -335,8 +330,7 @@ fun test_benchmark_50_pools_large_trade() {
     let (_amt_50, profit_50, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_50_large,
         &conds_50_large,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_50_large);
@@ -377,8 +371,7 @@ fun test_benchmark_10_pools_size_1() {
     let (_amt_1, profit_1, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_size_1,
         &conds_size_1,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_size_1);
@@ -419,8 +412,7 @@ fun test_benchmark_large_reserves() {
     let (_amt_large, profit_large, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_large,
         &conds_large,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_large);
@@ -463,8 +455,7 @@ fun test_benchmark_search_efficiency() {
     let (optimal_amount, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Validation: Should find optimal solution
@@ -504,8 +495,7 @@ fun test_benchmark_50_pools_no_arbitrage() {
     let (_amt, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_balanced,
         &conds_balanced,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_balanced);
@@ -543,8 +533,7 @@ fun test_benchmark_extreme_fees() {
     let (_amt, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_high_fee,
         &conds_high_fee,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_high_fee);
@@ -583,8 +572,7 @@ fun test_benchmark_upper_bound_99() {
     let (_amt, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_99,
         &conds_99,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_99);
@@ -645,8 +633,7 @@ fun test_benchmark_extreme_size_imbalance() {
     let (_amt, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_imbalance,
         &imbalanced_pools,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_imbalance);
@@ -684,11 +671,10 @@ fun test_benchmark_cond_to_spot_50_pools_small() {
     // - Must buy from ALL 50 pools (quantum liquidity requirement)
     // - Has small upper_bound
     // - Most expensive combination possible
-    let (_amt, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (_amt, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_expensive,
         &conds_cheap,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_expensive);

@@ -114,15 +114,18 @@ export class OracleActionsOperations {
   private client: SuiClient;
   private oracleActionsPackageId: string;
   private packageRegistryId: string;
+  private futarchyCorePackageId: string;
 
   constructor(
     client: SuiClient,
     oracleActionsPackageId: string,
-    packageRegistryId: string
+    packageRegistryId: string,
+    futarchyCorePackageId: string
   ) {
     this.client = client;
     this.oracleActionsPackageId = oracleActionsPackageId;
     this.packageRegistryId = packageRegistryId;
+    this.futarchyCorePackageId = futarchyCorePackageId;
   }
 
   /**
@@ -291,7 +294,7 @@ export class OracleActionsOperations {
       typeArguments: [
         config.assetType,
         config.stableType,
-        'FutarchyConfig', // TODO: Make this configurable
+        `${this.futarchyCorePackageId}::futarchy_config::FutarchyConfig`,
       ],
       arguments: [
         claimRequest, // request

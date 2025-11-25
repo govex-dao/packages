@@ -118,8 +118,7 @@ fun test_build_tab_constants_overflow_protection() {
     let (amount, profit, _direction) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // With extreme reserves, algorithm should still terminate
@@ -159,8 +158,7 @@ fun test_upper_bound_b_correctness() {
     let (optimal_b, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // If profit > 0, optimal_b should be within valid domain
@@ -210,8 +208,7 @@ fun test_x_required_for_b_overflow() {
     let (amount, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should handle overflow gracefully (saturate, not abort)
@@ -249,16 +246,15 @@ fun test_profit_at_b_correctness() {
     let (
         optimal_b,
         profit,
-        is_spot_to_cond,
+        is_cond_to_spot,
     ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // If arbitrage exists, profit should be positive
-    if (is_spot_to_cond && optimal_b > 0) {
+    if (is_cond_to_spot && optimal_b > 0) {
         assert!(profit > 0, 0);
 
         // Property: At optimum, F'(b) ≈ 0 (profit is maximized)
@@ -303,16 +299,15 @@ fun test_optimal_b_search_convergence() {
     let (
         optimal_b,
         profit,
-        is_spot_to_cond,
+        is_cond_to_spot,
     ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
-    // Should find Spot → Conditional arbitrage
-    assert!(is_spot_to_cond == true, 0);
+    // Should find Spot → Conditional arbitrage (NOT cond_to_spot)
+    assert!(is_cond_to_spot == false, 0);
     assert!(optimal_b > 0, 1);
     assert!(profit > 0, 2);
 
@@ -357,8 +352,7 @@ fun test_optimal_b_search_efficiency() {
         ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
             &spot_pool,
             &conditional_pools,
-            0,
-            0,
+            0
         );
 
         cleanup_spot_pool(spot_pool);
@@ -395,8 +389,7 @@ fun test_two_phase_search_precision() {
     let (optimal_b, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Verify precision: 0.01% of largest pool (per comments in code)
@@ -446,8 +439,7 @@ fun test_multiple_pools_correctness() {
     let (_amount, _profit, _direction) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_pool);
@@ -496,11 +488,10 @@ fun test_dominance_invariance() {
     vector::push_back(&mut conds_abc, pool_b);
     vector::push_back(&mut conds_abc, pool_c);
 
-    let (amt_abc, prof_abc, is_stc_abc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amt_abc, prof_abc, is_cts_abc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conds_abc,
-        0,
-        0,
+        0
     );
 
     cleanup_conditional_pools(conds_abc);
@@ -523,15 +514,14 @@ fun test_dominance_invariance() {
     vector::push_back(&mut conds_ab, pool_a2);
     vector::push_back(&mut conds_ab, pool_b2);
 
-    let (amt_ab, prof_ab, is_stc_ab) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amt_ab, prof_ab, is_cts_ab) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conds_ab,
-        0,
-        0,
+        0
     );
 
     // Dominance invariance: max_i naturally ignores economically irrelevant pools
-    assert!(is_stc_abc == is_stc_ab, 0); // Same direction
+    assert!(is_cts_abc == is_cts_ab, 0); // Same direction
     assert!(prof_abc == prof_ab, 1); // Same profit
     assert!(amt_abc == amt_ab, 2); // Same amount
 
@@ -566,8 +556,7 @@ fun test_early_exit_check_correctness() {
     let (amount, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should detect no arbitrage and return (0, 0)
@@ -613,16 +602,15 @@ fun test_bidirectional_solver() {
     let (
         amount_1,
         profit_1,
-        is_spot_to_cond_1,
+        is_cond_to_spot_1,
     ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_1,
         &conditional_pools_1,
-        0,
-        0,
+        0
     );
 
     assert!(profit_1 > 0, 0);
-    assert!(is_spot_to_cond_1 == true, 1);
+    assert!(is_cond_to_spot_1 == false, 1); // Spot→Cond, so NOT cond_to_spot
     assert!(amount_1 > 0, 2);
 
     cleanup_spot_pool(spot_pool_1);
@@ -649,16 +637,15 @@ fun test_bidirectional_solver() {
     let (
         amount_2,
         profit_2,
-        is_spot_to_cond_2,
+        is_cond_to_spot_2,
     ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_2,
         &conditional_pools_2,
-        0,
-        0,
+        0
     );
 
     assert!(profit_2 > 0, 3);
-    assert!(is_spot_to_cond_2 == false, 4);
+    assert!(is_cond_to_spot_2 == true, 4); // Cond→Spot, so IS cond_to_spot
     assert!(amount_2 > 0, 5);
 
     cleanup_spot_pool(spot_pool_2);
@@ -689,18 +676,17 @@ fun test_zero_conditionals() {
     let (
         amount,
         profit,
-        is_spot_to_cond,
+        is_cond_to_spot,
     ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conds,
-        0,
-        0,
+        0
     );
 
     // N=0 should return (0, 0, false)
     assert!(amount == 0, 0);
     assert!(profit == 0, 1);
-    assert!(!is_spot_to_cond, 2);
+    assert!(!is_cond_to_spot, 2);
 
     cleanup_spot_pool(spot_pool);
     cleanup_conditional_pools(conds);
@@ -732,8 +718,7 @@ fun test_zero_liquidity() {
     let (amount, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // No arbitrage possible with zero liquidity
@@ -771,8 +756,7 @@ fun test_zero_spot_liquidity() {
     let (amount, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_zero_asset,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // No arbitrage possible with zero spot liquidity
@@ -803,8 +787,7 @@ fun test_zero_spot_liquidity() {
     let (amount_2, profit_2, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_zero_stable,
         &conditional_pools_2,
-        0,
-        0,
+        0
     );
 
     // No arbitrage possible with zero spot liquidity
@@ -876,8 +859,7 @@ fun test_single_conditional() {
     let (amount, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should work with N=1
@@ -915,8 +897,7 @@ fun test_max_conditionals() {
     let (_amount, _profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_pool);
@@ -950,8 +931,7 @@ fun test_too_many_conditionals() {
     let (_amount, _profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_pool);
@@ -989,8 +969,7 @@ fun test_profit_unimodality() {
     let (optimal_b, max_profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Property: Profit at optimal should be >= profit at nearby points
@@ -1061,8 +1040,7 @@ fun test_equilibrium_zero_arbitrage() {
     let (amount, profit, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // At equilibrium, no arbitrage should exist
@@ -1102,8 +1080,7 @@ fun test_profit_monotonicity() {
     let (_amount_small, profit_small, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_small,
         &conditional_pools_small,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_pool_small);
@@ -1132,8 +1109,7 @@ fun test_profit_monotonicity() {
     let (_amount_large, profit_large, _) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool_large,
         &conditional_pools_large,
-        0,
-        0,
+        0
     );
 
     cleanup_spot_pool(spot_pool_large);

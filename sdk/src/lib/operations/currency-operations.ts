@@ -106,26 +106,13 @@ export class CurrencyOperations {
    * console.log(metadata.name, metadata.symbol);
    * ```
    */
-  async getMetadata(daoId: string, _coinType: string): Promise<CoinMetadataInfo> {
-    // Query the DAO object to find coin metadata
-    const obj = await this.client.getObject({
-      id: daoId,
-      options: { showContent: true },
-    });
-
-    if (!obj.data?.content || obj.data.content.dataType !== 'moveObject') {
-      throw new Error(`DAO not found: ${daoId}`);
-    }
-
-    // TODO: Parse managed data to find CoinMetadata
-    // For now, return placeholder
-    return {
-      name: '',
-      symbol: '',
-      description: '',
-      iconUrl: '',
-      decimals: 9,
-    };
+  async getMetadata(_daoId: string, _coinType: string): Promise<CoinMetadataInfo> {
+    // This requires resolving dynamic fields to find CoinMetadata in managed assets
+    throw new Error(
+      'getMetadata is not yet implemented. ' +
+      'Finding CoinMetadata requires dynamic field resolution. ' +
+      'Consider using client.getCoinMetadata() for public coin metadata.'
+    );
   }
 
   /**
@@ -144,9 +131,12 @@ export class CurrencyOperations {
    * ```
    */
   async getTotalSupply(_daoId: string, _coinType: string): Promise<bigint> {
-    // Query TreasuryCap to get total supply
-    // TODO: Find TreasuryCap in DAO managed assets
-    return 0n;
+    // This requires finding TreasuryCap in DAO's managed assets
+    throw new Error(
+      'getTotalSupply is not yet implemented. ' +
+      'Finding TreasuryCap requires dynamic field resolution. ' +
+      'Consider using client.getTotalSupply() for public supply data.'
+    );
   }
 
   /**

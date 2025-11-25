@@ -64,17 +64,16 @@ fun test_spot_zero_asset_one_stable() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should return (0, 0, true) - when both profits are 0, STC wins the tie
     assert!(amount == 0, 0);
     assert!(profit == 0, 1);
-    assert!(is_stc == true, 2);
+    assert!(is_cts == false, 2); // Spot→Cond wins tie (NOT cond_to_spot)
 
     cleanup_spot_pool(spot_pool);
     cleanup_conditional_pools(conditional_pools);
@@ -100,17 +99,16 @@ fun test_spot_one_asset_zero_stable() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should return (0, 0, true) - when both profits are 0, STC wins the tie
     assert!(amount == 0, 0);
     assert!(profit == 0, 1);
-    assert!(is_stc == true, 2);
+    assert!(is_cts == false, 2); // Spot→Cond wins tie (NOT cond_to_spot)
 
     cleanup_spot_pool(spot_pool);
     cleanup_conditional_pools(conditional_pools);
@@ -136,17 +134,16 @@ fun test_spot_zero_zero() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should return (0, 0, true) - when both profits are 0, STC wins the tie
     assert!(amount == 0, 0);
     assert!(profit == 0, 1);
-    assert!(is_stc == true, 2);
+    assert!(is_cts == false, 2); // Spot→Cond wins tie (NOT cond_to_spot)
 
     cleanup_spot_pool(spot_pool);
     cleanup_conditional_pools(conditional_pools);
@@ -173,11 +170,10 @@ fun test_spot_one_one() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -220,11 +216,10 @@ fun test_spot_one_two() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -255,11 +250,10 @@ fun test_spot_two_one() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -295,17 +289,16 @@ fun test_conditional_zero_asset_one_stable() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should return (0, 0, true) - when both profits are 0, STC wins the tie
     assert!(amount == 0, 0);
     assert!(profit == 0, 1);
-    assert!(is_stc == true, 2);
+    assert!(is_cts == false, 2); // Spot→Cond wins tie (NOT cond_to_spot)
 
     cleanup_spot_pool(spot_pool);
     cleanup_conditional_pools(conditional_pools);
@@ -331,17 +324,16 @@ fun test_conditional_one_asset_zero_stable() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should return (0, 0, true) - when both profits are 0, STC wins the tie
     assert!(amount == 0, 0);
     assert!(profit == 0, 1);
-    assert!(is_stc == true, 2);
+    assert!(is_cts == false, 2); // Spot→Cond wins tie (NOT cond_to_spot)
 
     cleanup_spot_pool(spot_pool);
     cleanup_conditional_pools(conditional_pools);
@@ -367,17 +359,16 @@ fun test_conditional_zero_zero() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // Should return (0, 0, true) - when both profits are 0, STC wins the tie
     assert!(amount == 0, 0);
     assert!(profit == 0, 1);
-    assert!(is_stc == true, 2);
+    assert!(is_cts == false, 2); // Spot→Cond wins tie (NOT cond_to_spot)
 
     cleanup_spot_pool(spot_pool);
     cleanup_conditional_pools(conditional_pools);
@@ -403,11 +394,10 @@ fun test_conditional_one_one() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -444,11 +434,10 @@ fun test_conditional_one_two() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -479,11 +468,10 @@ fun test_conditional_two_one() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -518,11 +506,10 @@ fun test_both_one_one() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -556,11 +543,10 @@ fun test_both_minimal_opposite_prices() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -593,11 +579,10 @@ fun test_spot_large_conditional_tiny() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -629,11 +614,10 @@ fun test_spot_tiny_conditional_large() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -666,11 +650,10 @@ fun test_mixed_conditional_sizes() {
         ts::ctx(&mut scenario),
     );
 
-    let (amount, profit, _is_stc) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
+    let (amount, profit, _is_cts) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         &spot_pool,
         &conditional_pools,
-        0,
-        0,
+        0
     );
 
     // CRITICAL: Must terminate without panic
@@ -733,12 +716,11 @@ fun test_comprehensive_edge_case_grid() {
             let (
                 amount,
                 profit,
-                _is_stc,
+                _is_cts,
             ) = arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
                 &spot_pool,
                 &conditional_pools,
-                0,
-                0,
+                0
             );
 
             // Validate: must return non-negative values

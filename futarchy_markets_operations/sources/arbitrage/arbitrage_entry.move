@@ -94,7 +94,6 @@ public fun get_quote_asset_to_stable<AssetType, StableType>(
         spot,
         conditionals,
         direct_output,
-        0,
     );
 
     // 3. Check if arbitrage opportunity exists (for arbitrage bots, not user profit!)
@@ -126,7 +125,6 @@ public fun get_quote_stable_to_asset<AssetType, StableType>(
         spot,
         conditionals,
         direct_output,
-        0,
     );
 
     let is_arb_available = optimal_arb_amount > 0 && expected_arb_profit > 0;
@@ -166,22 +164,20 @@ public fun get_quote_stable_to_asset<AssetType, StableType>(
 ///     execute_arbitrage(...);
 /// }
 /// ```
-public fun simulate_pure_arbitrage_with_min_profit<AssetType, StableType>(
+public fun simulate_pure_arbitrage<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64,
-    min_profit: u64,
 ): (u64, u128, bool) {
     arbitrage_math::compute_optimal_arbitrage_for_n_outcomes(
         spot,
         conditionals,
         user_swap_output,
-        min_profit,
     )
 }
 
-/// Legacy interface: Simulate arbitrage in specific direction (asset→stable)
-/// NOTE: New code should use simulate_pure_arbitrage_with_min_profit for bidirectional search
+/// Simulate arbitrage in specific direction (asset→stable)
+/// NOTE: New code should use simulate_pure_arbitrage for bidirectional search
 public fun simulate_pure_arbitrage_asset_to_stable<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
@@ -195,7 +191,6 @@ public fun simulate_pure_arbitrage_asset_to_stable<AssetType, StableType>(
         spot,
         conditionals,
         user_swap_output,
-        0,
     );
 
     // Return only if direction matches (asset_to_stable = spot_to_cond)
@@ -206,8 +201,8 @@ public fun simulate_pure_arbitrage_asset_to_stable<AssetType, StableType>(
     }
 }
 
-/// Legacy interface: Simulate arbitrage in specific direction (stable→asset)
-/// NOTE: New code should use simulate_pure_arbitrage_with_min_profit for bidirectional search
+/// Simulate arbitrage in specific direction (stable→asset)
+/// NOTE: New code should use simulate_pure_arbitrage for bidirectional search
 public fun simulate_pure_arbitrage_stable_to_asset<AssetType, StableType>(
     spot: &UnifiedSpotPool<AssetType, StableType>,
     conditionals: &vector<LiquidityPool>,
@@ -221,7 +216,6 @@ public fun simulate_pure_arbitrage_stable_to_asset<AssetType, StableType>(
         spot,
         conditionals,
         user_swap_output,
-        0,
     );
 
     // Return only if direction matches (stable_to_asset = cond_to_spot)

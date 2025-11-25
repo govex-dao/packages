@@ -208,7 +208,44 @@ async function main() {
   console.log(`   Total: ${streamAmount / 1e9} stable over ${Number(streamIterations)} iterations`);
   console.log();
 
+  // First, get stable coins for the proposal fee
+  const proposalFeeAmount = 1_000_000_000n; // 1 stable coin fee (adjust based on DAO config)
+  console.log(`💰 Preparing proposal fee: ${Number(proposalFeeAmount) / 1e9} stable`);
+
+  const stableCoinsForFee = await sdk.client.getCoins({
+    owner: activeAddress,
+    coinType: stableType,
+  });
+
+  if (!stableCoinsForFee.data.length) {
+    console.log("⚠️  No stable coins found, minting some for proposal fee...");
+    const mintFeeTx = new Transaction();
+    mintFeeTx.moveCall({
+      target: `${stableType.split("::")[0]}::coin::mint`,
+      arguments: [
+        mintFeeTx.object(stableTreasuryCap),
+        mintFeeTx.pure.u64(proposalFeeAmount),
+        mintFeeTx.pure.address(activeAddress),
+      ],
+    });
+    await executeTransaction(sdk, mintFeeTx, {
+      network: "devnet",
+      description: "Mint stable coins for proposal fee",
+    });
+  }
+
   const createTx = new Transaction();
+
+  // Get stable coins and prepare fee payment
+  const feeCoins = await sdk.client.getCoins({
+    owner: activeAddress,
+    coinType: stableType,
+  });
+  const [firstFeeCoin, ...restFeeCoins] = feeCoins.data.map((c) => createTx.object(c.coinObjectId));
+  if (restFeeCoins.length > 0) {
+    createTx.mergeCoins(firstFeeCoin, restFeeCoins);
+  }
+  const [feePayment] = createTx.splitCoins(firstFeeCoin, [createTx.pure.u64(proposalFeeAmount)]);
 
   // Create Option::None for vector<ActionSpec>
   const noneOption = createTx.moveCall({
@@ -234,6 +271,7 @@ async function main() {
       ]), // outcome_details
       createTx.pure.address(activeAddress), // proposer
       createTx.pure.bool(false), // used_quota
+      feePayment, // fee_payment: Coin<StableType>
       noneOption, // intent_spec_for_yes
       createTx.sharedObjectRef({
         objectId: "0x6",
@@ -242,6 +280,9 @@ async function main() {
       }), // clock
     ],
   });
+
+  // Return unused stable coins to sender
+  createTx.transferObjects([firstFeeCoin], createTx.pure.address(activeAddress));
 
   console.log("📤 Creating proposal...");
   const createResult = await executeTransaction(sdk, createTx, {

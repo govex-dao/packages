@@ -86,6 +86,7 @@ export class Proposal {
       outcomeDetails: string[];
       proposer: string;
       usedQuota: boolean;
+      feePayment: ReturnType<Transaction['moveCall']> | ReturnType<Transaction['splitCoins']>; // Coin<StableType> for proposal fee
       intentSpecForYes?: ReturnType<Transaction['moveCall']>; // Option<vector<ActionSpec>>
       clock?: string;
     }
@@ -110,6 +111,7 @@ export class Proposal {
         tx.pure.vector('string', config.outcomeDetails),
         tx.pure.address(config.proposer),
         tx.pure.bool(config.usedQuota),
+        config.feePayment,
         intentSpec,
         tx.object(config.clock || '0x6'),
       ],

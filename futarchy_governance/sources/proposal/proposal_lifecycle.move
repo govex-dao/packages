@@ -179,97 +179,51 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
         i = i + 1;
     };
 
-    // --- BEGIN OUTCOME CREATOR FEE REFUNDS & REWARDS ---
-    // Economic model per user requirement:
-    // - Outcome 0 wins: DAO keeps all fees (reject/no action taken)
-    // - Outcomes 1-N win:
-    //   1. Refund ALL creators of outcomes 1-N (collaborative model)
-    //   2. Pay bonus reward to winning outcome creator (configurable)
+    // --- BEGIN PROPOSER FEE REFUNDS & REWARDS ---
+    // Economic model:
+    // - Outcome 0 wins (Reject): DAO keeps all fees
+    // - Any outcome 1+ wins (Accept): Proposer gets full refund + bonus reward
     //
-    // Game Theory Rationale:
-    // - Eliminates fee-stealing attacks (both proposer and mutator get refunded)
-    // - No incentive to hedge by creating trivial mutations
-    // - Makes mutations collaborative rather than adversarial
-    // - Original proposer always protected if any action is taken
-    // - Encourages healthy debate without perverse incentives
-    // - Winning creator gets bonus to incentivize quality
+    // All outcomes are created by the proposer at proposal creation time.
+    // No mutation allowed - simpler and prevents gaming.
     if (winning_outcome > 0) {
         let config: &FutarchyConfig = account::config(account);
-        let num_outcomes = proposal::get_num_outcomes(proposal);
 
-        // 1. Refund fees to ALL creators of outcomes 1-N from proposal's fee escrow
-        // SECURITY: Use per-proposal escrow instead of global protocol revenue
-        // This ensures each proposal's fees are properly tracked and refunded
-        //
-        // NOTE: Outcomes structure:
-        // - Outcome 0: "Reject"/"No" - typically the proposal creator (no refund if this wins)
-        // - Outcomes 1+: "Accept"/"Yes" variants - initially proposal creator, may be mutated
-        //
-        // Refund logic: Loop through outcomes 1-N (NOT outcome 0)
-        // - If ANY action outcome wins (1+), ALL outcome creators get their fees back
-        // - This includes the original proposal creator (who created outcome 1 initially)
-        // - So proposal creator gets refunded if any action is taken, even if their specific outcome loses
+        // 1. Refund all fees to proposer
         let fee_escrow_balance = proposal::take_fee_escrow(proposal);
-        let mut fee_escrow_coin = coin::from_balance(fee_escrow_balance, ctx);
+        let fee_escrow_coin = coin::from_balance(fee_escrow_balance, ctx);
+        let proposer = proposal::get_proposer(proposal);
 
-        let mut i = 1u64; // Start at 1: skip outcome 0 (reject/no action)
-        while (i < num_outcomes) {
-            let creator_fee = proposal::get_outcome_creator_fee(proposal, i);
-            if (creator_fee > 0 && fee_escrow_coin.value() >= creator_fee) {
-                let creator = proposal::get_outcome_creator(proposal, i);
-                let refund_coin = coin::split(&mut fee_escrow_coin, creator_fee, ctx);
-                // Transfer refund to outcome creator
-                transfer::public_transfer(refund_coin, creator);
-            };
-            i = i + 1;
-        };
-
-        // Any remaining escrow gets destroyed (no refund for outcome 0 creator/proposer if outcome 0 wins)
-        // Note: In StableType, not SUI, so cannot deposit to SUI-denominated protocol revenue
         if (fee_escrow_coin.value() > 0) {
-            transfer::public_transfer(fee_escrow_coin, @0x0); // Burn by sending to null address
+            transfer::public_transfer(fee_escrow_coin, proposer);
         } else {
             fee_escrow_coin.destroy_zero();
         };
 
-        // 2. Pay bonus reward to WINNING outcome creator (if configured)
+        // 2. Pay bonus reward to proposer (if configured)
         // Note: Reward is paid in StableType from DAO's "stable" vault
-        // DAOs can set this to 0 to disable, or any amount to incentivize quality outcomes
         //
         // IMPORTANT: Skip reward if ANY of these conditions are true:
         // - Proposal used admin quota (got free/discounted proposal creation)
         // - Proposal was EXPLICITLY sponsored (team member called sponsor function)
-        //
-        // Distinction between sponsorship and DAO policy:
-        // ✅ DAO default threshold = 0% → NOT sponsored → Winner GETS reward
-        //    (This is just DAO policy, not subsidizing a specific proposal)
-        // ❌ Team calls sponsor_proposal() → IS sponsored → Winner NO reward
-        //    (This is explicit subsidy via threshold adjustment for a specific proposal)
-        //
-        // Rationale: Rewards incentivize quality external proposals.
-        // If proposal already received DAO support (free fees OR easier pass criteria via sponsorship),
-        // paying additional rewards would be double-dipping from DAO treasury.
         let win_reward = futarchy_config::outcome_win_reward(config);
         let used_quota = proposal::get_used_quota(proposal);
-        let was_sponsored = proposal::is_sponsored(proposal); // Only true if sponsor_proposal*() was called
+        let was_sponsored = proposal::is_sponsored(proposal);
 
         if (win_reward > 0 && !used_quota && !was_sponsored) {
-            let winner = proposal::get_outcome_creator(proposal, winning_outcome);
-
             // Access DAO's "stable" vault to check balance and withdraw reward
             let vault_name = b"stable".to_string();
             let dao_address = account.addr();
 
             // Check if vault exists
             if (vault::has_vault(account, vault_name)) {
-                // First check balance (read-only)
                 let dao_vault = vault::borrow_vault(account, registry, vault_name);
 
                 // Check if the vault has StableType balance
                 if (vault::coin_type_exists<StableType>(dao_vault)) {
                     let available_balance = vault::coin_type_value<StableType>(dao_vault);
 
-                    // Only pay if vault has funds - take minimum of reward and available balance
+                    // Only pay if vault has funds
                     if (available_balance > 0) {
                         let actual_reward_amount = if (available_balance >= win_reward) {
                             win_reward
@@ -277,8 +231,6 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
                             available_balance
                         };
 
-                        // Withdraw from vault using permissionless withdrawal
-                        // (same pattern used for dissolution - no Auth required)
                         let reward_coin = vault::withdraw_permissionless<FutarchyConfig, StableType>(
                             account,
                             registry,
@@ -288,21 +240,21 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
                             ctx,
                         );
 
-                        transfer::public_transfer(reward_coin, winner);
+                        transfer::public_transfer(reward_coin, proposer);
                     };
                 };
             };
         };
     };
     // If outcome 0 wins, DAO keeps all fees - no refunds or rewards
-    // --- END OUTCOME CREATOR FEE REFUNDS & REWARDS ---
+    // --- END PROPOSER FEE REFUNDS & REWARDS ---
 
     // Emit finalization event
     event::emit(ProposalMarketFinalized {
         proposal_id: proposal::get_id(proposal),
         dao_id: proposal::get_dao_id(proposal),
         winning_outcome,
-        approved: winning_outcome == OUTCOME_ACCEPTED,
+        approved: winning_outcome > 0, // Any accept outcome (1+) means approved
         timestamp: clock.timestamp_ms(),
     });
 }
@@ -439,7 +391,7 @@ public entry fun finalize_proposal_with_spot_pool<AssetType, StableType>(
         proposal_id: proposal::get_id(proposal),
         dao_id: proposal::get_dao_id(proposal),
         winning_outcome,
-        approved: winning_outcome == OUTCOME_ACCEPTED,
+        approved: winning_outcome > 0, // Any accept outcome (1+) means approved
         timestamp: clock.timestamp_ms(),
     });
 }
@@ -525,8 +477,10 @@ public fun can_execute_proposal<AssetType, StableType>(
 }
 
 /// Calculates the winning outcome and returns TWAP prices to avoid double computation
-/// Returns (outcome, twap_prices) where outcome is OUTCOME_ACCEPTED or OUTCOME_REJECTED
-/// IMPORTANT: Uses effective threshold which accounts for sponsorship reduction
+/// Returns (outcome, twap_prices)
+/// IMPORTANT: Uses per-outcome sponsorship thresholds
+/// Winner = outcome with highest TWAP among those that pass their threshold
+/// If no outcome passes, OUTCOME_REJECTED (0) wins by default
 public fun calculate_winning_outcome_with_twaps<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
@@ -534,26 +488,30 @@ public fun calculate_winning_outcome_with_twaps<AssetType, StableType>(
 ): (u64, vector<u128>) {
     // Get TWAP prices from all pools (only computed once now)
     let twap_prices = proposal::get_twaps_for_proposal(proposal, escrow, clock);
+    let num_outcomes = twap_prices.length();
 
-    // For a simple YES/NO proposal, compare the YES TWAP to the threshold
-    let winning_outcome = if (twap_prices.length() >= 2) {
-        let yes_twap = *twap_prices.borrow(OUTCOME_ACCEPTED);
+    // Check each outcome against its own effective threshold
+    let mut winning_outcome = OUTCOME_REJECTED; // Default to reject
+    let mut highest_twap = 0u128;
 
-        // CRITICAL: Use effective threshold which accounts for sponsorship reduction
-        // If proposal is sponsored, this returns (base_threshold - sponsor_reduction)
-        // making it easier for the proposal to pass
-        let threshold = proposal::get_effective_twap_threshold(proposal);
-        let yes_signed = signed::from_u128(yes_twap);
+    let mut i = 0u64;
+    while (i < num_outcomes) {
+        let outcome_twap = *twap_prices.borrow(i);
 
-        // If YES TWAP exceeds threshold, YES wins
-        if (signed::compare(&yes_signed, &threshold) == signed::ordering_greater()) {
-            OUTCOME_ACCEPTED
-        } else {
-            OUTCOME_REJECTED
-        }
-    } else {
-        // Default to NO if we can't determine
-        OUTCOME_REJECTED
+        // Get the effective threshold for this specific outcome
+        let outcome_threshold = proposal::get_effective_twap_threshold_for_outcome(proposal, i);
+        let outcome_signed = signed::from_u128(outcome_twap);
+
+        // Check if this outcome passes its threshold
+        if (signed::compare(&outcome_signed, &outcome_threshold) == signed::ordering_greater()) {
+            // This outcome passes - check if it has the highest TWAP
+            if (outcome_twap > highest_twap) {
+                highest_twap = outcome_twap;
+                winning_outcome = i;
+            }
+        };
+
+        i = i + 1;
     };
 
     (winning_outcome, twap_prices)

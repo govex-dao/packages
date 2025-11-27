@@ -266,6 +266,10 @@ public fun launchpad_max_init_actions(): u64 { 20 }
 /// Estimated max gas per init action
 public fun launchpad_max_gas_per_action(): u64 { 1_000_000 }
 
+/// DAO init intent expiry in milliseconds (30 days)
+/// Used for both launchpad and factory DAO initialization intents
+public fun dao_init_intent_expiry_ms(): u64 { 2_592_000_000 }
+
 // === Validation Functions ===
 
 /// Check if a fee is valid (not exceeding maximum)

@@ -533,3 +533,154 @@ fun test_disable_twice_fails() {
 
     ts::end(scenario);
 }
+
+// === create_dao_with_specs Tests ===
+
+#[test]
+fun test_create_dao_with_empty_specs() {
+    // Test that create_dao_with_specs works with empty init_specs
+    // This verifies no regression from the refactoring
+    let sender = @0xA;
+    let mut scenario = setup_test(sender);
+
+    // Initialize test asset coin
+    ts::next_tx(&mut scenario, sender);
+    test_asset::init_for_testing(ts::ctx(&mut scenario));
+
+    // Create DAO with empty specs
+    ts::next_tx(&mut scenario, sender);
+    {
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
+        let registry = ts::take_shared<package_registry::PackageRegistry>(&scenario);
+        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        let payment = create_payment(10_000, &mut scenario);
+
+        let treasury_cap = ts::take_from_sender<TreasuryCap<TEST_ASSET>>(&scenario);
+        let coin_metadata = ts::take_from_sender<CoinMetadata<TEST_ASSET>>(&scenario);
+
+        // Create with empty specs - should work same as create_dao_test
+        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+            &mut factory,
+            &registry,
+            &mut fee_manager,
+            payment,
+            100_000,
+            100_000,
+            b"Empty Specs DAO".to_ascii_string(),
+            b"https://example.com/icon.png".to_ascii_string(),
+            86400000,
+            259200000,
+            60000,
+            10,
+            1_000_000_000_000,
+            500_000,
+            false,
+            30,
+            b"DAO with empty init specs".to_string(),
+            3,
+            vector::empty(),
+            vector::empty(),
+            treasury_cap,
+            coin_metadata,
+            vector::empty(), // Empty init specs
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+
+        assert!(factory::dao_count(&factory) == 1, 0);
+
+        clock::destroy_for_testing(clock);
+        ts::return_shared(registry);
+        ts::return_shared(fee_manager);
+        ts::return_shared(factory);
+    };
+
+    ts::end(scenario);
+}
+
+#[test]
+fun test_create_dao_with_specs_creates_intent() {
+    // Test that create_dao_with_specs properly creates intent from specs
+    use account_protocol::intents;
+    use account_protocol::account::{Self as account_mod, Account};
+
+    let sender = @0xA;
+    let mut scenario = setup_test(sender);
+
+    // Initialize test asset coin
+    ts::next_tx(&mut scenario, sender);
+    test_asset::init_for_testing(ts::ctx(&mut scenario));
+
+    // Create DAO with a mock action spec
+    ts::next_tx(&mut scenario, sender);
+    {
+        let mut factory = ts::take_shared<factory::Factory>(&scenario);
+        let registry = ts::take_shared<package_registry::PackageRegistry>(&scenario);
+        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        let payment = create_payment(10_000, &mut scenario);
+
+        let treasury_cap = ts::take_from_sender<TreasuryCap<TEST_ASSET>>(&scenario);
+        let coin_metadata = ts::take_from_sender<CoinMetadata<TEST_ASSET>>(&scenario);
+
+        // Create a simple action spec (using a placeholder type for testing)
+        // The spec won't actually execute, but we verify the intent is created
+        let action_spec = intents::new_action_spec<TEST_ASSET>(
+            b"test_action_data",
+            1, // version
+        );
+        let init_specs = vector[action_spec];
+
+        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+            &mut factory,
+            &registry,
+            &mut fee_manager,
+            payment,
+            100_000,
+            100_000,
+            b"Specs DAO".to_ascii_string(),
+            b"https://example.com/icon.png".to_ascii_string(),
+            86400000,
+            259200000,
+            60000,
+            10,
+            1_000_000_000_000,
+            500_000,
+            false,
+            30,
+            b"DAO with init specs".to_string(),
+            3,
+            vector::empty(),
+            vector::empty(),
+            treasury_cap,
+            coin_metadata,
+            init_specs,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+
+        assert!(factory::dao_count(&factory) == 1, 0);
+
+        clock::destroy_for_testing(clock);
+        ts::return_shared(registry);
+        ts::return_shared(fee_manager);
+        ts::return_shared(factory);
+    };
+
+    // Verify the DAO account was created and has the intent
+    ts::next_tx(&mut scenario, sender);
+    {
+        // The Account should be shared now
+        let account = ts::take_shared<Account>(&scenario);
+
+        // Check that "dao_init" intent exists using intents::contains
+        let account_intents = account_mod::intents(&account);
+        let has_intent = intents::contains(account_intents, b"dao_init".to_string());
+        assert!(has_intent, 1);
+
+        ts::return_shared(account);
+    };
+
+    ts::end(scenario);
+}

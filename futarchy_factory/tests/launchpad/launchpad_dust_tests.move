@@ -282,24 +282,21 @@ fun test_sweep_dust_after_claim_period() {
     // Advance past claim period
     clock::increment_for_testing(&mut clock, constants::launchpad_claim_period_ms() + 1);
 
-    // Now sweep dust (after claim period)
+    // Now sweep dust (after claim period) - permissionless
     ts::next_tx(&mut scenario, creator);
     {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
         let mut dao_account = ts::take_shared<Account>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
         launchpad::sweep_dust(
             &mut raise,
-            &creator_cap,
             &mut dao_account,
             &registry,
             &clock,
             ts::ctx(&mut scenario),
         );
 
-        ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(dao_account);
         ts::return_shared(registry);
         ts::return_shared(raise);
@@ -450,14 +447,12 @@ fun test_sweep_dust_fails_before_claim_period() {
     // Try to sweep dust immediately after completion (before claim period) - should fail
     ts::next_tx(&mut scenario, creator);
     {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
         let mut raise = ts::take_shared<launchpad::Raise<DUST_TOKEN, DUST_STABLE>>(&scenario);
         let mut dao_account = ts::take_shared<Account>(&scenario);
         let registry = ts::take_shared<PackageRegistry>(&scenario);
 
         launchpad::sweep_dust(
             &mut raise,
-            &creator_cap,
             &mut dao_account,
             &registry,
             &clock,
@@ -465,7 +460,6 @@ fun test_sweep_dust_fails_before_claim_period() {
         );
 
         clock::destroy_for_testing(clock);
-        ts::return_to_sender(&scenario, creator_cap);
         ts::return_shared(dao_account);
         ts::return_shared(registry);
         ts::return_shared(raise);

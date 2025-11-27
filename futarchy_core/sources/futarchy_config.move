@@ -11,6 +11,7 @@ use account_protocol::deps::{Self, Deps};
 use account_protocol::package_registry::PackageRegistry;
 use account_protocol::version_witness::VersionWitness;
 use futarchy_core::dao_config::{Self, DaoConfig};
+use futarchy_core::proposal_quota_registry::{Self, ProposalQuotaRegistry};
 use futarchy_core::version;
 use futarchy_types::signed::SignedU128;
 use std::option::{Self, Option};
@@ -89,8 +90,8 @@ public struct EarlyResolveConfig has copy, drop, store {
     keeper_reward_bps: u64, // e.g., 10 bps (0.1%) of protocol fees
 }
 
-/// Pure Futarchy configuration struct
-/// All dynamic state and object references are stored on the Account object
+/// Futarchy configuration struct
+/// Contains both static config and dynamic DAO state
 public struct FutarchyConfig has copy, drop, store {
     // Type information
     asset_type: String,
@@ -114,10 +115,14 @@ public struct FutarchyConfig has copy, drop, store {
     launchpad_initial_price: Option<u128>,
     // Early resolve configuration
     early_resolve_config: EarlyResolveConfig,
+    // Dynamic DAO state (proposal counts, operational status, etc.)
+    dao_state: DaoState,
+    // Proposal quota registry (embedded, not separate object)
+    quota_registry: proposal_quota_registry::ProposalQuotaRegistry,
 }
 
-/// Dynamic state stored on Account via dynamic fields
-public struct DaoState has store {
+/// Dynamic DAO state (embedded in FutarchyConfig)
+public struct DaoState has copy, drop, store {
     // Categories: 0 = DAO_STATE_ACTIVE (normal operation), 1 = DAO_STATE_TERMINATED (permanent shutdown)
     operational_state: u8,
     // Range: 0 to u64::MAX
@@ -190,7 +195,7 @@ public fun new_early_resolve_config(
     }
 }
 
-/// Creates a new pure FutarchyConfig
+/// Creates a new FutarchyConfig with initialized DaoState and empty quota registry
 public fun new<AssetType: drop, StableType: drop>(dao_config: DaoConfig): FutarchyConfig {
     FutarchyConfig {
         asset_type: type_name::get<AssetType>().into_string().to_string(),
@@ -202,6 +207,8 @@ public fun new<AssetType: drop, StableType: drop>(dao_config: DaoConfig): Futarc
         admin_review_text: string::utf8(b""), // Empty by default
         launchpad_initial_price: option::none(), // Not set initially
         early_resolve_config: default_early_resolve_config(), // Disabled by default
+        dao_state: new_dao_state(), // Initialize with active state
+        quota_registry: proposal_quota_registry::new(), // Empty quota registry
     }
 }
 
@@ -255,6 +262,26 @@ public fun admin_review_text(config: &FutarchyConfig): &String {
 
 public fun early_resolve_config(config: &FutarchyConfig): &EarlyResolveConfig {
     &config.early_resolve_config
+}
+
+/// Get immutable reference to DaoState from FutarchyConfig
+public fun dao_state(config: &FutarchyConfig): &DaoState {
+    &config.dao_state
+}
+
+/// Get mutable reference to DaoState from FutarchyConfig
+public fun dao_state_mut(config: &mut FutarchyConfig): &mut DaoState {
+    &mut config.dao_state
+}
+
+/// Get immutable reference to quota registry from FutarchyConfig
+public fun quota_registry(config: &FutarchyConfig): &ProposalQuotaRegistry {
+    &config.quota_registry
+}
+
+/// Get mutable reference to quota registry from FutarchyConfig
+public fun quota_registry_mut(config: &mut FutarchyConfig): &mut ProposalQuotaRegistry {
+    &mut config.quota_registry
 }
 
 // === Getters for EarlyResolveConfig ===
@@ -575,13 +602,19 @@ public fun internal_config_mut(
     account::config_mut<FutarchyConfig, ConfigWitness>(account, registry, version, ConfigWitness {})
 }
 
-/// Get mutable access to the DaoState stored as a dynamic field on the Account
-/// This requires access to the Account object, not just the FutarchyConfig
+/// Get mutable access to the DaoState stored inside FutarchyConfig on the Account
+/// This requires access to the Account object
 public fun state_mut_from_account(
     account: &mut Account,
     registry: &PackageRegistry,
 ): &mut DaoState {
-    account::borrow_managed_data_mut(account, registry, DaoStateKey {}, version::current())
+    let config = account::config_mut<FutarchyConfig, ConfigWitness>(
+        account,
+        registry,
+        version::current(),
+        ConfigWitness {},
+    );
+    &mut config.dao_state
 }
 
 /// Witness for internal config operations
@@ -904,27 +937,3 @@ public fun destroy_dao_state_for_testing(state: DaoState) {
     } = state;
 }
 
-/// Destroy a FutarchyConfig during migration
-/// This is called when migrating from FutarchyConfig to a new config type
-/// Validates that critical data has been preserved before allowing destruction
-///
-/// Note: FutarchyConfig has drop ability so this is optional - configs will auto-destruct
-/// This function exists for explicit validation and documentation of the migration pattern
-public(package) fun destroy_for_migration(config: FutarchyConfig) {
-    let FutarchyConfig {
-        asset_type: _,
-        stable_type: _,
-        config: _,
-        outcome_win_reward: _,
-        verification_level: _,
-        dao_score: _,
-        admin_review_text: _,
-        launchpad_initial_price: _,
-        early_resolve_config: _,
-    } = config;
-
-    // Could add validation logic here to ensure:
-    // - Important fields were preserved in migration
-    // - No critical data was lost
-    // For now, just allow destruction
-}

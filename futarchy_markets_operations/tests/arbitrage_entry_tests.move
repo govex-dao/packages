@@ -297,11 +297,10 @@ fun test_simulate_pure_arbitrage_with_min_profit_basic() {
     let market_state = coin_escrow::get_market_state(&escrow);
     let conditionals = market_state::borrow_amm_pools(market_state);
 
-    // Simulate arbitrage with zero min_profit (show all opportunities)
-    let (amount, profit, _direction) = arbitrage_entry::simulate_pure_arbitrage_with_min_profit(
+    // Simulate arbitrage
+    let (amount, profit, _direction) = arbitrage_entry::simulate_pure_arbitrage(
         &spot_pool,
         conditionals,
-        0,
         0,
     );
 
@@ -335,12 +334,11 @@ fun test_simulate_pure_arbitrage_with_high_min_profit() {
     let market_state = coin_escrow::get_market_state(&escrow);
     let conditionals = market_state::borrow_amm_pools(market_state);
 
-    // Simulate arbitrage with very high min_profit (should filter out most opportunities)
-    let (amount, profit, _direction) = arbitrage_entry::simulate_pure_arbitrage_with_min_profit(
+    // Simulate arbitrage (min_profit filtering is done by caller, not this function)
+    let (amount, profit, _direction) = arbitrage_entry::simulate_pure_arbitrage(
         &spot_pool,
         conditionals,
         0,
-        1_000_000_000,
     );
 
     // Likely no arbitrage meets this threshold

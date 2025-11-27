@@ -287,13 +287,9 @@ public fun redeem<Config: store, AssetType, RedeemCoinType: drop>(
 
 /// Verify DAO is in TERMINATED state
 /// Aborts if not terminated
-fun verify_terminated(account: &Account, registry: &PackageRegistry) {
-    let dao_state = account::borrow_managed_data(
-        account,
-        registry,
-        futarchy_config::new_dao_state_key(),
-        version::current()
-    );
+fun verify_terminated(account: &Account, _registry: &PackageRegistry) {
+    let config = account::config<FutarchyConfig>(account);
+    let dao_state = futarchy_config::dao_state(config);
     let operational_state = futarchy_config::operational_state(dao_state);
     let terminated_state = futarchy_config::state_terminated();
     assert!(operational_state == terminated_state, ENotTerminated);

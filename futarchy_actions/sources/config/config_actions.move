@@ -818,6 +818,7 @@ public fun do_update_governance<Outcome: store, IW: drop>(
     let proposal_fee_per_outcome = reader.peel_option_u64();
     let accept_new_proposals = reader.peel_option_bool();
     let enable_premarket_reservation_lock = reader.peel_option_bool();
+    let show_proposal_details = reader.peel_option_bool();
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
@@ -835,7 +836,7 @@ public fun do_update_governance<Outcome: store, IW: drop>(
         proposal_fee_per_outcome,
         accept_new_proposals,
         enable_premarket_reservation_lock,
-        show_proposal_details: option::none(),
+        show_proposal_details,
     };
 
     // Validate parameters

@@ -819,10 +819,9 @@ async function main() {
 
   // 1. Begin execution - creates Executable hot potato
   const executable = executeTx.moveCall({
-    target: `${futarchyFactoryPkg}::launchpad_intent_executor::begin_execution`,
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
+    target: `${futarchyFactoryPkg}::dao_init_executor::begin_execution_for_launchpad`,
     arguments: [
-      executeTx.object(raiseId), // Raise (for validation)
+      executeTx.pure.id(raiseId), // raise_id: ID (for validation)
       executeTx.object(accountId), // Account
       executeTx.object(registryId), // PackageRegistry
       executeTx.object("0x6"), // Clock
@@ -835,8 +834,8 @@ async function main() {
     arguments: [],
   });
 
-  const launchpadIntentWitness = executeTx.moveCall({
-    target: `${futarchyFactoryPkg}::launchpad::launchpad_intent_witness`,
+  const daoInitIntentWitness = executeTx.moveCall({
+    target: `${futarchyFactoryPkg}::dao_init_executor::dao_init_intent_witness`,
     arguments: [],
   });
 
@@ -850,9 +849,9 @@ async function main() {
       target: `${accountActionsPkg}::vault::do_init_create_stream`,
       typeArguments: [
         `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
+        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
         testCoins.stable.type, // CoinType for the stream
-        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
       ],
       arguments: [
         executable, // Executable hot potato
@@ -860,7 +859,7 @@ async function main() {
         executeTx.object(registryId), // PackageRegistry
         executeTx.object("0x6"), // Clock
         versionWitness, // VersionWitness
-        launchpadIntentWitness, // LaunchpadIntent witness
+        daoInitIntentWitness, // DaoInitIntent witness
       ],
     });
 
@@ -870,10 +869,10 @@ async function main() {
       target: `${futarchyActionsPkg}::liquidity_init_actions::do_init_create_pool_with_mint`,
       typeArguments: [
         `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
+        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
         testCoins.asset.type, // AssetType to mint
         testCoins.stable.type, // StableType from vault
-        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
       ],
       arguments: [
         executable, // Executable hot potato
@@ -881,7 +880,7 @@ async function main() {
         executeTx.object(registryId), // PackageRegistry
         executeTx.object("0x6"), // Clock
         versionWitness, // VersionWitness
-        launchpadIntentWitness, // LaunchpadIntent witness
+        daoInitIntentWitness, // DaoInitIntent witness
       ],
     });
 
@@ -890,15 +889,15 @@ async function main() {
     executeTx.moveCall({
       target: `${futarchyActionsPkg}::config_actions::do_update_trading_params`,
       typeArguments: [
-        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
-        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
+        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
       ],
       arguments: [
         executable, // Executable hot potato
         executeTx.object(accountId), // Account
         executeTx.object(registryId), // PackageRegistry
         versionWitness, // VersionWitness
-        launchpadIntentWitness, // LaunchpadIntent witness
+        daoInitIntentWitness, // DaoInitIntent witness
         executeTx.object("0x6"), // Clock
       ],
     });
@@ -908,15 +907,15 @@ async function main() {
     executeTx.moveCall({
       target: `${futarchyActionsPkg}::config_actions::do_update_twap_config`,
       typeArguments: [
-        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
-        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
+        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
       ],
       arguments: [
         executable, // Executable hot potato
         executeTx.object(accountId), // Account
         executeTx.object(registryId), // PackageRegistry
         versionWitness, // VersionWitness
-        launchpadIntentWitness, // LaunchpadIntent witness
+        daoInitIntentWitness, // DaoInitIntent witness
         executeTx.object("0x6"), // Clock
       ],
     });
@@ -929,16 +928,16 @@ async function main() {
       target: `${accountActionsPkg}::currency::do_init_remove_treasury_cap`,
       typeArguments: [
         `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
+        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
         testCoins.asset.type, // CoinType
-        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
       ],
       arguments: [
         executable, // Executable hot potato
         executeTx.object(accountId), // Account
         executeTx.object(registryId), // PackageRegistry
         versionWitness, // VersionWitness
-        launchpadIntentWitness, // LaunchpadIntent witness
+        daoInitIntentWitness, // DaoInitIntent witness
       ],
     });
 
@@ -947,10 +946,10 @@ async function main() {
       target: `${accountActionsPkg}::currency::do_init_remove_metadata`,
       typeArguments: [
         `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::launchpad_outcome::LaunchpadOutcome`,
+        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
         `${accountActionsPkg}::currency::CoinMetadataKey<${testCoins.asset.type}>`, // Key type from currency module
         testCoins.asset.type, // CoinType
-        `${futarchyFactoryPkg}::launchpad::LaunchpadIntent`,
+        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
       ],
       arguments: [
         executable, // Executable hot potato
@@ -962,17 +961,15 @@ async function main() {
           arguments: [],
         }), // CoinMetadataKey witness from currency module
         versionWitness, // VersionWitness
-        launchpadIntentWitness, // LaunchpadIntent witness
+        daoInitIntentWitness, // DaoInitIntent witness
       ],
     });
   }
 
   // 3. Finalize execution - confirms execution and emits event
   executeTx.moveCall({
-    target: `${futarchyFactoryPkg}::launchpad_intent_executor::finalize_execution`,
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
+    target: `${futarchyFactoryPkg}::dao_init_executor::finalize_execution`,
     arguments: [
-      executeTx.object(raiseId), // Raise
       executeTx.object(accountId), // Account
       executable, // Executable hot potato
       executeTx.object("0x6"), // Clock

@@ -3,12 +3,15 @@
 
 /// Proposal sponsorship module - allows team members with quota to sponsor proposals
 /// Sponsorship reduces the TWAP threshold, making proposals easier to pass
+/// Registry is accessed via dynamic field on Account (not passed as parameter)
 module futarchy_governance::proposal_sponsorship;
 
-use account_protocol::account::{Self, Account};
-use futarchy_core::futarchy_config::{Self, FutarchyConfig};
+use account_protocol::account::Account;
+use account_protocol::package_registry::PackageRegistry;
+use futarchy_core::futarchy_config;
 use futarchy_core::proposal_quota_registry::{Self, ProposalQuotaRegistry};
 use futarchy_core::dao_config;
+use futarchy_core::version;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_types::signed::{Self, SignedU128};
 use std::string::String;
@@ -60,8 +63,8 @@ public struct SponsorshipRefunded has copy, drop {
 /// - Proposal must not already be sponsored
 public entry fun sponsor_proposal<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    account: &Account,
-    quota_registry: &mut ProposalQuotaRegistry,
+    account: &mut Account,
+    package_registry: &PackageRegistry,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -70,19 +73,21 @@ public entry fun sponsor_proposal<AssetType, StableType>(
     let proposal_id = proposal::get_id(proposal);
 
     // Validation 0: Verify DAO consistency (prevent quota bypass attack)
-    // All three objects must belong to the same DAO
     let account_dao_id = object::id(account);
-    let registry_dao_id = proposal_quota_registry::dao_id(quota_registry);
     assert!(dao_id == account_dao_id, EDaoMismatch);
-    assert!(dao_id == registry_dao_id, EDaoMismatch);
 
-    // Get DAO config and sponsorship settings
-    let config = account::config(account);
-    let dao_cfg = futarchy_config::dao_config(config);
-    let sponsor_config = dao_config::sponsorship_config(dao_cfg);
+    // Get DAO config and sponsorship settings - extract all needed values before mutable borrow
+    let sponsored_threshold = {
+        let config = account.config();
+        let dao_cfg = futarchy_config::dao_config(config);
+        let sponsor_config = dao_config::sponsorship_config(dao_cfg);
 
-    // Validation 1: Check sponsorship is enabled
-    assert!(dao_config::sponsorship_enabled(sponsor_config), ESponsorshipNotEnabled);
+        // Validation 1: Check sponsorship is enabled
+        assert!(dao_config::sponsorship_enabled(sponsor_config), ESponsorshipNotEnabled);
+
+        // Get sponsored threshold from config (extract before mutable borrow)
+        dao_config::sponsored_threshold(sponsor_config)
+    };
 
     // Validation 2: Check proposal not already sponsored
     assert!(!proposal::is_sponsored(proposal), EAlreadySponsored);
@@ -91,21 +96,26 @@ public entry fun sponsor_proposal<AssetType, StableType>(
     let state = proposal::get_state(proposal);
     assert!(state != STATE_FINALIZED, EInvalidProposalState);
 
+    // Validation 5: Check sponsorship timing - cannot sponsor after TWAP delay if in trading period
+    // This prevents manipulation after TWAP starts recording prices
+    validate_sponsorship_timing(proposal, clock);
+
+    // Get registry from Account's dynamic field
+    let registry_key = futarchy_config::new_proposal_quota_registry_key();
+    let quota_registry: &mut ProposalQuotaRegistry = account.borrow_managed_asset_mut(
+        package_registry,
+        registry_key,
+        version::current(),
+    );
+
     // Validation 4: Check sponsor has available quota
-    let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+    let (has_quota, _remaining) = proposal_quota_registry::check_sponsor_quota_available(
         quota_registry,
         dao_id,
         sponsor,
         clock,
     );
     assert!(has_quota, ENoSponsorQuota);
-
-    // Validation 5: Check sponsorship timing - cannot sponsor after TWAP delay if in trading period
-    // This prevents manipulation after TWAP starts recording prices
-    validate_sponsorship_timing(proposal, clock);
-
-    // Get sponsored threshold from config
-    let sponsored_threshold = dao_config::sponsored_threshold(sponsor_config);
 
     // Use sponsor quota (mark quota as used for this proposal)
     proposal_quota_registry::use_sponsor_quota(
@@ -152,8 +162,8 @@ public entry fun sponsor_proposal<AssetType, StableType>(
 /// - Proposal must not already be sponsored
 public entry fun sponsor_proposal_to_zero<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    account: &Account,
-    quota_registry: &ProposalQuotaRegistry,
+    account: &mut Account,
+    package_registry: &PackageRegistry,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -163,17 +173,17 @@ public entry fun sponsor_proposal_to_zero<AssetType, StableType>(
 
     // Validation 0: Verify DAO consistency (prevent quota bypass attack)
     let account_dao_id = object::id(account);
-    let registry_dao_id = proposal_quota_registry::dao_id(quota_registry);
     assert!(dao_id == account_dao_id, EDaoMismatch);
-    assert!(dao_id == registry_dao_id, EDaoMismatch);
 
-    // Get DAO config and sponsorship settings
-    let config = account::config(account);
-    let dao_cfg = futarchy_config::dao_config(config);
-    let sponsor_config = dao_config::sponsorship_config(dao_cfg);
+    // Get DAO config and sponsorship settings - validate before borrowing registry
+    {
+        let config = account.config();
+        let dao_cfg = futarchy_config::dao_config(config);
+        let sponsor_config = dao_config::sponsorship_config(dao_cfg);
 
-    // Validation 1: Check sponsorship is enabled
-    assert!(dao_config::sponsorship_enabled(sponsor_config), ESponsorshipNotEnabled);
+        // Validation 1: Check sponsorship is enabled
+        assert!(dao_config::sponsorship_enabled(sponsor_config), ESponsorshipNotEnabled);
+    };
 
     // Validation 2: Check proposal not already sponsored
     assert!(!proposal::is_sponsored(proposal), EAlreadySponsored);
@@ -182,12 +192,20 @@ public entry fun sponsor_proposal_to_zero<AssetType, StableType>(
     let state = proposal::get_state(proposal);
     assert!(state != STATE_FINALIZED, EInvalidProposalState);
 
-    // Validation 4: Check sponsor is a team member (has any quota entry)
-    assert!(proposal_quota_registry::has_quota(quota_registry, sponsor), ENoSponsorQuota);
-
     // Validation 5: Check sponsorship timing - cannot sponsor after TWAP delay if in trading period
     // This prevents manipulation after TWAP starts recording prices
     validate_sponsorship_timing(proposal, clock);
+
+    // Get registry from Account's dynamic field (immutable borrow for has_quota check)
+    let registry_key = futarchy_config::new_proposal_quota_registry_key();
+    let quota_registry: &ProposalQuotaRegistry = account.borrow_managed_asset(
+        package_registry,
+        registry_key,
+        version::current(),
+    );
+
+    // Validation 4: Check sponsor is a team member (has any quota entry)
+    assert!(proposal_quota_registry::has_quota(quota_registry, sponsor), ENoSponsorQuota);
 
     // Set threshold to zero
     let zero_threshold = signed::from_u64(0);
@@ -222,8 +240,8 @@ public entry fun sponsor_proposal_to_zero<AssetType, StableType>(
 /// sponsored_threshold_magnitude and sponsored_threshold_is_negative combine to form the sponsored threshold
 public entry fun sponsor_outcome<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    account: &Account,
-    quota_registry: &mut ProposalQuotaRegistry,
+    account: &mut Account,
+    package_registry: &PackageRegistry,
     outcome_index: u64,
     sponsored_threshold_magnitude: u128,
     sponsored_threshold_is_negative: bool,
@@ -239,17 +257,17 @@ public entry fun sponsor_outcome<AssetType, StableType>(
 
     // Validation 0: Verify DAO consistency
     let account_dao_id = object::id(account);
-    let registry_dao_id = proposal_quota_registry::dao_id(quota_registry);
     assert!(dao_id == account_dao_id, EDaoMismatch);
-    assert!(dao_id == registry_dao_id, EDaoMismatch);
 
-    // Get DAO config and sponsorship settings
-    let config = account::config(account);
-    let dao_cfg = futarchy_config::dao_config(config);
-    let sponsor_config = dao_config::sponsorship_config(dao_cfg);
+    // Get DAO config and sponsorship settings - validate before borrowing registry
+    {
+        let config = account.config();
+        let dao_cfg = futarchy_config::dao_config(config);
+        let sponsor_config = dao_config::sponsorship_config(dao_cfg);
 
-    // Validation 1: Check sponsorship is enabled
-    assert!(dao_config::sponsorship_enabled(sponsor_config), ESponsorshipNotEnabled);
+        // Validation 1: Check sponsorship is enabled
+        assert!(dao_config::sponsorship_enabled(sponsor_config), ESponsorshipNotEnabled);
+    };
 
     // Validation 2: Check proposal is not finalized
     let state = proposal::get_state(proposal);
@@ -263,6 +281,14 @@ public entry fun sponsor_outcome<AssetType, StableType>(
 
     // Check if this is the first outcome being sponsored for this proposal
     let quota_already_used = proposal::is_sponsor_quota_used(proposal);
+
+    // Get registry from Account's dynamic field
+    let registry_key = futarchy_config::new_proposal_quota_registry_key();
+    let quota_registry: &mut ProposalQuotaRegistry = account.borrow_managed_asset_mut(
+        package_registry,
+        registry_key,
+        version::current(),
+    );
 
     if (!quota_already_used) {
         // First outcome - check sponsor has available quota
@@ -313,7 +339,8 @@ public entry fun sponsor_outcome<AssetType, StableType>(
 /// Refunds quota only once per proposal (even if multiple outcomes sponsored)
 public(package) fun refund_sponsorship_on_eviction<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    quota_registry: &mut ProposalQuotaRegistry,
+    account: &mut Account,
+    package_registry: &PackageRegistry,
     reason: String,
     clock: &Clock,
 ) {
@@ -332,6 +359,14 @@ public(package) fun refund_sponsorship_on_eviction<AssetType, StableType>(
         return
     };
     let sponsor = *sponsor_opt.borrow();
+
+    // Get registry from Account's dynamic field
+    let registry_key = futarchy_config::new_proposal_quota_registry_key();
+    let quota_registry: &mut ProposalQuotaRegistry = account.borrow_managed_asset_mut(
+        package_registry,
+        registry_key,
+        version::current(),
+    );
 
     // Refund quota (only once, regardless of how many outcomes were sponsored)
     proposal_quota_registry::refund_sponsor_quota(
@@ -415,7 +450,7 @@ fun calculate_twap_start_time<AssetType, StableType>(
 public fun can_sponsor_proposal<AssetType, StableType>(
     proposal: &Proposal<AssetType, StableType>,
     account: &Account,
-    quota_registry: &ProposalQuotaRegistry,
+    package_registry: &PackageRegistry,
     potential_sponsor: address,
     clock: &Clock,
 ): (bool, String) {
@@ -424,7 +459,7 @@ public fun can_sponsor_proposal<AssetType, StableType>(
     let dao_id = proposal::get_dao_id(proposal);
 
     // Get DAO config and sponsorship settings
-    let config = account::config(account);
+    let config = account.config();
     let dao_cfg = futarchy_config::dao_config(config);
     let sponsor_config = dao_config::sponsorship_config(dao_cfg);
 
@@ -453,6 +488,14 @@ public fun can_sponsor_proposal<AssetType, StableType>(
             return (false, string::utf8(b"TWAP delay has passed"))
         };
     };
+
+    // Get registry from Account's dynamic field
+    let registry_key = futarchy_config::new_proposal_quota_registry_key();
+    let quota_registry: &ProposalQuotaRegistry = account.borrow_managed_asset(
+        package_registry,
+        registry_key,
+        version::current(),
+    );
 
     // Check 5: Has quota
     let (has_quota, _remaining) = proposal_quota_registry::check_sponsor_quota_available(

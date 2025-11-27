@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "719BA500E34EA77B4CC1EDB3F18E657932DA940C4C4BE73EE8483D91AC1A8797"
+manifest_digest = "B523E8F2DC3093458C47C470E4C4CB5E886FE7F62FADAB829FDDACE674713E54"
 deps_digest = "F9B494B64F0615AED0E98FC12A85B85ECD2BC5185C22D30E7F67786BB52E507C"
 dependencies = [
   { id = "Bridge", name = "Bridge" },
@@ -51,6 +51,6 @@ flavor = "sui"
 
 [env.devnet]
 chain-id = "833db4e1"
-original-published-id = "0x951b41505eb6fb53060d879ff274280c5e73c0d68006c5a2725db2c442704492"
-latest-published-id = "0x951b41505eb6fb53060d879ff274280c5e73c0d68006c5a2725db2c442704492"
+original-published-id = "0x4161cc12bee6bb45e266cb14dbf76f7b028ca109ae58d84d88ae86112d72253f"
+latest-published-id = "0x4161cc12bee6bb45e266cb14dbf76f7b028ca109ae58d84d88ae86112d72253f"
 published-version = "1"

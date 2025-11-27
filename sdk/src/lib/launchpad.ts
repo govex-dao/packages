@@ -911,26 +911,36 @@ export class LaunchpadOperations {
     }
 
     /**
-     * Get launchpad intent witness
+     * Get DAO init intent witness
      *
-     * Creates witness for executing launchpad intents.
+     * Creates witness for executing DAO init intents (used by both launchpad and factory).
      *
      * @param tx - Transaction
-     * @param launchpadPackageId - Package ID
-     * @returns LaunchpadIntent witness
+     * @param launchpadPackageId - Package ID (futarchy_factory)
+     * @returns DaoInitIntent witness
      */
-    static getLaunchpadIntentWitness(
+    static getDaoInitIntentWitness(
         tx: Transaction,
         launchpadPackageId: string
     ): ReturnType<Transaction['moveCall']> {
         return tx.moveCall({
             target: TransactionUtils.buildTarget(
                 launchpadPackageId,
-                'launchpad',
-                'launchpad_intent_witness'
+                'dao_init_executor',
+                'dao_init_intent_witness'
             ),
             arguments: [],
         });
+    }
+
+    /**
+     * @deprecated Use getDaoInitIntentWitness instead
+     */
+    static getLaunchpadIntentWitness(
+        tx: Transaction,
+        launchpadPackageId: string
+    ): ReturnType<Transaction['moveCall']> {
+        return this.getDaoInitIntentWitness(tx, launchpadPackageId);
     }
 
     /**
@@ -1056,18 +1066,16 @@ export class LaunchpadOperations {
      */
 
     /**
-     * Sweep remaining dust tokens/coins after claim period ends
-     * Returns remaining balances to the DAO
+     * Sweep remaining dust tokens/coins after claim period ends (permissionless)
+     * Returns remaining balances to the DAO treasury and creator
      *
      * @param raiseId - Raise object ID
-     * @param creatorCapId - CreatorCap object ID
      * @param daoAccountId - DAO Account object ID
      * @param clock - Clock object ID
      * @returns Transaction for sweeping dust
      */
     sweepDust(
         raiseId: string,
-        creatorCapId: string,
         daoAccountId: string,
         clock: string = "0x6"
     ): Transaction {
@@ -1084,7 +1092,6 @@ export class LaunchpadOperations {
             target,
             arguments: [
                 tx.object(raiseId), // raise
-                tx.object(creatorCapId), // creator_cap
                 tx.object(daoAccountId), // dao_account
                 tx.object(this.packageRegistryId), // registry
                 tx.object(clock), // clock
@@ -1431,22 +1438,29 @@ export class LaunchpadOperations {
     }
 
     /**
-     * Get LaunchpadIntent witness for PTB execution
-     * Used in intent executor pattern
+     * Get DaoInitIntent witness for PTB execution
+     * Used in intent executor pattern (works for both launchpad and factory)
      */
-    getLaunchpadIntentWitness(): Transaction {
+    getDaoInitIntentWitness(): Transaction {
         const builder = new TransactionBuilder(this.client);
         const tx = builder.getTransaction();
 
         tx.moveCall({
             target: TransactionUtils.buildTarget(
                 this.launchpadPackageId,
-                'launchpad',
-                'launchpad_intent_witness'
+                'dao_init_executor',
+                'dao_init_intent_witness'
             ),
             arguments: [],
         });
 
         return tx;
+    }
+
+    /**
+     * @deprecated Use getDaoInitIntentWitness instead
+     */
+    getLaunchpadIntentWitness(): Transaction {
+        return this.getDaoInitIntentWitness();
     }
 }

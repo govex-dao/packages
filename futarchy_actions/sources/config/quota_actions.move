@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 /// Quota management action - set recurring proposal quotas for addresses
+/// Registry is embedded in FutarchyConfig (accessed via config)
 module futarchy_actions::quota_actions;
 
 use std::vector;
@@ -13,10 +14,11 @@ use account_protocol::{
     intents as protocol_intents,
     bcs_validation,
     action_validation,
+    package_registry::PackageRegistry,
 };
 use futarchy_core::{
-    futarchy_config::FutarchyConfig,
-    proposal_quota_registry::ProposalQuotaRegistry,
+    futarchy_config::{Self, FutarchyConfig},
+    version,
 };
 
 // === Action Type Markers ===
@@ -51,12 +53,13 @@ public struct SetQuotasAction has store, drop {
 // === Public Functions ===
 
 /// Execute set quotas action
+/// Registry is accessed via dynamic field on Account
 public fun do_set_quotas<Outcome: store, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
-    registry: &mut ProposalQuotaRegistry,
-    version: VersionWitness,
-    intent_witness: IW,
+    package_registry: &PackageRegistry,
+    _version: VersionWitness,
+    _intent_witness: IW,
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
@@ -106,7 +109,7 @@ public fun do_set_quotas<Outcome: store, IW: drop>(
     };
 
     // Execute internal logic
-    do_set_quotas_internal(account, registry, action, version, clock, _ctx);
+    do_set_quotas_internal(account, package_registry, action, clock);
 
     // Increment action index
     executable::increment_action_idx(executable);
@@ -115,11 +118,9 @@ public fun do_set_quotas<Outcome: store, IW: drop>(
 /// Internal version for actual execution
 fun do_set_quotas_internal(
     account: &mut Account,
-    registry: &mut ProposalQuotaRegistry,
+    package_registry: &PackageRegistry,
     action: SetQuotasAction,
-    _version: VersionWitness,
     clock: &Clock,
-    _ctx: &mut TxContext,
 ) {
     // Destructure to consume the action
     let SetQuotasAction {
@@ -132,7 +133,16 @@ fun do_set_quotas_internal(
 
     let dao_id = object::id(account);
 
-    // Set proposal quotas with DAO ID check
+    // Get registry from FutarchyConfig (embedded, not separate dynamic field)
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        package_registry,
+        version::current(),
+        futarchy_config::witness(),
+    );
+    let registry = futarchy_config::quota_registry_mut(config);
+
+    // Set proposal quotas (dao_id passed for event emission only)
     futarchy_core::proposal_quota_registry::set_quotas(
         registry,
         dao_id,

@@ -217,17 +217,24 @@ async function main() {
     coinType: stableType,
   });
 
-  if (!stableCoinsForFee.data.length) {
-    console.log("⚠️  No stable coins found, minting some for proposal fee...");
+  // Check if we have enough stable balance (sum all coins)
+  const totalStableBalance = stableCoinsForFee.data.reduce(
+    (sum, c) => sum + BigInt(c.balance),
+    0n
+  );
+
+  if (totalStableBalance < proposalFeeAmount) {
+    console.log(`⚠️  Insufficient stable coins (have ${totalStableBalance}, need ${proposalFeeAmount}), minting more...`);
     const mintFeeTx = new Transaction();
-    mintFeeTx.moveCall({
-      target: `${stableType.split("::")[0]}::coin::mint`,
+    const mintedCoin = mintFeeTx.moveCall({
+      target: `0x2::coin::mint`,
+      typeArguments: [stableType],
       arguments: [
         mintFeeTx.object(stableTreasuryCap),
-        mintFeeTx.pure.u64(proposalFeeAmount),
-        mintFeeTx.pure.address(activeAddress),
+        mintFeeTx.pure.u64(proposalFeeAmount * 2n), // Mint extra for future operations
       ],
     });
+    mintFeeTx.transferObjects([mintedCoin], mintFeeTx.pure.address(activeAddress));
     await executeTransaction(sdk, mintFeeTx, {
       network: "devnet",
       description: "Mint stable coins for proposal fee",

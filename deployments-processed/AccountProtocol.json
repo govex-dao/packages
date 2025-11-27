@@ -1,12 +1,12 @@
 {
   "packageName": "AccountProtocol",
-  "transactionDigest": "4fyVAcC3hAZo5tPwUGUH48u9G5sxK7JRifvX3yYFJTm8",
-  "packageId": "0xf199aecf42ba7372e521d7a7e328ab79eb1103c1879b3ebc846ea2e852d2f605",
+  "transactionDigest": "BQiwBBYfawcJDcdWiqZ6G57cqqsGTA5JLdT7ifsqLMe3",
+  "packageId": "0xf352aca569e09c6af686d88a5832e59737f185ae7e7ab649550bc819107f3b1d",
   "adminCaps": [
     {
       "name": "PackageAdminCap",
-      "objectId": "0x71927f536e91eff9ba3bc2b73a606f681485f343ea5743278b953aeef82829e2",
-      "objectType": "0xf199aecf42ba7372e521d7a7e328ab79eb1103c1879b3ebc846ea2e852d2f605::package_registry::PackageAdminCap",
+      "objectId": "0x52e3a85a2cbf5be15e70082afdc4d66a6b84389e903124fa09d5b0169cbed0b7",
+      "objectType": "0xf352aca569e09c6af686d88a5832e59737f185ae7e7ab649550bc819107f3b1d::package_registry::PackageAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -15,8 +15,8 @@
   "sharedObjects": [
     {
       "name": "PackageRegistry",
-      "objectId": "0x62bbc939aad094af19e156fb439a94fab8c2be0a6e3df73b3b9e0820c5c00b81",
-      "objectType": "0xf199aecf42ba7372e521d7a7e328ab79eb1103c1879b3ebc846ea2e852d2f605::package_registry::PackageRegistry",
+      "objectId": "0xcdb9251190f5e9b255edff24c039112e3e57b4654be1aa62effbd4aae98c41bb",
+      "objectType": "0xf352aca569e09c6af686d88a5832e59737f185ae7e7ab649550bc819107f3b1d::package_registry::PackageRegistry",
       "owner": {
         "Shared": {
           "initial_shared_version": 4
@@ -27,7 +27,7 @@
   ],
   "ownedObjects": [],
   "upgradeCap": {
-    "objectId": "0xc3f4513f051baffb684f7a08e57dc42a668feaf96a11542a71df0bb6f8912709",
+    "objectId": "0xae1b1069d7a1b6214452c836f84245f0ca4cfd002f3f0d03dcbb223b7eeb856e",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

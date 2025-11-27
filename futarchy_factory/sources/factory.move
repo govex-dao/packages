@@ -10,6 +10,7 @@ use account_actions::vault;
 use account_protocol::account::{Self, Account};
 use account_protocol::intents::ActionSpec;
 use account_protocol::package_registry::{Self as package_registry, PackageRegistry};
+use futarchy_factory::dao_init_executor;
 use futarchy_core::dao_config::{
     Self,
     DaoConfig,
@@ -44,6 +45,11 @@ use sui::vec_set::{Self, VecSet};
 
 /// Key for storing CoinMetadata in Account
 public struct CoinMetadataKey<phantom CoinType> has copy, drop, store {}
+
+/// Create a CoinMetadataKey for accessing stored coin metadata
+public fun coin_metadata_key<CoinType>(): CoinMetadataKey<CoinType> {
+    CoinMetadataKey<CoinType> {}
+}
 
 // === Errors ===
 const EPaused: u64 = 1;
@@ -258,8 +264,16 @@ public fun create_dao<AssetType: drop, StableType: drop>(
     );
 }
 
-/// Create a DAO and atomically execute a batch of init intents before sharing.
-public fun create_dao_with_init_specs<AssetType: drop, StableType: drop>(
+/// Create a new futarchy DAO with init specs
+///
+/// This creates a DAO and stages init intents that can be executed in the same PTB:
+/// 1. Factory creates DAO and stages intents (this function)
+/// 2. PTB calls dao_init_executor::begin_execution() to start executing intents
+/// 3. PTB calls do_* action functions for each init action
+/// 4. PTB calls dao_init_executor::finalize_execution() to complete
+///
+/// All steps happen in ONE transaction - if any fails, nothing is created.
+public fun create_dao_with_specs<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
     registry: &PackageRegistry,
     fee_manager: &mut FeeManager,
@@ -278,8 +292,8 @@ public fun create_dao_with_init_specs<AssetType: drop, StableType: drop>(
     amm_total_fee_bps: u64,
     description: UTF8String,
     max_outcomes: u64,
-    _agreement_lines: vector<UTF8String>,
-    _agreement_difficulties: vector<u64>,
+    agreement_lines: vector<UTF8String>,
+    agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
     init_specs: vector<ActionSpec>,
@@ -308,8 +322,8 @@ public fun create_dao_with_init_specs<AssetType: drop, StableType: drop>(
         amm_total_fee_bps,
         description,
         max_outcomes,
-        _agreement_lines,
-        _agreement_difficulties,
+        agreement_lines,
+        agreement_difficulties,
         treasury_cap,
         coin_metadata,
         init_specs,
@@ -533,20 +547,28 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
         version::current(),
     );
 
-    // Note: init_specs are NOT stored in Account
-    // Frontend receives them from createDAOWithInitSpecs transaction
-    // Frontend then constructs PTB to execute init_* functions before sharing
+    // Note: ProposalQuotaRegistry is now embedded in FutarchyConfig
+
+    // --- Phase 3: Create Intents from Init Specs (before sharing) ---
+    // If init_specs are provided, create intents that can be executed after sharing
+    dao_init_executor::create_intents_from_specs_for_factory(
+        &mut account,
+        registry,
+        &init_specs,
+        clock,
+        ctx,
+    );
 
     // Get account ID before sharing
     let account_id = object::id_address(&account);
 
-    // --- Phase 3: Final Atomic Sharing ---
+    // --- Phase 4: Final Atomic Sharing ---
     // All objects are shared at the end of the function. If any step above failed,
     // the transaction would abort and no objects would be created.
     transfer::public_share_object(account);
     unified_spot_pool::share(spot_pool);
 
-    // --- Phase 4: Update Factory State and Emit Event ---
+    // --- Phase 5: Update Factory State and Emit Event ---
 
     // Update factory state
     factory.dao_count = factory.dao_count + 1;
@@ -776,20 +798,28 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
         version::current(),
     );
 
-    // Note: init_specs are NOT stored in Account
-    // Frontend receives them from createDAOWithInitSpecs transaction
-    // Frontend then constructs PTB to execute init_* functions before sharing
+    // Note: ProposalQuotaRegistry is now embedded in FutarchyConfig
+
+    // --- Phase 3: Create Intents from Init Specs (before sharing) ---
+    // If init_specs are provided, create intents that can be executed after sharing
+    dao_init_executor::create_intents_from_specs_for_factory(
+        &mut account,
+        registry,
+        &init_specs,
+        clock,
+        ctx,
+    );
 
     // Get account ID before sharing
     let account_id = object::id_address(&account);
 
-    // --- Phase 3: Final Atomic Sharing ---
+    // --- Phase 4: Final Atomic Sharing ---
     // All objects are shared at the end of the function. If any step above failed,
     // the transaction would abort and no objects would be created.
     transfer::public_share_object(account);
     unified_spot_pool::share(spot_pool);
 
-    // --- Phase 4: Update Factory State and Emit Event ---
+    // --- Phase 5: Update Factory State and Emit Event ---
 
     // Update factory state
     factory.dao_count = factory.dao_count + 1;
@@ -806,149 +836,7 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
     });
 }
 
-// === Init Actions Support ===
-
-// Removed InitWitness - it belongs in init_actions module
-// Removed create_dao_for_init - not needed, use create_dao_unshared
-
-/// Create DAO and return it without sharing (for init actions)
-///
-/// BREAKING CHANGE: Removed `store` ability requirement from AssetType and StableType.
-/// This enables One-Time Witness (OTW) compliant coin types, which can only have `drop`.
-/// If you need to store coin types in global storage, wrap them in a struct with `store`.
-///
-/// Create an unshared DAO for init action execution (PUBLIC - callable from PTBs)
-/// Returns unshared Account and SpotPool that can be used in PTBs
-/// Allows optional treasury_cap and coin_metadata (pass option::none() to defer)
-/// Must call finalize_and_share_dao() after executing init actions
-public fun create_dao_unshared<AssetType: drop, StableType: drop>(
-    factory: &mut Factory,
-    registry: &PackageRegistry,
-    fee_manager: &mut FeeManager,
-    payment: Coin<SUI>,
-    treasury_cap: Option<TreasuryCap<AssetType>>,
-    coin_metadata: Option<CoinMetadata<AssetType>>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Account, UnifiedSpotPool<AssetType, StableType>) {
-    // Check factory is not permanently disabled
-    assert!(!factory.permanently_disabled, EPermanentlyDisabled);
-
-    // Check factory is active
-    assert!(!factory.paused, EPaused);
-
-    // Check if StableType is allowed
-    let stable_type_name = type_name::with_defining_ids<StableType>();
-    assert!(factory.allowed_stable_types.contains(&stable_type_name), EStableTypeNotAllowed);
-
-    // Process payment
-    fee::deposit_dao_creation_payment(fee_manager, payment, clock, ctx);
-
-    // Use all default configs - init actions will set real values
-    let trading_params = dao_config::default_trading_params();
-    let twap_config = dao_config::default_twap_config();
-    let governance_config = dao_config::default_governance_config();
-
-    // Minimal metadata - init actions will update
-    let metadata_config = dao_config::new_metadata_config(
-        b"DAO".to_ascii_string(), // Default name (init actions will override)
-        url::new_unsafe_from_bytes(b""), // Empty icon (init actions will override)
-        b"".to_string(), // Empty description (init actions will override)
-    );
-
-    let dao_config = dao_config::new_dao_config(
-        trading_params,
-        twap_config,
-        governance_config,
-        metadata_config,
-        dao_config::default_conditional_coin_config(),
-        dao_config::default_quota_config(),
-        dao_config::default_sponsorship_config(),
-    );
-
-    // Create the futarchy config with safe default
-    let config = futarchy_config::new<AssetType, StableType>(
-        dao_config,
-    );
-
-    // Create account with config
-    let mut account = futarchy_config::new_with_package_registry(registry, config, ctx);
-
-    // Extract conditional_liquidity_ratio_percent from trading_params
-    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(
-        &trading_params,
-    );
-
-    // Create unified spot pool with aggregator support enabled
-    let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
-        30, // 0.3% default fee (init actions can configure via governance)
-        option::none(), // No launch fee schedule by default (can be added via init specs)
-        8000, // oracle_conditional_threshold_bps (80% threshold)
-        conditional_liquidity_ratio_percent, // From DAO config!
-        clock,
-        ctx,
-    );
-
-    // Lock treasury cap and store coin metadata (if provided)
-    // TreasuryCap is stored via currency::lock_cap for proper atomic borrowing
-    // CoinMetadata is stored separately for metadata updates via intents
-    // For launchpad pre-create flow, these will be none and added later via init_actions
-
-    // Validate caps if both are provided
-    if (treasury_cap.is_some() && coin_metadata.is_some()) {
-        coin_registry::validate_coin_set(
-            option::borrow(&treasury_cap),
-            option::borrow(&coin_metadata),
-        );
-    };
-
-    if (treasury_cap.is_some()) {
-        let auth = account::new_auth<FutarchyConfig, futarchy_config::ConfigWitness>(
-            &account,
-            registry,
-            version::current(),
-            futarchy_config::authenticate(&account, ctx),
-        );
-        currency::lock_cap(
-            auth,
-            &mut account,
-            registry,
-            treasury_cap.destroy_some(),
-            option::none(), // max_supply
-        );
-    } else {
-        treasury_cap.destroy_none();
-    };
-
-    // Store CoinMetadata for DAO governance control over coin metadata
-    if (coin_metadata.is_some()) {
-        account.add_managed_asset(
-            registry,
-            CoinMetadataKey<AssetType> {},
-            coin_metadata.destroy_some(),
-            version::current(),
-        );
-    } else {
-        coin_metadata.destroy_none();
-    };
-
-    // Update factory state
-    factory.dao_count = factory.dao_count + 1;
-
-    // Emit event with default metadata (init actions will update)
-    let account_id = object::id_address(&account);
-    event::emit(DAOCreated {
-        account_id,
-        dao_name: b"DAO".to_ascii_string(),
-        asset_type: get_type_string<AssetType>(),
-        stable_type: get_type_string<StableType>(),
-        creator: ctx.sender(),
-        affiliate_id: b"".to_string(), // Unshared DAO creation uses empty string (set via init actions)
-        timestamp: clock.timestamp_ms(),
-    });
-
-    (account, spot_pool)
-}
+// === Launchpad Support ===
 
 /// Create DAO for launchpad completion - NO FEE CHARGED
 /// Launchpad already collected its own fee when raise was created
@@ -1049,6 +937,8 @@ public(package) fun create_dao_unshared_for_launchpad<AssetType: drop, StableTyp
         coin_metadata.destroy_none();
     };
 
+    // Note: ProposalQuotaRegistry is now embedded in FutarchyConfig
+
     // Update factory state
     factory.dao_count = factory.dao_count + 1;
 
@@ -1065,14 +955,6 @@ public(package) fun create_dao_unshared_for_launchpad<AssetType: drop, StableTyp
     });
 
     account
-}
-
-public fun finalize_and_share_dao<AssetType, StableType>(
-    account: Account,
-    spot_pool: UnifiedSpotPool<AssetType, StableType>,
-) {
-    account::share_account<FutarchyConfig>(account);
-    unified_spot_pool::share(spot_pool);
 }
 
 // === Admin Functions ===
@@ -1434,6 +1316,69 @@ public entry fun create_dao_test<AssetType: drop, StableType: drop>(
         treasury_cap,
         coin_metadata,
         vector::empty(),
+        clock,
+        ctx,
+    );
+}
+
+#[test_only]
+/// Create a DAO for testing with init specs
+/// Used to test the create_dao_with_specs flow
+public fun create_dao_with_specs_test<AssetType: drop, StableType: drop>(
+    factory: &mut Factory,
+    registry: &package_registry::PackageRegistry,
+    fee_manager: &mut FeeManager,
+    payment: Coin<SUI>,
+    min_asset_amount: u64,
+    min_stable_amount: u64,
+    dao_name: AsciiString,
+    icon_url_string: AsciiString,
+    review_period_ms: u64,
+    trading_period_ms: u64,
+    twap_start_delay: u64,
+    twap_step_max: u64,
+    twap_initial_observation: u128,
+    twap_threshold_magnitude: u128,
+    twap_threshold_negative: bool,
+    amm_total_fee_bps: u64,
+    description: UTF8String,
+    max_outcomes: u64,
+    _agreement_lines: vector<UTF8String>,
+    _agreement_difficulties: vector<u64>,
+    treasury_cap: TreasuryCap<AssetType>,
+    coin_metadata: CoinMetadata<AssetType>,
+    init_specs: vector<ActionSpec>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Validate caps at entry point
+    coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
+
+    let twap_threshold = signed::new(twap_threshold_magnitude, twap_threshold_negative);
+
+    create_dao_internal_test<AssetType, StableType>(
+        factory,
+        registry,
+        fee_manager,
+        payment,
+        min_asset_amount,
+        min_stable_amount,
+        dao_name,
+        icon_url_string,
+        review_period_ms,
+        trading_period_ms,
+        twap_start_delay,
+        twap_step_max,
+        twap_initial_observation,
+        twap_threshold,
+        amm_total_fee_bps,
+        description,
+        max_outcomes,
+        _agreement_lines,
+        _agreement_difficulties,
+        treasury_cap,
+        coin_metadata,
+        init_specs,
         clock,
         ctx,
     );

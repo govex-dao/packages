@@ -157,8 +157,8 @@ public fun add_pause_account_creation_spec(
 ) {
     use account_actions::action_spec_builder as builder_mod;
 
-    let action = PauseAccountCreationAction {};
-    let action_data = bcs::to_bytes(&action);
+    // Use empty vector directly since empty struct BCS produces 1 byte (not 0)
+    let action_data = vector::empty<u8>();
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<
             futarchy_governance_actions::package_registry_actions::PauseAccountCreation,
@@ -175,8 +175,8 @@ public fun add_unpause_account_creation_spec(
 ) {
     use account_actions::action_spec_builder as builder_mod;
 
-    let action = UnpauseAccountCreationAction {};
-    let action_data = bcs::to_bytes(&action);
+    // Use empty vector directly since empty struct BCS produces 1 byte (not 0)
+    let action_data = vector::empty<u8>();
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<
             futarchy_governance_actions::package_registry_actions::UnpauseAccountCreation,

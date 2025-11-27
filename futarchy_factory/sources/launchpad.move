@@ -6,13 +6,13 @@ module futarchy_factory::launchpad;
 use account_actions::currency::{Self, CoinMetadataKey, CurrencyRules, CurrencyRulesKey};
 use account_actions::init_actions;
 use account_protocol::account::Account;
-use account_protocol::intent_interface;
-use account_protocol::intents::{Self, ActionSpec};
+use account_protocol::intents::ActionSpec;
 use account_protocol::package_registry::PackageRegistry;
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
 use futarchy_factory::factory;
-use futarchy_factory::launchpad_outcome;
+use futarchy_factory::dao_init_outcome::{Self as dao_init_outcome, DaoInitOutcome};
+use futarchy_factory::dao_init_executor;
 use futarchy_markets_core::fee;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_one_shot_utils::constants;
@@ -844,7 +844,7 @@ fun complete_raise_unshared<RaiseToken: drop, StableCoin: drop>(
 }
 
 /// JIT Convert vector<ActionSpec> to Intents
-/// Picks SUCCESS or FAILURE spec based on raise outcome
+/// Picks SUCCESS or FAILURE spec based on raise outcome and creates intents
 fun create_intents_from_specs<RaiseToken, StableCoin>(
     raise: &Raise<RaiseToken, StableCoin>,
     account: &mut Account,
@@ -859,74 +859,28 @@ fun create_intents_from_specs<RaiseToken, StableCoin>(
         &raise.failure_specs
     };
 
-    // Only create intent if there are actions to execute
-    if (vector::length(specs_to_execute) == 0) {
-        return
-    };
-
-    // Create LaunchpadOutcome for all intents
-    let outcome = launchpad_outcome::new(object::id(raise));
-
-    // Create Intent parameters (execute immediately, 30 day expiry)
-    let params = intents::new_params(
-        string::utf8(b"launchpad_init"),
-        string::utf8(b"DAO initialization actions from launchpad raise"),
-        vector[clock.timestamp_ms()],  // Execute immediately
-        clock.timestamp_ms() + (30 * 24 * 60 * 60 * 1000),  // 30 days
+    // Use shared function from dao_init_executor
+    dao_init_executor::create_intents_from_specs_for_launchpad(
+        account,
+        registry,
+        specs_to_execute,
+        object::id(raise),
         clock,
         ctx,
     );
-
-    // Build intent from selected specs
-    intent_interface::build_intent!(
-        account,
-        registry,
-        params,
-        outcome,
-        string::utf8(b"launchpad_init"),
-        version::current(),
-        LaunchpadIntent {},
-        ctx,
-        |intent, iw| {
-            // Copy all action specs to intent
-            // Extract fields from each ActionSpec and add to intent
-            let mut action_idx = 0;
-            while (action_idx < vector::length(specs_to_execute)) {
-                let action_spec = vector::borrow(specs_to_execute, action_idx);
-
-                // Extract type and data from ActionSpec and add to intent
-                intents::add_action_spec_with_typename(
-                    intent,
-                    intents::action_spec_type(action_spec),
-                    *intents::action_spec_data(action_spec),
-                    copy iw  // Copy witness to avoid move in loop
-                );
-
-                action_idx = action_idx + 1;
-            };
-        }
-    );
 }
 
-/// Intent witness for launchpad initialization intents
-public struct LaunchpadIntent has copy, drop {}
-
-/// Create a LaunchpadIntent witness (for PTB execution)
-public fun launchpad_intent_witness(): LaunchpadIntent {
-    LaunchpadIntent {}
-}
-
-/// Check if LaunchpadOutcome is approved for this raise
+/// Check if DaoInitOutcome is approved for this raise
 /// This is called by keepers to validate before executing intents
 ///
 /// Note: State checking (success vs failure) happens during JIT Intent creation,
 /// where the correct specs (success_specs or failure_specs) are selected.
 /// This function only validates that the outcome belongs to this raise.
 public fun is_outcome_approved<RaiseToken, StableCoin>(
-    outcome: &launchpad_outcome::LaunchpadOutcome,
+    outcome: &DaoInitOutcome,
     raise: &Raise<RaiseToken, StableCoin>,
 ): bool {
-    object::id(raise) == launchpad_outcome::raise_id(outcome)
+    dao_init_outcome::is_for_raise(outcome, object::id(raise))
     // State check removed - specs were already selected correctly during JIT conversion
 }
 
@@ -1376,17 +1330,15 @@ public entry fun cleanup_failed_raise<RaiseToken: drop, StableCoin: drop>(
     };
 }
 
-/// Sweep remaining dust after claim period
+/// Sweep remaining dust after claim period (permissionless)
 public entry fun sweep_dust<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
-    creator_cap: &CreatorCap,
     dao_account: &mut Account,
     registry: &PackageRegistry,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(raise.state == STATE_SUCCESSFUL, EInvalidStateForAction);
-    assert!(creator_cap.raise_id == object::id(raise), EInvalidCreatorCap);
     assert!(raise.dao_id.is_some(), EDaoNotPreCreated);
     assert!(object::id(dao_account) == *raise.dao_id.borrow(), EInvalidStateForAction);
 

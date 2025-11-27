@@ -677,16 +677,13 @@ fun register_grant(
     storage.total_grants = storage.total_grants + 1;
 }
 
-fun assert_not_dissolving(account: &Account, registry: &PackageRegistry, version_witness: VersionWitness) {
+fun assert_not_dissolving(account: &Account, _registry: &PackageRegistry, _version_witness: VersionWitness) {
     use account_protocol::account;
-    use futarchy_core::futarchy_config;
+    use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 
-    let dao_state: &futarchy_config::DaoState = account::borrow_managed_data(
-        account,
-        registry,
-        futarchy_config::new_dao_state_key(),
-        version_witness
-    );
+    // DaoState is now embedded in FutarchyConfig, access via config
+    let config = account::config<FutarchyConfig>(account);
+    let dao_state = futarchy_config::dao_state(config);
 
     assert!(
         futarchy_config::operational_state(dao_state) != DAO_STATE_TERMINATED,
@@ -951,10 +948,14 @@ public fun do_cancel_grant<AssetType, StableType, Outcome: store, IW: drop>(
     let spec_version = intents::action_spec_version(spec);
     assert!(spec_version == 1, 0); // EUnsupportedActionVersion
 
-    // Validate action_data is empty (no fields)
+    // Deserialize grant_id and validate it matches the passed grant
     let action_data = intents::action_spec_data(spec);
-    let reader = bcs::new(*action_data);
+    let mut reader = bcs::new(*action_data);
+    let grant_id_addr = bcs::peel_address(&mut reader); // ID serializes as address (32 bytes)
     bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Ensure the passed grant matches the spec
+    assert!(object::id(grant).to_address() == grant_id_addr, EWrongAccount);
 
     cancel_grant(grant, clock);
     executable::increment_action_idx(executable);

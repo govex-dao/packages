@@ -23,7 +23,7 @@ const THIRTY_DAYS_MS: u64 = 2_592_000_000;
 fun start(): (Scenario, ProposalQuotaRegistry, Clock, ID) {
     let mut scenario = ts::begin(OWNER);
     let dao_id = object::id_from_address(@0xDA0);
-    let registry = proposal_quota_registry::new(dao_id, scenario.ctx());
+    let registry = proposal_quota_registry::new();
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(1000);
     (scenario, registry, clock, dao_id)
@@ -39,10 +39,9 @@ fun end(scenario: Scenario, registry: ProposalQuotaRegistry, clock: Clock) {
 
 #[test]
 fun test_new_registry() {
-    let (scenario, registry, clock, dao_id) = start();
+    let (scenario, registry, clock, _dao_id) = start();
 
-    // Verify initial state
-    assert!(proposal_quota_registry::dao_id(&registry) == dao_id, 0);
+    // Verify initial state - no quotas
     assert!(!proposal_quota_registry::has_quota(&registry, USER1), 1);
 
     end(scenario, registry, clock);
@@ -166,27 +165,6 @@ fun test_remove_quota() {
 }
 
 #[test]
-#[expected_failure(abort_code = proposal_quota_registry::EWrongDao)]
-fun test_set_quota_wrong_dao_fails() {
-    let (scenario, mut registry, mut clock, _dao_id) = start();
-
-    let wrong_dao = object::id_from_address(@0xBAD);
-
-    // Should abort - wrong DAO
-    proposal_quota_registry::set_quotas(
-        &mut registry,
-        wrong_dao,
-        vector[USER1],
-        5,
-        THIRTY_DAYS_MS,
-        100,
-        &clock,
-    );
-
-    end(scenario, registry, clock);
-}
-
-#[test]
 #[expected_failure(abort_code = proposal_quota_registry::EInvalidQuotaParams)]
 fun test_set_quota_zero_period_fails() {
     let (scenario, mut registry, mut clock, dao_id) = start();
@@ -212,10 +190,9 @@ fun test_check_quota_available() {
         &clock,
     );
 
-    // Check availability
+    // Check availability (no dao_id param needed)
     let (has_quota, reduced_fee) = proposal_quota_registry::check_quota_available(
         &registry,
-        dao_id,
         USER1,
         &clock,
     );
@@ -228,12 +205,11 @@ fun test_check_quota_available() {
 
 #[test]
 fun test_check_quota_available_no_quota() {
-    let (scenario, registry, mut clock, dao_id) = start();
+    let (scenario, registry, mut clock, _dao_id) = start();
 
     // Check availability for user without quota
     let (has_quota, reduced_fee) = proposal_quota_registry::check_quota_available(
         &registry,
-        dao_id,
         USER1,
         &clock,
     );
@@ -525,7 +501,6 @@ fun test_free_quota() {
     // Check fee is 0
     let (has_quota, reduced_fee) = proposal_quota_registry::check_quota_available(
         &registry,
-        dao_id,
         USER1,
         &clock,
     );
@@ -563,6 +538,365 @@ fun test_batch_quota_operations() {
     assert!(r1 == 4, 0);
     assert!(r2 == 3, 1);
     assert!(r3 == 5, 2);
+
+    end(scenario, registry, clock);
+}
+
+// === Sponsor Quota Tests ===
+
+#[test]
+fun test_set_sponsor_quotas() {
+    let (scenario, mut registry, clock, dao_id) = start();
+
+    // First set regular quotas (required before sponsor quotas)
+    proposal_quota_registry::set_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1, USER2],
+        5,
+        THIRTY_DAYS_MS,
+        100,
+        &clock,
+    );
+
+    // Set sponsor quotas
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1, USER2],
+        3, // 3 sponsorships per period
+        &clock,
+    );
+
+    // Verify sponsor quota was set
+    let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(has_quota, 0);
+    assert!(remaining == 3, 1);
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_set_sponsor_quotas_no_base_quota() {
+    let (scenario, mut registry, clock, dao_id) = start();
+
+    // Try to set sponsor quota without base quota - should silently skip
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        3,
+        &clock,
+    );
+
+    // User should not have sponsor quota (no base quota exists)
+    let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(!has_quota, 0);
+    assert!(remaining == 0, 1);
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_check_sponsor_quota_available() {
+    let (scenario, mut registry, clock, dao_id) = start();
+
+    // Set up quotas
+    proposal_quota_registry::set_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        5,
+        THIRTY_DAYS_MS,
+        100,
+        &clock,
+    );
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        2,
+        &clock,
+    );
+
+    // Check availability
+    let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(has_quota, 0);
+    assert!(remaining == 2, 1);
+
+    // Check user without any quota
+    let (has_quota2, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER2,
+        &clock,
+    );
+    assert!(!has_quota2, 2);
+    assert!(remaining2 == 0, 3);
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_use_sponsor_quota() {
+    let (scenario, mut registry, mut clock, dao_id) = start();
+
+    // Set up quotas
+    proposal_quota_registry::set_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        5,
+        THIRTY_DAYS_MS,
+        100,
+        &clock,
+    );
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        3,
+        &clock,
+    );
+
+    let proposal_id = object::id_from_address(@0xABCD);
+
+    // Use one sponsor quota
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Verify remaining
+    let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(has_quota, 0);
+    assert!(remaining == 2, 1);
+
+    // Use remaining quotas
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Should have no quota left
+    let (has_quota2, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(!has_quota2, 2);
+    assert!(remaining2 == 0, 3);
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_use_sponsor_quota_no_quota_safe() {
+    let (scenario, mut registry, clock, dao_id) = start();
+
+    let proposal_id = object::id_from_address(@0xABCD);
+
+    // Try to use sponsor quota for user without any quota (should not crash)
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // User still has no quota
+    assert!(!proposal_quota_registry::has_quota(&registry, USER1), 0);
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_refund_sponsor_quota() {
+    let (scenario, mut registry, clock, dao_id) = start();
+
+    // Set up quotas
+    proposal_quota_registry::set_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        5,
+        THIRTY_DAYS_MS,
+        100,
+        &clock,
+    );
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        3,
+        &clock,
+    );
+
+    let proposal_id = object::id_from_address(@0xABCD);
+
+    // Use two sponsor quotas
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Verify 1 remaining
+    let (_, remaining1) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(remaining1 == 1, 0);
+
+    // Refund one
+    proposal_quota_registry::refund_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Verify 2 remaining now
+    let (_, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(remaining2 == 2, 1);
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_refund_sponsor_quota_no_usage() {
+    let (scenario, mut registry, clock, dao_id) = start();
+
+    // Set up quotas
+    proposal_quota_registry::set_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        5,
+        THIRTY_DAYS_MS,
+        100,
+        &clock,
+    );
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        3,
+        &clock,
+    );
+
+    let proposal_id = object::id_from_address(@0xABCD);
+
+    // Try to refund when nothing was used (should be safe, no change)
+    proposal_quota_registry::refund_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Still have full quota
+    let (_, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(remaining == 3, 0);
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_sponsor_quota_period_reset() {
+    let (scenario, mut registry, mut clock, dao_id) = start();
+
+    // Set up quotas with 1-day period
+    clock.set_for_testing(1000);
+    proposal_quota_registry::set_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        5,
+        ONE_DAY_MS,
+        100,
+        &clock,
+    );
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        2,
+        &clock,
+    );
+
+    let proposal_id = object::id_from_address(@0xABCD);
+
+    // Use all sponsor quotas
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Verify all used
+    let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(!has_quota, 0);
+    assert!(remaining == 0, 1);
+
+    // Advance time by 1 day + 1ms
+    clock.set_for_testing(1000 + ONE_DAY_MS + 1);
+
+    // Check quota - should be reset
+    let (has_quota2, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(has_quota2, 2);
+    assert!(remaining2 == 2, 3); // Fully reset
+
+    end(scenario, registry, clock);
+}
+
+#[test]
+fun test_sponsor_quota_period_reset_on_use() {
+    let (scenario, mut registry, mut clock, dao_id) = start();
+
+    // Set up quotas
+    clock.set_for_testing(1000);
+    proposal_quota_registry::set_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        5,
+        ONE_DAY_MS,
+        100,
+        &clock,
+    );
+    proposal_quota_registry::set_sponsor_quotas(
+        &mut registry,
+        dao_id,
+        vector[USER1],
+        3,
+        &clock,
+    );
+
+    let proposal_id = object::id_from_address(@0xABCD);
+
+    // Use one
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Advance time past period
+    clock.set_for_testing(1000 + ONE_DAY_MS + 1);
+
+    // Use quota - should reset period and count as 1 used in new period
+    proposal_quota_registry::use_sponsor_quota(&mut registry, dao_id, USER1, proposal_id, &clock);
+
+    // Should have 2 remaining in new period
+    let (_, remaining) = proposal_quota_registry::check_sponsor_quota_available(
+        &registry,
+        USER1,
+        &clock,
+    );
+    assert!(remaining == 2, 0);
 
     end(scenario, registry, clock);
 }

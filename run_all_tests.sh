@@ -17,6 +17,7 @@ packages=(
     "futarchy_governance"
     "futarchy_governance_actions"
     "futarchy_actions"
+    "action_tests"
 )
 
 BASE_DIR="/Users/admin/govex/packages"

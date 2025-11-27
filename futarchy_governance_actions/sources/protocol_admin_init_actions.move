@@ -128,8 +128,8 @@ public fun add_disable_factory_permanently_spec(
 ) {
     use account_actions::action_spec_builder as builder_mod;
 
-    let action = DisableFactoryPermanentlyAction {};
-    let action_data = bcs::to_bytes(&action);
+    // Use empty vector directly since empty struct BCS produces 1 byte (not 0)
+    let action_data = vector::empty<u8>();
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<
             futarchy_governance_actions::protocol_admin_actions::DisableFactoryPermanently,
@@ -145,8 +145,8 @@ public fun add_disable_factory_permanently_spec(
 public fun add_add_stable_type_spec(builder: &mut account_actions::action_spec_builder::Builder) {
     use account_actions::action_spec_builder as builder_mod;
 
-    let action = AddStableTypeAction {};
-    let action_data = bcs::to_bytes(&action);
+    // Use empty vector directly since empty struct BCS produces 1 byte (not 0)
+    let action_data = vector::empty<u8>();
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<
             futarchy_governance_actions::protocol_admin_actions::AddStableType,
@@ -164,8 +164,8 @@ public fun add_remove_stable_type_spec(
 ) {
     use account_actions::action_spec_builder as builder_mod;
 
-    let action = RemoveStableTypeAction {};
-    let action_data = bcs::to_bytes(&action);
+    // Use empty vector directly since empty struct BCS produces 1 byte (not 0)
+    let action_data = vector::empty<u8>();
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<
             futarchy_governance_actions::protocol_admin_actions::RemoveStableType,
@@ -370,8 +370,8 @@ public fun add_apply_pending_coin_fees_spec(
 ) {
     use account_actions::action_spec_builder as builder_mod;
 
-    let action = ApplyPendingCoinFeesAction {};
-    let action_data = bcs::to_bytes(&action);
+    // Use empty vector directly since empty struct BCS produces 1 byte (not 0)
+    let action_data = vector::empty<u8>();
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<
             futarchy_governance_actions::protocol_admin_actions::ApplyPendingCoinFees,

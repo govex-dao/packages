@@ -5,16 +5,51 @@
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/esm/sdk/index.d.ts",
+      "import": "./dist/esm/sdk/index.js",
+      "require": "./dist/cjs/sdk/index.js"
+    },
+    "./workflows": {
+      "types": "./dist/esm/workflows/index.d.ts",
+      "import": "./dist/esm/workflows/index.js",
+      "require": "./dist/cjs/workflows/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/esm/protocol/index.d.ts",
+      "import": "./dist/esm/protocol/index.js",
+      "require": "./dist/cjs/protocol/index.js"
+    },
+    "./config": {
+      "types": "./dist/esm/config/index.d.ts",
+      "import": "./dist/esm/config/index.js",
+      "require": "./dist/cjs/config/index.js"
+    },
+    "./types": {
+      "types": "./dist/esm/types/index.d.ts",
+      "import": "./dist/esm/types/index.js",
+      "require": "./dist/cjs/types/index.js"
     }
   },
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/govex-io/futarchy.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/govex-io/futarchy/issues"
+  },
+  "homepage": "https://github.com/govex-io/futarchy/tree/main/packages/sdk#readme",
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",

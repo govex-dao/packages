@@ -33,6 +33,7 @@ use account_protocol::{
     account::{Self, Account, Auth},
     intents::{Self, Expired, Intent},
     executable::{Self, Executable},
+    executable_resources,
     version_witness::VersionWitness,
     bcs_validation,
     action_validation,
@@ -614,11 +615,12 @@ public fun destroy_cancel_stream_action(action: CancelStreamAction) {
 /// Creates a DepositAction and adds it to an intent with descriptor.
 
 /// Processes a DepositAction and deposits a coin to the vault.
-public fun do_deposit<Config: store, Outcome: store, CoinType: drop, IW: drop>(
+/// DETERMINISTIC: Takes coin from executable_resources (from previous action), NOT from PTB!
+/// The resource_name in ActionSpec tells us which resource to take.
+public fun do_init_deposit<Config: store, Outcome: store, CoinType: drop, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
-    coin: Coin<CoinType>,
     version_witness: VersionWitness,
     _intent_witness: IW,
 ) {
@@ -638,13 +640,22 @@ public fun do_deposit<Config: store, Outcome: store, CoinType: drop, IW: drop>(
     assert!(spec_version == 1, EUnsupportedActionVersion);
 
     // Deserialize the entire action struct directly
+    // ActionSpec contains: vault_name, amount, resource_name (where to take coin from)
     let mut reader = bcs::new(*action_data);
     let name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
     let amount = bcs::peel_u64(&mut reader);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
 
+    // Take coin from executable_resources (deterministic - from previous action!)
+    let coin: Coin<CoinType> = executable_resources::take_coin(
+        executable::uid_mut(executable),
+        resource_name,
+    );
+
+    // Validate amount matches what was staged
     assert!(amount == coin.value(), EIntentAmountMismatch);
 
     let vault: &mut Vault = account.borrow_managed_data_mut(registry, VaultKey(name), version_witness);
@@ -677,10 +688,9 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
-    vault_name: String,
     clock: &Clock,
     version_witness: VersionWitness,
-    witness: IW,
+    _witness: IW,
     ctx: &mut TxContext,
 ): (Coin<CoinType>, u64) {
     executable.intent().assert_is_account(account.addr());
@@ -699,16 +709,13 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
 
     // Create BCS reader and deserialize
     let mut reader = bcs::new(*action_data);
-    let deserialized_vault_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+    let vault_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
     let stream_id = bcs::peel_address(&mut reader).to_id();
 
     // Security: ensure all bytes are consumed to prevent trailing data attacks
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Validate vault name matches
-    assert!(vault_name == deserialized_vault_name, EVaultDoesNotExist);
-
-    // Get vault
+    // Get vault - vault_name comes from ActionSpec, NOT from PTB!
     let vault: &mut Vault = account.borrow_managed_data_mut(registry, VaultKey(vault_name), version_witness);
     assert!(vault.streams.contains(stream_id), EStreamNotFound);
 

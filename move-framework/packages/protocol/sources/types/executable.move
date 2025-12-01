@@ -12,6 +12,7 @@ module account_protocol::executable;
 
 use account_protocol::intents::{Self, Intent};
 use std::type_name::{Self, TypeName};
+use sui::object::{Self, UID};
 
 // === Imports ===
 
@@ -19,6 +20,8 @@ use std::type_name::{Self, TypeName};
 
 /// Hot potato ensuring the actions in the intent are executed as intended.
 public struct Executable<Outcome: store> {
+    // UID for attaching resources (e.g., coins passed between actions)
+    id: UID,
     // intent to return or destroy (if execution_times empty) after execution
     intent: Intent<Outcome>,
     // current action index for sequential processing
@@ -35,6 +38,16 @@ public fun intent<Outcome: store>(executable: &Executable<Outcome>): &Intent<Out
 /// Returns the current action index
 public fun action_idx<Outcome: store>(executable: &Executable<Outcome>): u64 {
     executable.action_idx
+}
+
+/// Returns mutable reference to the UID (for attaching resources)
+public fun uid_mut<Outcome: store>(executable: &mut Executable<Outcome>): &mut UID {
+    &mut executable.id
+}
+
+/// Returns immutable reference to the UID
+public fun uid<Outcome: store>(executable: &Executable<Outcome>): &UID {
+    &executable.id
 }
 
 // Actions are now stored as BCS bytes in ActionSpec
@@ -71,16 +84,18 @@ public fun increment_action_idx<Outcome: store>(executable: &mut Executable<Outc
 
 public(package) fun new<Outcome: store>(
     intent: Intent<Outcome>,
-    _ctx: &mut TxContext, // No longer needed, kept for API compatibility
+    ctx: &mut TxContext,
 ): Executable<Outcome> {
     Executable {
+        id: object::new(ctx),
         intent,
         action_idx: 0,
     }
 }
 
 public(package) fun destroy<Outcome: store>(executable: Executable<Outcome>): Intent<Outcome> {
-    let Executable { intent, .. } = executable;
+    let Executable { id, intent, .. } = executable;
+    object::delete(id);
     intent
 }
 

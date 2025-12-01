@@ -28,6 +28,7 @@ use account_protocol::{
     account::{Self, Account, Auth},
     intents::{Self, Expired, Intent},
     executable::{Self, Executable},
+    executable_resources,
     version_witness::VersionWitness,
     bcs_validation,
     package_registry::PackageRegistry,
@@ -601,12 +602,13 @@ public fun delete_mint<CoinType>(expired: &mut Expired) {
 }
 
 
-/// Processes a BurnAction, burns coins and returns the amount burned.
-public fun do_burn<Outcome: store, CoinType, IW: drop>(
+/// Processes a BurnAction, burns coins taken from executable_resources.
+/// DETERMINISTIC: Takes coin from executable_resources (from previous action), NOT from PTB!
+/// The resource_name in ActionSpec tells us which resource to take.
+public fun do_init_burn<Outcome: store, CoinType, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
-    coin: Coin<CoinType>,
     version_witness: VersionWitness,
     _intent_witness: IW,
 ) {
@@ -627,11 +629,19 @@ public fun do_burn<Outcome: store, CoinType, IW: drop>(
     assert!(spec_version == 1, EUnsupportedActionVersion);
 
     // Create BCS reader and deserialize
+    // ActionSpec contains: amount, resource_name (where to take coin from)
     let mut reader = bcs::new(*action_data);
     let amount = bcs::peel_u64(&mut reader);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Take coin from executable_resources (deterministic - from previous action!)
+    let coin: Coin<CoinType> = executable_resources::take_coin(
+        executable::uid_mut(executable),
+        resource_name,
+    );
 
     assert!(amount == coin.value(), EWrongValue);
 

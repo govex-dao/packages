@@ -158,7 +158,7 @@ export const TRANSFER_ACTIONS: ActionDefinition[] = [
     stagingFunction: 'add_transfer_to_sender_spec',
     executionModule: 'transfer',
     executionFunction: 'do_transfer_to_sender',
-    markerType: 'account_actions::transfer::TransferObject',
+    markerType: 'account_actions::transfer::TransferToSender',
     typeParams: ['ObjectType'],
     params: [],
     description: 'Transfer an object to the transaction sender (cranker)',

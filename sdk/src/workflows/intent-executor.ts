@@ -290,6 +290,9 @@ export class IntentExecutor {
         break;
 
       case 'cancel_stream':
+        // do_cancel_stream requires: executable, account, registry, clock, version, witness, ctx
+        // vault_name is now read from ActionSpec (not passed as parameter)
+        // Returns: (Coin<CoinType>, u64)
         tx.moveCall({
           target: `${accountActionsPackageId}::vault::do_cancel_stream`,
           typeArguments: [configType, outcomeType, action.coinType, witnessType],
@@ -297,6 +300,7 @@ export class IntentExecutor {
             executable,
             tx.object(config.accountId),
             tx.object(packageRegistryId),
+            tx.object(clockId),
             versionWitness,
             intentWitness,
           ],
@@ -307,8 +311,10 @@ export class IntentExecutor {
       // ACCOUNT ACTIONS - VAULT
       // =========================================================================
       case 'deposit':
+        // do_init_deposit takes coin from executable_resources (deterministic!)
+        // No coin parameter - coin comes from previous action via executable_resources
         tx.moveCall({
-          target: `${accountActionsPackageId}::vault::do_deposit`,
+          target: `${accountActionsPackageId}::vault::do_init_deposit`,
           typeArguments: [configType, outcomeType, action.coinType, witnessType],
           arguments: [
             executable,
@@ -396,8 +402,10 @@ export class IntentExecutor {
         break;
 
       case 'burn':
+        // do_init_burn takes coin from executable_resources (deterministic!)
+        // No coin parameter - coin comes from previous action via executable_resources
         tx.moveCall({
-          target: `${accountActionsPackageId}::currency::do_burn`,
+          target: `${accountActionsPackageId}::currency::do_init_burn`,
           typeArguments: [outcomeType, action.coinType, witnessType],
           arguments: [
             executable,
@@ -492,28 +500,26 @@ export class IntentExecutor {
       // ACCOUNT ACTIONS - TRANSFER
       // =========================================================================
       case 'transfer':
+        // do_init_transfer takes object from executable_resources (deterministic!)
+        // No object parameter - object comes from previous action via executable_resources
         tx.moveCall({
-          target: `${accountActionsPackageId}::transfer::do_transfer`,
+          target: `${accountActionsPackageId}::transfer::do_init_transfer`,
           typeArguments: [outcomeType, action.objectType, witnessType],
           arguments: [
             executable,
-            tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
             intentWitness,
           ],
         });
         break;
 
       case 'transfer_to_sender':
+        // do_init_transfer_to_sender takes object from executable_resources (deterministic!)
+        // No object parameter - object comes from previous action via executable_resources
         tx.moveCall({
-          target: `${accountActionsPackageId}::transfer::do_transfer_to_sender`,
+          target: `${accountActionsPackageId}::transfer::do_init_transfer_to_sender`,
           typeArguments: [outcomeType, action.objectType, witnessType],
           arguments: [
             executable,
-            tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
             intentWitness,
           ],
         });
@@ -614,15 +620,15 @@ export class IntentExecutor {
       // ACCOUNT ACTIONS - MEMO
       // =========================================================================
       case 'memo':
+        // do_emit_memo signature: (executable, account, intent_witness, clock, ctx)
         tx.moveCall({
           target: `${accountActionsPackageId}::memo::do_emit_memo`,
           typeArguments: [configType, outcomeType, witnessType],
           arguments: [
             executable,
             tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
             intentWitness,
+            tx.object(clockId),
           ],
         });
         break;
@@ -822,92 +828,24 @@ export class IntentExecutor {
         });
         break;
 
-      case 'create_pool':
-        tx.moveCall({
-          target: `${futarchyActionsPackageId}::liquidity_actions::do_create_pool`,
-          typeArguments: [action.assetType, action.stableType, outcomeType, witnessType],
-          arguments: [
-            executable,
-            tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
-            intentWitness,
-            tx.object(clockId),
-          ],
-        });
-        break;
+      // NOTE: The following actions use ResourceRequest pattern and are NOT supported
+      // in launchpad/proposal execution. They require separate PTB flows with fulfill_*:
+      // - create_pool (use create_pool_with_mint instead)
+      // - add_liquidity
+      // - withdraw_lp_token
+      // - remove_liquidity
+      // - swap
 
       case 'update_pool_params':
+        // This action is deterministic (no ResourceRequest)
         tx.moveCall({
           target: `${futarchyActionsPackageId}::liquidity_actions::do_update_pool_params`,
           typeArguments: [outcomeType, witnessType],
           arguments: [
             executable,
             tx.object(config.accountId),
-            tx.object(packageRegistryId),
             versionWitness,
             intentWitness,
-            tx.object(clockId),
-          ],
-        });
-        break;
-
-      case 'add_liquidity':
-        tx.moveCall({
-          target: `${futarchyActionsPackageId}::liquidity_actions::do_add_liquidity`,
-          typeArguments: [action.assetType, action.stableType, outcomeType, witnessType],
-          arguments: [
-            executable,
-            tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
-            intentWitness,
-            tx.object(clockId),
-          ],
-        });
-        break;
-
-      case 'withdraw_lp_token':
-        tx.moveCall({
-          target: `${futarchyActionsPackageId}::liquidity_actions::do_withdraw_lp_token`,
-          typeArguments: [action.assetType, action.stableType, outcomeType, witnessType],
-          arguments: [
-            executable,
-            tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
-            intentWitness,
-            tx.object(clockId),
-          ],
-        });
-        break;
-
-      case 'remove_liquidity':
-        tx.moveCall({
-          target: `${futarchyActionsPackageId}::liquidity_actions::do_remove_liquidity`,
-          typeArguments: [action.assetType, action.stableType, outcomeType, witnessType],
-          arguments: [
-            executable,
-            tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
-            intentWitness,
-            tx.object(clockId),
-          ],
-        });
-        break;
-
-      case 'swap':
-        tx.moveCall({
-          target: `${futarchyActionsPackageId}::liquidity_actions::do_swap`,
-          typeArguments: [action.assetType, action.stableType, outcomeType, witnessType],
-          arguments: [
-            executable,
-            tx.object(config.accountId),
-            tx.object(packageRegistryId),
-            versionWitness,
-            intentWitness,
-            tx.object(clockId),
           ],
         });
         break;

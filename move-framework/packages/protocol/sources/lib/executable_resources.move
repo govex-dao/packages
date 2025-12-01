@@ -10,7 +10,7 @@
 /// 4. Bag must be empty when execution completes
 ///
 /// This is the ONLY resource pattern you need.
-module futarchy_core::executable_resources;
+module account_protocol::executable_resources;
 
 use std::string::String;
 use std::type_name;
@@ -27,11 +27,11 @@ const EResourcesNotEmpty: u64 = 2;
 // === Key for attaching Bag to Executable ===
 public struct ResourceBagKey has copy, drop, store {}
 
-// === Resource Management (called by action executors) ===
+// === Coin Resource Management ===
 
 /// Provision a coin into executable's resource bag
 /// Call this before/during execution to provide resources
-public fun provide_coin<T, CoinType>(
+public fun provide_coin<CoinType>(
     executable_uid: &mut UID,
     name: String,
     coin: Coin<CoinType>,
@@ -44,7 +44,7 @@ public fun provide_coin<T, CoinType>(
 
 /// Take a coin from executable's resource bag
 /// Actions call this to get resources they need
-public fun take_coin<T, CoinType>(executable_uid: &mut UID, name: String): Coin<CoinType> {
+public fun take_coin<CoinType>(executable_uid: &mut UID, name: String): Coin<CoinType> {
     let bag = borrow_bag_mut(executable_uid);
     let key = coin_key<CoinType>(name);
     assert!(bag::contains(bag, key), EResourceNotFound);
@@ -52,12 +52,46 @@ public fun take_coin<T, CoinType>(executable_uid: &mut UID, name: String): Coin<
 }
 
 /// Check if a coin resource exists
-public fun has_coin<T, CoinType>(executable_uid: &UID, name: String): bool {
+public fun has_coin<CoinType>(executable_uid: &UID, name: String): bool {
     if (!df::exists_(executable_uid, ResourceBagKey {})) return false;
     let bag: &Bag = df::borrow(executable_uid, ResourceBagKey {});
     let key = coin_key<CoinType>(name);
     bag::contains(bag, key)
 }
+
+// === Generic Object Resource Management ===
+
+/// Provision an arbitrary object into executable's resource bag
+/// Call this before/during execution to provide resources
+public fun provide_object<T: key + store>(
+    executable_uid: &mut UID,
+    name: String,
+    object: T,
+    ctx: &mut TxContext,
+) {
+    let bag = get_or_create_bag(executable_uid, ctx);
+    let key = object_key<T>(name);
+    bag::add(bag, key, object);
+}
+
+/// Take an object from executable's resource bag
+/// Actions call this to get resources they need
+public fun take_object<T: key + store>(executable_uid: &mut UID, name: String): T {
+    let bag = borrow_bag_mut(executable_uid);
+    let key = object_key<T>(name);
+    assert!(bag::contains(bag, key), EResourceNotFound);
+    bag::remove(bag, key)
+}
+
+/// Check if an object resource exists
+public fun has_object<T: key + store>(executable_uid: &UID, name: String): bool {
+    if (!df::exists_(executable_uid, ResourceBagKey {})) return false;
+    let bag: &Bag = df::borrow(executable_uid, ResourceBagKey {});
+    let key = object_key<T>(name);
+    bag::contains(bag, key)
+}
+
+// === Cleanup ===
 
 /// Destroy resource bag (must be empty)
 /// Call this after execution completes
@@ -84,7 +118,14 @@ fun borrow_bag_mut(executable_uid: &mut UID): &mut Bag {
 
 fun coin_key<CoinType>(name: String): String {
     let mut key = name;
-    key.append(b"::".to_string());
+    key.append(b"::coin::".to_string());
     key.append(type_name::into_string(type_name::with_defining_ids<CoinType>()).to_string());
+    key
+}
+
+fun object_key<T>(name: String): String {
+    let mut key = name;
+    key.append(b"::object::".to_string());
+    key.append(type_name::into_string(type_name::with_defining_ids<T>()).to_string());
     key
 }

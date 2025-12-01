@@ -11,12 +11,13 @@ module account_actions::transfer;
 
 // === Imports ===
 
-
+use std::string::String;
 use sui::bcs;
 use account_protocol::{
     action_validation,
     intents::{Self, Expired, Intent},
     executable::{Self, Executable},
+    executable_resources,
     bcs_validation,
 };
 
@@ -71,9 +72,10 @@ public fun destroy_transfer_to_sender_action(action: TransferToSenderAction) {
 /// Creates a TransferAction and adds it to an intent with descriptor.
 
 /// Processes a TransferAction and transfers an object to a recipient.
-public fun do_transfer<Outcome: store, T: key + store, IW: drop>(
+/// DETERMINISTIC: Takes object from executable_resources (from previous action), NOT from PTB!
+/// The resource_name in ActionSpec tells us which resource to take.
+public fun do_init_transfer<Outcome: store, T: key + store, IW: drop>(
     executable: &mut Executable<Outcome>,
-    object: T,
     _intent_witness: IW,
 ) {
     // Get BCS bytes from ActionSpec
@@ -91,11 +93,19 @@ public fun do_transfer<Outcome: store, T: key + store, IW: drop>(
     assert!(spec_version == 1, EUnsupportedActionVersion);
 
     // Create BCS reader and deserialize
+    // ActionSpec contains: recipient, resource_name (where to take object from)
     let mut reader = bcs::new(*action_data);
     let recipient = bcs::peel_address(&mut reader);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Take object from executable_resources (deterministic - from previous action!)
+    let object: T = executable_resources::take_object(
+        executable::uid_mut(executable),
+        resource_name,
+    );
 
     transfer::public_transfer(object, recipient);
     executable::increment_action_idx(executable);
@@ -120,9 +130,10 @@ public fun delete_transfer(expired: &mut Expired) {
 
 
 /// Processes a TransferToSenderAction and transfers an object to the transaction sender
-public fun do_transfer_to_sender<Outcome: store, T: key + store, IW: drop>(
+/// DETERMINISTIC: Takes object from executable_resources (from previous action), NOT from PTB!
+/// The resource_name in ActionSpec tells us which resource to take.
+public fun do_init_transfer_to_sender<Outcome: store, T: key + store, IW: drop>(
     executable: &mut Executable<Outcome>,
-    object: T,
     _intent_witness: IW,
     ctx: &mut TxContext,
 ) {
@@ -130,17 +141,28 @@ public fun do_transfer_to_sender<Outcome: store, T: key + store, IW: drop>(
     let specs = executable.intent().action_specs();
     let spec = specs.borrow(executable.action_idx());
 
-    // CRITICAL: Assert that the action type is what we expect (using TransferObject)
-    action_validation::assert_action_type<TransferObject>(spec);
+    // CRITICAL: Assert that the action type is what we expect (TransferToSender marker)
+    action_validation::assert_action_type<TransferToSender>(spec);
 
-    let _action_data = intents::action_spec_data(spec);
+    let action_data = intents::action_spec_data(spec);
 
     // Check version before deserialization
     let spec_version = intents::action_spec_version(spec);
     assert!(spec_version == 1, EUnsupportedActionVersion);
 
-    // TransferToSenderAction is an empty struct with no fields to deserialize
-    // We acknowledge the action_data exists but don't process it
+    // Create BCS reader and deserialize
+    // ActionSpec contains: resource_name (where to take object from)
+    let mut reader = bcs::new(*action_data);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+
+    // Validate all bytes consumed
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Take object from executable_resources (deterministic - from previous action!)
+    let object: T = executable_resources::take_object(
+        executable::uid_mut(executable),
+        resource_name,
+    );
 
     // Transfer to the transaction sender (the cranker!)
     transfer::public_transfer(object, tx_context::sender(ctx));

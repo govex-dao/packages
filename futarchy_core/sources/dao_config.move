@@ -1003,9 +1003,10 @@ public fun default_trading_params(): TradingParams {
 }
 
 /// Get default TWAP configuration for testing
+/// NOTE: start_delay is 0 for immediate TWAP availability in tests
 public fun default_twap_config(): TwapConfig {
     TwapConfig {
-        start_delay: 300000, // 5 minutes
+        start_delay: 0, // 0 for testing - allows immediate TWAP calculation
         step_max: 300000, // 5 minutes
         initial_observation: 1000000000000, // Initial price observation
         threshold: signed::from_u64(10), // 10% threshold

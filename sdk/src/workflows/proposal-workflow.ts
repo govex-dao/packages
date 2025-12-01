@@ -501,7 +501,46 @@ export class ProposalWorkflow {
       ],
     });
 
-    // 5. Share the escrow
+    // 5. Get market_state_id and escrow_id for initialize_market_fields
+    const marketStateId = tx.moveCall({
+      target: `${futarchyMarketsPrimitivesPackageId}::coin_escrow::market_state_id`,
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [escrow],
+    });
+
+    const escrowId = tx.moveCall({
+      target: '0x2::object::id',
+      typeArguments: [
+        `${futarchyMarketsPrimitivesPackageId}::coin_escrow::TokenEscrow<${config.assetType}, ${config.stableType}>`,
+      ],
+      arguments: [escrow],
+    });
+
+    // 6. Initialize market fields to advance proposal from PREMARKET to REVIEW
+    // This sets market_initialized_at (critical for timing), market_state_id, escrow_id,
+    // and liquidity_provider on the proposal, then advances state to REVIEW
+    const clockRef = tx.sharedObjectRef({
+      objectId: clockId,
+      initialSharedVersion: 1,
+      mutable: false,
+    });
+    const timestamp = tx.moveCall({
+      target: '0x2::clock::timestamp_ms',
+      arguments: [clockRef],
+    });
+    tx.moveCall({
+      target: `${futarchyMarketsCorePackageId}::proposal::initialize_market_fields`,
+      typeArguments: [config.assetType, config.stableType],
+      arguments: [
+        tx.object(config.proposalId),
+        marketStateId,
+        escrowId,
+        timestamp,
+        tx.pure.address(config.senderAddress),
+      ],
+    });
+
+    // 7. Share the escrow
     tx.moveCall({
       target: '0x2::transfer::public_share_object',
       typeArguments: [
@@ -673,8 +712,6 @@ export class ProposalWorkflow {
     // Split stable across all outcomes
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stableCoinsByOutcome: Record<number, any> = {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let lastResult: any = null;
 
     // Sort outcomes by index to process in order
     const sortedOutcomes = [...config.allOutcomeCoins].sort((a, b) => a.outcomeIndex - b.outcomeIndex);
@@ -698,7 +735,6 @@ export class ProposalWorkflow {
       splitProgress = (result as any)[0];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       stableCoinsByOutcome[outcome.outcomeIndex] = (result as any)[1];
-      lastResult = result;
     }
 
     // Finish split progress

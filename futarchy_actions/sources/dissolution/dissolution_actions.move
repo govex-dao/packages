@@ -180,14 +180,6 @@ public fun create_capability_if_terminated<AssetType>(
     transfer::share_object(capability);
 }
 
-/// Check if a dissolution capability exists for a DAO
-public fun has_capability(dao_address: address): bool {
-    // Note: This would require a registry or dynamic field
-    // For now, caller must track capability ID
-    // Alternative: store capability ID in DAO config
-    false // Placeholder - implement registry if needed
-}
-
 /// Get capability info for display/verification
 public fun capability_info(cap: &DissolutionCapability): (address, u64, u64, u64) {
     (cap.dao_address, cap.created_at_ms, cap.unlock_at_ms, cap.total_asset_supply)

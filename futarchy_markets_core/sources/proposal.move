@@ -7,6 +7,7 @@ use account_protocol::account;
 use account_protocol::intents::ActionSpec;
 use futarchy_core::dao_config::{Self, ConditionalCoinConfig};
 use futarchy_core::futarchy_config;
+use futarchy_core::sponsorship_auth::SponsorshipAuth;
 use futarchy_markets_core::liquidity_initialize;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
@@ -54,21 +55,6 @@ const EInvalidStableType: u64 = 24;
 const EInsufficientFee: u64 = 25;
 const ECannotSponsorReject: u64 = 26;
 
-// === Witness for Sponsorship Authorization ===
-
-/// Authorization witness proving that sponsorship permission checks have been performed
-/// Can only be created by futarchy_governance::proposal_sponsorship module
-/// Consumed when calling protected sponsorship functions
-/// This struct lives in proposal module to avoid circular dependencies
-public struct SponsorshipAuth has drop {}
-
-/// Create a SponsorshipAuth witness
-/// PUBLIC so proposal_sponsorship can call it (they're in different packages)
-/// SECURITY: Only proposal_sponsorship module should call this, after performing all permission checks
-/// The witness is consumed immediately when passed to protected functions
-public fun create_sponsorship_auth(): SponsorshipAuth {
-    SponsorshipAuth {}
-}
 
 // === Constants ===
 
@@ -1609,13 +1595,13 @@ public fun is_outcome_sponsored<AssetType, StableType>(
 }
 
 /// Set sponsorship threshold for a specific outcome
-/// SECURITY: Requires SponsorshipAuth witness - only proposal_sponsorship module can create this
+/// SECURITY: Requires SponsorshipAuth from futarchy_core::sponsorship_auth
 /// SECURITY: Cannot sponsor outcome 0 (reject) - reject must always use base threshold
 public fun set_outcome_sponsorship<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     outcome_index: u64,
     sponsored_threshold: SignedU128,
-    _auth: SponsorshipAuth, // Witness proves authorization - consumed here
+    _auth: SponsorshipAuth, // Compile-time type safety - only authorized modules can create this
 ) {
     // Cannot sponsor finalized proposals
     assert!(proposal.state != STATE_FINALIZED, EInvalidState);
@@ -1631,11 +1617,11 @@ public fun set_outcome_sponsorship<AssetType, StableType>(
 }
 
 /// Mark that sponsor quota has been used for this proposal and record who used it
-/// SECURITY: Requires SponsorshipAuth witness - only proposal_sponsorship module can create this
+/// SECURITY: Requires SponsorshipAuth from futarchy_core::sponsorship_auth
 public fun mark_sponsor_quota_used<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
     sponsor: address,
-    _auth: SponsorshipAuth, // Witness proves authorization - consumed here
+    _auth: SponsorshipAuth, // Compile-time type safety - only authorized modules can create this
 ) {
     proposal.sponsor_quota_used_for_proposal = true;
     proposal.sponsor_quota_user = option::some(sponsor);
@@ -1656,11 +1642,11 @@ public fun get_sponsor_quota_user<AssetType, StableType>(
 }
 
 /// Clear all sponsorships (for refunds on eviction/cancellation)
-/// SECURITY: Requires SponsorshipAuth witness - only proposal_sponsorship module can create this
+/// SECURITY: Requires SponsorshipAuth from futarchy_core::sponsorship_auth
 /// Note: Skips outcome 0 (reject) since it can never be sponsored anyway
 public fun clear_all_sponsorships<AssetType, StableType>(
     proposal: &mut Proposal<AssetType, StableType>,
-    _auth: SponsorshipAuth, // Witness proves authorization - consumed here
+    _auth: SponsorshipAuth, // Compile-time type safety - only authorized modules can create this
 ) {
     let mut i = 1u64; // Start at 1 to skip outcome 0 (reject)
     while (i < proposal.outcome_sponsor_thresholds.length()) {

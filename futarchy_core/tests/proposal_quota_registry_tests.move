@@ -571,6 +571,7 @@ fun test_set_sponsor_quotas() {
     // Verify sponsor quota was set
     let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -596,6 +597,7 @@ fun test_set_sponsor_quotas_no_base_quota() {
     // User should not have sponsor quota (no base quota exists)
     let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -630,6 +632,7 @@ fun test_check_sponsor_quota_available() {
     // Check availability
     let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -639,6 +642,7 @@ fun test_check_sponsor_quota_available() {
     // Check user without any quota
     let (has_quota2, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER2,
         &clock,
     );
@@ -678,6 +682,7 @@ fun test_use_sponsor_quota() {
     // Verify remaining
     let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -691,6 +696,7 @@ fun test_use_sponsor_quota() {
     // Should have no quota left
     let (has_quota2, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -746,6 +752,7 @@ fun test_refund_sponsor_quota() {
     // Verify 1 remaining
     let (_, remaining1) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -757,6 +764,7 @@ fun test_refund_sponsor_quota() {
     // Verify 2 remaining now
     let (_, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -795,6 +803,7 @@ fun test_refund_sponsor_quota_no_usage() {
     // Still have full quota
     let (_, remaining) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -835,6 +844,7 @@ fun test_sponsor_quota_period_reset() {
     // Verify all used
     let (has_quota, remaining) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -847,6 +857,7 @@ fun test_sponsor_quota_period_reset() {
     // Check quota - should be reset
     let (has_quota2, remaining2) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );
@@ -893,6 +904,7 @@ fun test_sponsor_quota_period_reset_on_use() {
     // Should have 2 remaining in new period
     let (_, remaining) = proposal_quota_registry::check_sponsor_quota_available(
         &registry,
+        dao_id,
         USER1,
         &clock,
     );

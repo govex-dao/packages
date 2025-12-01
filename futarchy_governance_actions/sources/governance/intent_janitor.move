@@ -285,13 +285,15 @@ fun try_delete_expired_futarchy_intent(
 }
 
 /// Destroy an expired intent after removing all actions
-fun destroy_expired(expired: Expired) {
-    // For now, we can't generically remove actions from Expired
-    // This would require knowing all possible action types
-    // Instead, we'll just destroy it if it's already empty
-    // or abort if it has actions (shouldn't happen with FutarchyOutcome)
+fun destroy_expired(mut expired: Expired) {
+    // Remove all action specs from the expired intent
+    // ActionSpec has drop ability, so they are automatically cleaned up
+    while (intents::expired_action_count(&expired) > 0) {
+        let _action_spec = intents::remove_action_spec(&mut expired);
+        // ActionSpec is dropped here
+    };
 
-    // Destroy the expired intent (will abort if not empty)
+    // Now we can safely destroy the empty expired intent
     intents::destroy_empty_expired(expired);
 }
 

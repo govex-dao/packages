@@ -2,27 +2,30 @@ import { SuiClient } from "@mysten/sui/client";
 import { NetworkType, createNetworkConfig, NetworkConfig } from "../config/network";
 import { DeploymentManager } from "../config/deployment";
 import { DeploymentConfig } from "../types/deployment";
-import { FactoryOperations } from "../lib/factory";
-import { FactoryAdminOperations } from "../lib/factory-admin";
-import { FactoryValidatorOperations } from "../lib/factory-validator";
-import { PackageRegistryAdminOperations } from "../lib/package-registry-admin";
-import { LaunchpadOperations } from "../lib/launchpad";
-import { FeeManagerOperations } from "../lib/fee-manager";
-import { OracleActionsOperations } from "../lib/oracle-actions";
-import { MarketsOperations, TWAPOperations } from "../lib/markets";
-import { GovernanceOperations } from "../lib/governance";
-import { ProposalSponsorshipOperations } from "../lib/proposal-sponsorship";
-import { ProposalEscrowOperations } from "../lib/proposal-escrow";
-import { IntentJanitorOperations } from "../lib/governance-actions/intent-janitor";
-import { DAODissolutionOperations } from "../lib/dao-actions/dao-dissolution-actions";
-import { QueryHelper } from "../lib/queries";
-import { DAOOperations } from "../lib/operations/dao-operations";
-import { VaultOperations } from "../lib/operations/vault-operations";
-import { CurrencyOperations } from "../lib/operations/currency-operations";
-import { ActionBuilders } from "../lib/operations/action-builders";
-import { DAOInfoHelper } from "../lib/operations/dao-info-helper";
-import { MarketsHighLevelOperations } from "../lib/operations/markets-operations";
-import { TransferOperations } from "../lib/operations/transfer-operations";
+import { FactoryOperations } from "../services/factory";
+import { FactoryAdminOperations } from "../services/factory-admin";
+import { FactoryValidatorOperations } from "../services/factory-validator";
+import { PackageRegistryAdminOperations } from "../services/package-registry-admin";
+import { FeeManagerOperations } from "../services/fee-manager";
+import { OracleActionsOperations } from "../services/oracle-actions";
+import { MarketsOperations, TWAPOperations } from "../services/markets";
+import { ProposalSponsorshipOperations } from "../services/proposal-sponsorship";
+import { ProposalEscrowOperations } from "../services/proposal-escrow";
+import { IntentJanitorOperations } from "../execution/governance/intent-janitor";
+import { DAODissolutionOperations } from "../execution/dao/dao-dissolution-actions";
+import { QueryHelper } from "../services/queries";
+import { DAOOperations } from "../workflows/operations/dao-operations";
+import { VaultOperations } from "../workflows/operations/vault-operations";
+import { CurrencyOperations } from "../workflows/operations/currency-operations";
+import { MarketsHighLevelOperations } from "../workflows/operations/markets-operations";
+import { TransferOperations } from "../workflows/operations/transfer-operations";
+
+// Workflow imports
+import { LaunchpadWorkflow, LaunchpadWorkflowPackages, LaunchpadWorkflowSharedObjects } from "../workflows/launchpad-workflow";
+import { ProposalWorkflow, ProposalWorkflowPackages, ProposalWorkflowSharedObjects } from "../workflows/proposal-workflow";
+import { IntentExecutor, IntentExecutorPackages } from "../workflows/intent-executor";
+import { TransactionComposer, TransactionComposerPackages, TransactionComposerSharedObjects } from "../ptb/transaction-composer";
+import { UnifiedActions, ActionsPackages } from "../actions-unified";
 
 /**
  * Configuration options for FutarchySDK initialization
@@ -50,31 +53,85 @@ export interface FutarchySDKConfig {
  * console.log('Factory object ID:', factory?.objectId);
  * ```
  */
+/**
+ * Workflows namespace - high-level orchestrators for complex multi-step operations
+ */
+export interface SDKWorkflows {
+    /** Launchpad workflow - complete token launch orchestration */
+    launchpad: LaunchpadWorkflow;
+    /** Proposal workflow - complete governance proposal orchestration */
+    proposal: ProposalWorkflow;
+    /** Intent executor - execute staged actions via PTB pattern */
+    intents: IntentExecutor;
+}
+
+/**
+ * Markets namespace - organized market operations
+ */
+export interface SDKMarkets {
+    /** Core market primitives */
+    core: MarketsOperations;
+    /** High-level market operations */
+    high: MarketsHighLevelOperations;
+    /** TWAP oracle operations */
+    twap: TWAPOperations;
+}
+
 export class FutarchySDK {
-    public factory: FactoryOperations;
-    public factoryAdmin: FactoryAdminOperations;
-    public factoryValidator: FactoryValidatorOperations;
-    public packageRegistryAdmin: PackageRegistryAdminOperations;
-    public launchpad: LaunchpadOperations;
-    public feeManager: FeeManagerOperations;
-    public oracleActions: OracleActionsOperations;
-    public markets: MarketsOperations;
-    public twap: TWAPOperations;
-    public governance: GovernanceOperations;
-    public proposalSponsorship: ProposalSponsorshipOperations;
-    public proposalEscrow: ProposalEscrowOperations;
-    public intentJanitor: IntentJanitorOperations;
-    public daoDissolution: DAODissolutionOperations;
+    // ========================================================================
+    // PRIMARY APIs (Recommended)
+    // ========================================================================
+
+    /** Workflow orchestrators for complex multi-step operations */
+    public workflows: SDKWorkflows;
+    /** Market operations organized by abstraction level */
+    public markets: SDKMarkets;
+    /** Unified action builders */
+    public actions: UnifiedActions;
+    /** Fluent PTB composer */
+    public ptb: TransactionComposer;
+
+    // High-level operations (user-friendly APIs)
+    /** DAO account operations */
+    public dao: DAOOperations;
+    /** Vault operations (deposit, withdraw, streams) */
+    public vault: VaultOperations;
+    /** Currency operations (mint, burn) */
+    public currency: CurrencyOperations;
+    /** Transfer operations */
+    public transfer: TransferOperations;
+    /** Query helper for on-chain data */
     public query: QueryHelper;
 
-    // NEW: High-level operations (user-friendly APIs)
-    public dao: DAOOperations;
-    public vault: VaultOperations;
-    public currency: CurrencyOperations;
-    public actions: ActionBuilders;
-    public daoInfo: DAOInfoHelper;
-    public marketsSimple: MarketsHighLevelOperations;
-    public transfer: TransferOperations;
+    // ========================================================================
+    // ADMIN APIs (For protocol administrators)
+    // ========================================================================
+
+    /** Factory admin operations */
+    public factoryAdmin: FactoryAdminOperations;
+    /** Factory validator operations */
+    public factoryValidator: FactoryValidatorOperations;
+    /** Package registry admin operations */
+    public packageRegistryAdmin: PackageRegistryAdminOperations;
+    /** Fee manager operations */
+    public feeManager: FeeManagerOperations;
+
+    // ========================================================================
+    // LOW-LEVEL APIs (Use workflows instead when possible)
+    // ========================================================================
+
+    /** Factory operations (low-level) */
+    public factory: FactoryOperations;
+    /** Oracle actions operations */
+    public oracleActions: OracleActionsOperations;
+    /** Proposal sponsorship operations */
+    public proposalSponsorship: ProposalSponsorshipOperations;
+    /** Proposal escrow operations */
+    public proposalEscrow: ProposalEscrowOperations;
+    /** Intent janitor operations (cleanup expired intents) */
+    public intentJanitor: IntentJanitorOperations;
+    /** DAO dissolution operations */
+    public daoDissolution: DAODissolutionOperations;
 
     // Convenience properties for commonly used package IDs
     public packageRegistryId: string;
@@ -146,17 +203,6 @@ export class FutarchySDK {
             packageRegistry.initialSharedVersion
         );
 
-        // Initialize launchpad operations
-        this.launchpad = new LaunchpadOperations(
-            client,
-            factoryPackageId, // launchpad is in same package as factory
-            factoryObject.objectId,
-            factoryObject.initialSharedVersion,
-            packageRegistry.objectId,
-            feeManager.objectId,
-            feeManager.initialSharedVersion
-        );
-
         // Initialize fee manager operations
         const marketsCorePackageId = deployments.getPackageId("futarchy_markets_core")!;
         const futarchyCorePackageId = deployments.getPackageId("futarchy_core")!;
@@ -175,19 +221,7 @@ export class FutarchySDK {
             futarchyCorePackageId
         );
 
-        // Initialize markets operations
-        this.markets = new MarketsOperations(client, marketsCorePackageId);
-        this.twap = new TWAPOperations(client, marketsCorePackageId);
-
-        // Initialize governance operations
         const governancePackageId = deployments.getPackageId("futarchy_governance")!;
-        this.governance = new GovernanceOperations(
-            client,
-            marketsCorePackageId,
-            governancePackageId,
-            packageRegistry.objectId,
-            protocolPackageId
-        );
 
         // Initialize proposal sponsorship operations
         this.proposalSponsorship = new ProposalSponsorshipOperations(
@@ -239,17 +273,7 @@ export class FutarchySDK {
             packageRegistryId: packageRegistry.objectId,
         });
 
-        this.actions = new ActionBuilders({
-            accountActionsPackageId,
-            futarchyActionsPackageId,
-            futarchyCorePackageId,
-            oracleActionsPackageId,
-            governanceActionsPackageId,
-        });
-
-        this.daoInfo = new DAOInfoHelper(client);
-
-        this.marketsSimple = new MarketsHighLevelOperations({
+        const marketsHighLevel = new MarketsHighLevelOperations({
             client,
             marketsPackageId: marketsCorePackageId,
             marketsCorePackageId,
@@ -261,6 +285,98 @@ export class FutarchySDK {
             futarchyCorePackageId,
             packageRegistryId: packageRegistry.objectId,
         });
+
+        // Initialize markets operations
+        const marketsOps = new MarketsOperations(client, marketsCorePackageId);
+        const twapOps = new TWAPOperations(client, marketsCorePackageId);
+
+        // Set up organized markets namespace
+        this.markets = {
+            core: marketsOps,
+            high: marketsHighLevel,
+            twap: twapOps,
+        };
+
+        // Initialize unified actions namespace
+        const actionsPackages: ActionsPackages = {
+            accountActionsPackageId,
+            futarchyActionsPackageId,
+            futarchyTypesPackageId,
+            futarchyOracleActionsPackageId: oracleActionsPackageId,
+            futarchyGovernanceActionsPackageId: governanceActionsPackageId,
+            futarchyCorePackageId,
+        };
+        this.actions = new UnifiedActions(actionsPackages);
+
+        // Get primitives and operations package IDs
+        const marketsPrimitivesPackageId = deployments.getPackageId("futarchy_markets_primitives")!;
+        const marketsOperationsPackageId = deployments.getPackageId("futarchy_markets_operations")!;
+        const oneShotUtilsPackageId = deployments.getPackageId("futarchy_one_shot_utils");
+
+        // Initialize workflow packages
+        const intentExecutorPackages: IntentExecutorPackages = {
+            accountActionsPackageId,
+            accountProtocolPackageId: protocolPackageId,
+            futarchyCorePackageId,
+            futarchyActionsPackageId,
+            futarchyFactoryPackageId: factoryPackageId,
+            futarchyGovernancePackageId: governancePackageId,
+            futarchyGovernanceActionsPackageId: governanceActionsPackageId,
+            futarchyOracleActionsPackageId: oracleActionsPackageId,
+            packageRegistryId: packageRegistry.objectId,
+        };
+
+        const launchpadWorkflowPackages: LaunchpadWorkflowPackages = {
+            ...intentExecutorPackages,
+            futarchyTypesPackageId,
+            oneShotUtilsPackageId,
+        };
+
+        const launchpadWorkflowSharedObjects: LaunchpadWorkflowSharedObjects = {
+            factoryId: factoryObject.objectId,
+            factorySharedVersion: factoryObject.initialSharedVersion,
+            packageRegistryId: packageRegistry.objectId,
+            packageRegistrySharedVersion: packageRegistry.initialSharedVersion,
+            feeManagerId: feeManager.objectId,
+            feeManagerSharedVersion: feeManager.initialSharedVersion,
+        };
+
+        const proposalWorkflowPackages: ProposalWorkflowPackages = {
+            ...intentExecutorPackages,
+            futarchyTypesPackageId,
+            futarchyMarketsCorePackageId: marketsCorePackageId,
+            futarchyMarketsPrimitivesPackageId: marketsPrimitivesPackageId,
+            futarchyMarketsOperationsPackageId: marketsOperationsPackageId,
+            futarchyGovernanceActionsPackageId: governanceActionsPackageId,
+            oneShotUtilsPackageId,
+        };
+
+        const proposalWorkflowSharedObjects: ProposalWorkflowSharedObjects = {
+            packageRegistryId: packageRegistry.objectId,
+            packageRegistrySharedVersion: packageRegistry.initialSharedVersion,
+        };
+
+        // Initialize workflows
+        this.workflows = {
+            launchpad: new LaunchpadWorkflow(client, launchpadWorkflowPackages, launchpadWorkflowSharedObjects),
+            proposal: new ProposalWorkflow(client, proposalWorkflowPackages, proposalWorkflowSharedObjects),
+            intents: new IntentExecutor(client, intentExecutorPackages),
+        };
+
+        // Initialize PTB composer
+        const ptbPackages: TransactionComposerPackages = {
+            accountActionsPackageId,
+            futarchyActionsPackageId,
+            futarchyTypesPackageId,
+            futarchyFactoryPackageId: factoryPackageId,
+            futarchyMarketsCorePackageId: marketsCorePackageId,
+        };
+
+        const ptbSharedObjects: TransactionComposerSharedObjects = {
+            packageRegistryId: packageRegistry.objectId,
+        };
+
+        this.ptb = new TransactionComposer(ptbPackages, ptbSharedObjects);
     }
 
     /**

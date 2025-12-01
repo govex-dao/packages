@@ -1,0 +1,25 @@
+# Development files
+tmp/
+scripts/
+docs/internal/
+examples/
+
+# Test artifacts
+test-dao-info.json
+test-proposal-info.json
+conditional-coins-info.json
+
+# Source files (dist is published)
+src/
+tsconfig.json
+tsup.config.js
+
+# Development dependencies
+.git/
+.gitignore
+.vscode/
+*.log
+
+# Deployment data (users provide their own)
+deployments/
+deployments-processed

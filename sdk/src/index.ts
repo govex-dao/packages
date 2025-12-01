@@ -1,34 +1,110 @@
-// Main SDK exports
+/**
+ * Govex Futarchy SDK
+ *
+ * A comprehensive TypeScript SDK for interacting with the Futarchy Protocol on Sui.
+ *
+ * ## Architecture
+ *
+ * ```
+ * src/
+ * ├── sdk/           # Main SDK entry point
+ * ├── config/        # Network & deployment configuration
+ * ├── types/         # TypeScript type definitions
+ * ├── core/          # Foundation (action registry, validation, errors)
+ * ├── workflows/     # High-level orchestration (launchpad, proposal)
+ * ├── staging/       # Action staging functions (add_*_spec)
+ * ├── execution/     # Action execution wrappers (do_*)
+ * ├── protocol/      # Move module wrappers (queries)
+ * ├── services/      # High-level service classes
+ * └── utils/         # Shared utilities
+ * ```
+ *
+ * ## Quick Start
+ *
+ * ```typescript
+ * import { FutarchySDK } from '@govex/futarchy-sdk';
+ *
+ * const sdk = await FutarchySDK.init({
+ *   network: 'testnet',
+ *   deployments
+ * });
+ *
+ * // Use high-level workflows
+ * const tx = sdk.workflows.launchpad.createRaise({...});
+ * ```
+ *
+ * @packageDocumentation
+ */
+
+// ============================================================================
+// MAIN SDK
+// ============================================================================
+
 export * from './sdk';
 
-// Configuration exports
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
 export * from './config';
 
-// Type exports
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
 export * from './types';
 
-// Action builders for cross-package orchestration
-export * from './lib/actions';
+// ============================================================================
+// CORE (Foundation)
+// ============================================================================
 
-// Market operations for futarchy markets
-export * from './lib/markets-operations';
+export * from './core';
 
-// Market core primitives for futarchy markets
-export * from './lib/markets-core';
+// ============================================================================
+// WORKFLOWS (High-level orchestration)
+// ============================================================================
 
-// Core futarchy configuration and governance
-export * from './lib/futarchy-core';
+export * from './workflows';
 
-// Account protocol and actions
-export * from './lib/account-protocol';
-export * from './lib/account-actions';
+// ============================================================================
+// STAGING (Action staging functions)
+// ============================================================================
 
-// Coin registry for optimized proposal creation
-export * from './lib/coin-registry';
+export * from './staging';
 
-// Utility functions
-export * from './lib/utils';
+// ============================================================================
+// EXECUTION (Action execution wrappers)
+// ============================================================================
 
-// Re-export commonly used Sui types for convenience
-export type { SuiClient } from '@mysten/sui/client';
-export type { Transaction } from '@mysten/sui/transactions';
+export * from './execution';
+
+// ============================================================================
+// PROTOCOL (Move module wrappers)
+// ============================================================================
+
+export * from './protocol';
+
+// ============================================================================
+// SERVICES (High-level service classes)
+// ============================================================================
+
+export * from './services';
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+export * from './utils';
+
+// ============================================================================
+// PTB HELPERS
+// ============================================================================
+
+export * from './ptb';
+
+// ============================================================================
+// SUI TYPE RE-EXPORTS
+// ============================================================================
+
+export type { SuiClient, SuiObjectResponse, SuiObjectData } from '@mysten/sui/client';
+export type { Transaction, TransactionResult } from '@mysten/sui/transactions';

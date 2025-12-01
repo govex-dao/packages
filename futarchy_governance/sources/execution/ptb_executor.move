@@ -67,7 +67,8 @@ public fun begin_execution<AssetType, StableType>(
     assert!(market_state::is_finalized(market), EMarketNotFinalized);
 
     let winning_outcome = market_state::get_winning_outcome(market);
-    assert!(winning_outcome == OUTCOME_ACCEPTED, EProposalNotApproved);
+    // Any outcome > 0 is approved (multi-outcome proposals can have outcomes 1, 2, 3, etc.)
+    assert!(winning_outcome > 0, EProposalNotApproved);
     assert!(
         proposal::has_intent_spec(proposal, winning_outcome),
         EIntentMissing

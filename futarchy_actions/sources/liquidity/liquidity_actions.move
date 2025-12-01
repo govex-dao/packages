@@ -107,7 +107,7 @@ public struct RemoveLiquidityAction<phantom AssetType, phantom StableType> has s
 }
 
 /// Action to perform a swap in the pool
-public struct SwapAction<phantom AssetType, phantom StableType> has store, drop {
+public struct SwapAction<phantom AssetType, phantom StableType> has store, drop, copy {
     pool_id: ID,
     swap_asset: bool, // true = swap asset for stable, false = swap stable for asset
     amount_in: u64,

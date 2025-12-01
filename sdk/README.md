@@ -8,15 +8,21 @@ The Futarchy SDK provides a type-safe, developer-friendly interface for building
 
 ## Architecture
 
-The SDK follows a three-layer architecture inspired by proven patterns:
+The SDK follows a layered architecture with clear separation of concerns:
 
 ```
 src/
-├── .gen/          # Auto-generated Move bindings (future)
-├── lib/           # High-level abstractions (future)
-├── sdk/           # Main SDK entry point
+├── sdk/           # Main SDK entry point (FutarchySDK class)
 ├── config/        # Network and deployment configuration
-└── types/         # TypeScript type definitions
+├── types/         # TypeScript type definitions
+├── core/          # Foundation (action registry, validation, errors)
+├── workflows/     # High-level orchestration (launchpad, proposal)
+├── staging/       # Action staging functions (add_*_spec pattern)
+├── execution/     # Action execution wrappers (do_* pattern)
+├── protocol/      # Move module wrappers (queries)
+├── services/      # Service classes for protocol interactions
+├── ptb/           # PTB composition helpers
+└── utils/         # Shared utilities
 ```
 
 ### Current Features

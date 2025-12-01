@@ -5,9 +5,9 @@
  * This test can simulate BOTH success and failure paths.
  *
  * USAGE:
- *   npx tsx scripts/launchpad-e2e-with-init-actions-TWO-OUTCOME.ts         # Default: success path
- *   npx tsx scripts/launchpad-e2e-with-init-actions-TWO-OUTCOME.ts success # Explicit success
- *   npx tsx scripts/launchpad-e2e-with-init-actions-TWO-OUTCOME.ts failure # Test failure path
+ *   npx tsx scripts/launchpad-e2e.ts         # Default: success path
+ *   npx tsx scripts/launchpad-e2e.ts success # Explicit success
+ *   npx tsx scripts/launchpad-e2e.ts failure # Test failure path
  *
  * SUCCESS PATH (default):
  *   1. Creates fresh test coins
@@ -27,15 +27,16 @@
  *   8. Completes the raise → STATE_FAILED
  *   9. JIT converts failure_specs → Intent → returns treasury cap & metadata
  *   10. Skips AMM pool and token claiming (not available for failed raises)
+ *
+ * This test demonstrates proper SDK usage with the LaunchpadWorkflow class.
  */
 
-import { Transaction, Inputs } from "@mysten/sui/transactions";
-import { bcs } from "@mysten/sui/bcs";
+import { Transaction } from "@mysten/sui/transactions";
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { LaunchpadOperations } from "../src/lib/launchpad";
-import { TransactionUtils } from "../src/lib/transaction";
+import { LaunchpadWorkflow } from "../src/workflows/launchpad-workflow";
+import { TransactionUtils } from "../src/services/transaction";
 import { initSDK, executeTransaction, getActiveAddress } from "./execute-tx";
 
 const testCoinSource = (symbol: string, name: string) => `
@@ -156,8 +157,6 @@ test_coin = "0x0"
 
 async function main() {
   // Parse command line arguments
-  // Usage: npx tsx script.ts [success|failure]
-  // Default: success
   const testOutcome = process.argv[2]?.toLowerCase() || "success";
   const shouldRaiseSucceed = testOutcome === "success";
 
@@ -170,6 +169,7 @@ async function main() {
     `\n🎯 Testing: ${shouldRaiseSucceed ? "Raise succeeds → success_specs execute" : "Raise fails → failure_specs execute"}\n`,
   );
 
+  // Initialize SDK
   const sdk = await initSDK();
   const sender = getActiveAddress();
 
@@ -241,7 +241,6 @@ async function main() {
     });
     console.log("✅ Test stable coin registered for fee payments");
   } catch (error: any) {
-    // Idempotent: If already registered, continue
     console.log(
       "✅ Test stable coin already registered for fee payments (or registration not needed)",
     );
@@ -261,12 +260,6 @@ async function main() {
     throw new Error("FactoryOwnerCap not found in futarchy_factory deployment");
   }
 
-  const registryId = sdk.deployments.getPackageRegistry()?.objectId;
-
-  if (!registryId) {
-    throw new Error("PackageRegistry not found in AccountProtocol deployment");
-  }
-
   console.log(`Using FactoryOwnerCap: ${factoryOwnerCapId}`);
 
   try {
@@ -282,46 +275,109 @@ async function main() {
     });
     console.log("✅ Test stable coin registered in factory allowlist");
   } catch (error: any) {
-    // Idempotent: If already registered, continue
     console.log(
       "✅ Test stable coin already allowed in factory (or registration not needed)",
     );
   }
 
-  // Step 3: Create raise
+  // Step 3: Create raise using SDK workflow
   console.log("\n" + "=".repeat(80));
-  console.log("STEP 3: CREATE RAISE");
+  console.log("STEP 3: CREATE RAISE (using sdk.workflows.launchpad)");
   console.log("=".repeat(80));
 
-  const createRaiseTx = sdk.launchpad.createRaise({
-    raiseTokenType: testCoins.asset.type,
-    stableCoinType: testCoins.stable.type,
-    treasuryCap: testCoins.asset.treasuryCap,
-    coinMetadata: testCoins.asset.metadata,
+  const streamRecipient = sender;
+  const streamAmount = TransactionUtils.suiToMist(0.5); // 0.5 TSTABLE
+  const currentTime = Date.now();
+  const streamStart = currentTime + 300_000; // Start in 5 minutes
 
-    tokensForSale: 1_000_000n,
-    minRaiseAmount: TransactionUtils.suiToMist(1),
-    maxRaiseAmount: TransactionUtils.suiToMist(1500), // Increased to fund 1000-token pool + stream
+  // Iteration-based vesting: 12 monthly unlocks
+  const iterationsTotal = 12n;
+  const iterationPeriodMs = 2_592_000_000n; // 30 days in milliseconds
+  const amountPerIteration = streamAmount / iterationsTotal;
 
-    allowedCaps: [
-      TransactionUtils.suiToMist(1),
-      TransactionUtils.suiToMist(50),
-      LaunchpadOperations.UNLIMITED_CAP,
-    ],
+  // Pool creation parameters
+  const poolAssetAmount = TransactionUtils.suiToMist(1000);
+  const poolStableAmount = TransactionUtils.suiToMist(1000);
+  const poolFeeBps = 30;
 
-    startDelayMs: 5_000,
-    allowEarlyCompletion: true,
+  // Use the SDK's createRaiseWithActions helper for cleaner flow
+  const launchpadWorkflow = sdk.workflows.launchpad;
 
-    description: "E2E test - two-outcome system with stream",
-    affiliateId: "",
-    metadataKeys: [],
-    metadataValues: [],
+  // Define success actions
+  const successActions = [
+    {
+      type: 'create_stream' as const,
+      vaultName: 'treasury',
+      beneficiary: streamRecipient,
+      amountPerIteration: amountPerIteration,
+      startTime: streamStart,
+      iterationsTotal: iterationsTotal,
+      iterationPeriodMs: iterationPeriodMs,
+      maxPerWithdrawal: amountPerIteration,
+      isTransferable: true,
+      isCancellable: true,
+    },
+    {
+      type: 'create_pool_with_mint' as const,
+      vaultName: 'treasury',
+      assetAmount: poolAssetAmount,
+      stableAmount: poolStableAmount,
+      feeBps: poolFeeBps,
+    },
+    {
+      type: 'update_trading_params' as const,
+      reviewPeriodMs: 1000n, // 1 second for testing
+      tradingPeriodMs: 60_000n, // 1 minute
+    },
+    {
+      type: 'update_twap_config' as const,
+      startDelay: 0n,
+      threshold: 0n,
+    },
+  ];
 
-    launchpadFee: 100n,
-  });
+  // Define failure actions
+  const failureActions = [
+    {
+      type: 'return_treasury_cap' as const,
+      recipient: sender,
+    },
+    {
+      type: 'return_metadata' as const,
+      recipient: sender,
+    },
+  ];
+
+  // Create the raise flow
+  const raiseFlow = launchpadWorkflow.createRaiseWithActions(
+    {
+      assetType: testCoins.asset.type,
+      stableType: testCoins.stable.type,
+      treasuryCap: testCoins.asset.treasuryCap,
+      coinMetadata: testCoins.asset.metadata,
+      tokensForSale: 1_000_000n,
+      minRaiseAmount: TransactionUtils.suiToMist(1),
+      maxRaiseAmount: TransactionUtils.suiToMist(1500),
+      allowedCaps: [
+        TransactionUtils.suiToMist(1),
+        TransactionUtils.suiToMist(50),
+        LaunchpadWorkflow.UNLIMITED_CAP,
+      ],
+      startDelayMs: 5_000n,
+      allowEarlyCompletion: true,
+      description: "E2E test - two-outcome system with stream",
+      affiliateId: "",
+      metadataKeys: [],
+      metadataValues: [],
+      launchpadFee: 100n,
+    },
+    successActions,
+    failureActions,
+    sender,
+  );
 
   console.log("Creating raise...");
-  const createResult = await executeTransaction(sdk, createRaiseTx, {
+  const createResult = await executeTransaction(sdk, raiseFlow.createTx.transaction, {
     network: "devnet",
     dryRun: false,
     showEffects: true,
@@ -347,239 +403,69 @@ async function main() {
   console.log(`   Raise ID: ${raiseId}`);
   console.log(`   CreatorCap ID: ${creatorCapId}`);
 
-  // Step 4: Stage SUCCESS init actions
+  // Step 4: Stage SUCCESS init actions using SDK workflow
   console.log("\n" + "=".repeat(80));
-  console.log("STEP 4: STAGE SUCCESS INIT ACTIONS (STREAM + AMM POOL)");
+  console.log("STEP 4: STAGE SUCCESS INIT ACTIONS (using sdk.workflows.launchpad)");
   console.log("=".repeat(80));
 
-  const streamRecipient = sender;
-  const streamAmount = TransactionUtils.suiToMist(0.5); // 0.5 TSTABLE
-  const currentTime = Date.now();
-  const streamStart = currentTime + 300_000; // Start in 5 minutes (allows time for test to complete)
-
-  // Iteration-based vesting: 12 monthly unlocks
-  const iterationsTotal = 12n;
-  const iterationPeriodMs = 2_592_000_000n; // 30 days in milliseconds
-  const amountPerIteration = streamAmount / iterationsTotal; // Equal distribution per month
-  const totalStreamDuration = Number(iterationsTotal) * Number(iterationPeriodMs);
-
-  const actionsPkg = sdk.getPackageId("AccountActions");
-  const launchpadPkg = sdk.getPackageId("futarchy_factory");
-
-  console.log(`\n📦 Package IDs:`);
-  console.log(`   AccountActions: ${actionsPkg}`);
-  console.log(`   futarchy_factory: ${launchpadPkg}`);
-
-  console.log("\n📋 Staging stream for SUCCESS outcome...");
+  console.log("\n📋 Staging stream and AMM pool for SUCCESS outcome...");
   console.log(`   Vault: treasury`);
-  console.log(`   Beneficiary: ${streamRecipient}`);
-  console.log(`   Total Amount: ${Number(streamAmount) / 1e9} TSTABLE`);
-  console.log(`   Amount per iteration: ${Number(amountPerIteration) / 1e9} TSTABLE`);
-  console.log(`   Iterations: ${Number(iterationsTotal)} (monthly)`);
-  console.log(
-    `   Start: ${(streamStart - currentTime) / 60000} minutes from now`,
+  console.log(`   Stream Beneficiary: ${streamRecipient}`);
+  console.log(`   Stream Amount: ${Number(streamAmount) / 1e9} TSTABLE over ${Number(iterationsTotal)} months`);
+  console.log(`   Pool: ${Number(poolAssetAmount) / 1e9} asset + ${Number(poolStableAmount) / 1e9} stable @ ${poolFeeBps / 100}% fee`);
+
+  const stageSuccessResult = await executeTransaction(
+    sdk,
+    raiseFlow.stageSuccessTx(raiseId, creatorCapId!).transaction,
+    {
+      network: "devnet",
+      dryRun: false,
+      showEffects: false,
+    }
   );
-  console.log(`   Duration: ${totalStreamDuration / 3600000} hours (${Number(iterationsTotal)} months)`);
-
-  const stageTx = new Transaction();
-
-  // Step 1: Create empty ActionSpec builder
-  const builder = stageTx.moveCall({
-    target: `${actionsPkg}::action_spec_builder::new`,
-    arguments: [],
-  });
-
-  // Step 2: Add stream action to builder
-  stageTx.moveCall({
-    target: `${actionsPkg}::stream_init_actions::add_create_stream_spec`,
-    arguments: [
-      builder, // &mut Builder
-      stageTx.pure.string("treasury"),
-      stageTx.pure(bcs.Address.serialize(streamRecipient).toBytes()),
-      stageTx.pure.u64(amountPerIteration), // amount_per_iteration (NO DIVISION in Move!)
-      stageTx.pure.u64(streamStart),
-      stageTx.pure.u64(iterationsTotal), // iterations_total
-      stageTx.pure.u64(iterationPeriodMs), // iteration_period_ms
-      stageTx.pure.option("u64", null), // cliff_time
-      stageTx.pure.option("u64", null), // claim_window_ms (use-or-lose window)
-      stageTx.pure.u64(amountPerIteration), // max_per_withdrawal
-      stageTx.pure.bool(true), // is_transferable
-      stageTx.pure.bool(true), // is_cancellable
-    ],
-  });
-
-  // Step 2.5: Add pool creation action to builder
-  const poolAssetAmount = TransactionUtils.suiToMist(1000); // Mint 1000 asset tokens
-  const poolStableAmount = TransactionUtils.suiToMist(1000); // Use 1000 stable from vault (balanced 1:1 pool)
-  const poolFeeBps = 30; // 0.3% fee
-
-  console.log("\n📋 Staging AMM pool creation for SUCCESS outcome...");
-  console.log(`   Vault: treasury`);
-  console.log(`   Asset amount to mint: ${Number(poolAssetAmount) / 1e9} tokens`);
-  console.log(`   Stable amount from vault: ${Number(poolStableAmount) / 1e9} tokens`);
-  console.log(`   Fee: ${poolFeeBps / 100}%`);
-
-  stageTx.moveCall({
-    target: `${sdk.getPackageId("futarchy_actions")}::liquidity_init_actions::add_create_pool_with_mint_spec`,
-    arguments: [
-      builder, // &mut Builder
-      stageTx.pure.string("treasury"),
-      stageTx.pure.u64(poolAssetAmount),
-      stageTx.pure.u64(poolStableAmount),
-      stageTx.pure.u64(poolFeeBps),
-    ],
-  });
-
-  // Step 2.75: Add config update actions to override defaults for testing
-  console.log("\n📋 Staging config updates for testing...");
-  console.log("   Trading period: 60000ms (1 minute)");
-  console.log("   TWAP start delay: 0ms");
-  console.log("   TWAP threshold: 0");
-
-  const typesPackageId = sdk.getPackageId("futarchy_types")!;
-
-  // Create SignedU128 for twap_threshold = 0
-  const zeroThresholdSigned = stageTx.moveCall({
-    target: `${typesPackageId}::signed::from_u128`,
-    arguments: [stageTx.pure.u128(0n)], // Zero threshold
-  });
-
-  // Wrap SignedU128 in Option::some
-  const someZeroThreshold = stageTx.moveCall({
-    target: `0x1::option::some`,
-    typeArguments: [`${typesPackageId}::signed::SignedU128`],
-    arguments: [zeroThresholdSigned],
-  });
-
-  // Add trading params update action
-  stageTx.moveCall({
-    target: `${sdk.getPackageId("futarchy_actions")}::config_init_actions::add_update_trading_params_spec`,
-    arguments: [
-      builder, // &mut Builder
-      stageTx.pure.option("u64", null), // min_asset_amount (keep default)
-      stageTx.pure.option("u64", null), // min_stable_amount (keep default)
-      stageTx.pure.option("u64", 1000), // review_period_ms = 1 second (minimum for e2e testing)
-      stageTx.pure.option("u64", 60_000), // trading_period_ms = 1 minute
-      stageTx.pure.option("u64", null), // amm_total_fee_bps (keep default)
-    ],
-  });
-
-  // Add TWAP config update action
-  stageTx.moveCall({
-    target: `${sdk.getPackageId("futarchy_actions")}::config_init_actions::add_update_twap_config_spec`,
-    arguments: [
-      builder, // &mut Builder
-      stageTx.pure.option("u64", 0), // start_delay = 0
-      stageTx.pure.option("u64", null), // step_max (keep default)
-      stageTx.pure.option("u128", null), // initial_observation (keep default)
-      someZeroThreshold, // threshold = Some(0)
-    ],
-  });
-
-  // Step 3: Stage as SUCCESS intent
-  stageTx.moveCall({
-    target: `${launchpadPkg}::launchpad::stage_success_intent`,
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
-    arguments: [
-      stageTx.object(raiseId),
-      stageTx.object(registryId),
-      stageTx.object(creatorCapId!),
-      builder, // Builder from step 1
-      stageTx.object("0x6"), // Clock
-    ],
-  });
-
-  const stageResult = await executeTransaction(sdk, stageTx, {
-    network: "devnet",
-    dryRun: false,
-    showEffects: false,
-  });
 
   console.log("✅ Stream and AMM pool staged as SUCCESS actions!");
-  console.log(`   Transaction: ${stageResult.digest}`);
+  console.log(`   Transaction: ${stageSuccessResult.digest}`);
 
-  // Step 4.5: Stage FAILURE init actions (return caps if raise fails)
+  // Step 4.5: Stage FAILURE init actions using SDK workflow
   console.log("\n" + "=".repeat(80));
-  console.log("STEP 4.5: STAGE FAILURE INIT ACTIONS (RETURN CAPS)");
+  console.log("STEP 4.5: STAGE FAILURE INIT ACTIONS (using sdk.workflows.launchpad)");
   console.log("=".repeat(80));
 
   console.log("\n📋 Staging failure actions...");
   console.log(`   These execute ONLY if raise fails (doesn't meet minimum)`);
   console.log(`   Recipient: ${sender} (creator)`);
 
-  const failureSpecsTx = new Transaction();
-
-  // Create empty ActionSpec builder for failure
-  const failureBuilder = failureSpecsTx.moveCall({
-    target: `${actionsPkg}::action_spec_builder::new`,
-    arguments: [],
-  });
-
-  // Add ReturnTreasuryCapAction
-  console.log("\n   Adding action: Return TreasuryCap to creator");
-  failureSpecsTx.moveCall({
-    target: `${actionsPkg}::currency_init_actions::add_return_treasury_cap_spec`,
-    arguments: [
-      failureBuilder,
-      failureSpecsTx.pure.address(sender), // recipient
-    ],
-  });
-
-  // Add ReturnMetadataAction
-  console.log("   Adding action: Return CoinMetadata to creator");
-  failureSpecsTx.moveCall({
-    target: `${actionsPkg}::currency_init_actions::add_return_metadata_spec`,
-    arguments: [
-      failureBuilder,
-      failureSpecsTx.pure.address(sender), // recipient
-    ],
-  });
-
-  // Stage failure intent
-  failureSpecsTx.moveCall({
-    target: `${launchpadPkg}::launchpad::stage_failure_intent`,
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
-    arguments: [
-      failureSpecsTx.object(raiseId),
-      failureSpecsTx.object(registryId),
-      failureSpecsTx.object(creatorCapId!),
-      failureBuilder,
-      failureSpecsTx.object("0x6"), // Clock
-    ],
-  });
-
-  const failureStageResult = await executeTransaction(sdk, failureSpecsTx, {
-    network: "devnet",
-    dryRun: false,
-    showEffects: false,
-  });
-
-  console.log("✅ Failure specs staged!");
-  console.log(`   Transaction: ${failureStageResult.digest}`);
-  console.log(
-    "   Note: These will NOT execute in this test (raise will succeed)",
+  const stageFailureResult = await executeTransaction(
+    sdk,
+    raiseFlow.stageFailureTx(raiseId, creatorCapId!).transaction,
+    {
+      network: "devnet",
+      dryRun: false,
+      showEffects: false,
+    }
   );
 
-  // Step 5: Lock intents (CRITICAL - prevents modifications)
+  console.log("✅ Failure specs staged!");
+  console.log(`   Transaction: ${stageFailureResult.digest}`);
+
+  // Step 5: Lock intents using SDK workflow
   console.log("\n" + "=".repeat(80));
-  console.log("STEP 5: LOCK INTENTS (PREVENT MODIFICATIONS)");
+  console.log("STEP 5: LOCK INTENTS (using sdk.workflows.launchpad)");
   console.log("=".repeat(80));
 
   console.log("\n🔒 Locking intents...");
   console.log("   After this, success_specs cannot be changed!");
 
-  const lockTx = sdk.launchpad.lockIntentsAndStartRaise(
-    raiseId,
-    creatorCapId!,
-    testCoins.asset.type,
-    testCoins.stable.type,
+  await executeTransaction(
+    sdk,
+    raiseFlow.lockTx(raiseId, creatorCapId!).transaction,
+    {
+      network: "devnet",
+      dryRun: false,
+      showEffects: false,
+    }
   );
-
-  await executeTransaction(sdk, lockTx, {
-    network: "devnet",
-    dryRun: false,
-    showEffects: false,
-  });
 
   console.log("✅ Intents locked!");
   console.log("   ✅ Investors are now protected - specs frozen");
@@ -589,27 +475,21 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 6000));
   console.log("✅ Raise has started!");
 
-  // Step 6: Contribute to meet minimum
+  // Step 6: Contribute using SDK workflow
   console.log("\n" + "=".repeat(80));
   console.log(
-    `STEP 6: CONTRIBUTE ${shouldRaiseSucceed ? "TO MEET MINIMUM" : "(INSUFFICIENT - WILL FAIL)"}`,
+    `STEP 6: CONTRIBUTE (using sdk.workflows.launchpad) ${shouldRaiseSucceed ? "TO MEET MINIMUM" : "(INSUFFICIENT - WILL FAIL)"}`,
   );
   console.log("=".repeat(80));
 
-  // Minimum is 1 TSTABLE (1_000_000_000 MIST)
-  // Max raise is 1500 TSTABLE (to fund 1000-token pool + 0.5 stream)
-  // Success: contribute 1500 TSTABLE to reach max
-  // Failure: contribute 0.5 TSTABLE to stay below minimum
   const amountToContribute = shouldRaiseSucceed
-    ? TransactionUtils.suiToMist(1500) // 1500 TSTABLE = maxRaiseAmount ✅
-    : TransactionUtils.suiToMist(0.5); // 0.5 TSTABLE < 1 TSTABLE minimum ❌
+    ? TransactionUtils.suiToMist(1500) // Meet max
+    : TransactionUtils.suiToMist(0.5); // Below minimum
 
   console.log(
     `\n💰 Minting ${TransactionUtils.mistToSui(amountToContribute)} TSTABLE...`,
   );
-  console.log(
-    `   ${shouldRaiseSucceed ? "✅ Will EXCEED minimum (1 TSTABLE)" : "❌ Will NOT meet minimum (1 TSTABLE)"}`,
-  );
+
   const mintTx = new Transaction();
   mintTx.moveCall({
     target: `${testCoins.stable.packageId}::coin::mint`,
@@ -631,53 +511,26 @@ async function main() {
     `\n💸 Contributing ${TransactionUtils.mistToSui(amountToContribute)} TSTABLE...`,
   );
 
-  const coins = await sdk.client.getCoins({
+  // Get stable coins for contribution
+  const stableCoins = await sdk.client.getCoins({
     owner: sender,
     coinType: testCoins.stable.type,
   });
 
-  const contributeTx = new Transaction();
-  const [firstCoin, ...restCoins] = coins.data.map((c) =>
-    contributeTx.object(c.coinObjectId),
-  );
-  if (restCoins.length > 0) {
-    contributeTx.mergeCoins(firstCoin, restCoins);
-  }
+  const stableCoinIds = stableCoins.data.map((c) => c.coinObjectId);
 
-  const [paymentCoin] = contributeTx.splitCoins(firstCoin, [
-    contributeTx.pure.u64(amountToContribute),
-  ]);
-  const [crankFeeCoin] = contributeTx.splitCoins(contributeTx.gas, [
-    contributeTx.pure.u64(TransactionUtils.suiToMist(0.1)),
-  ]);
-
-  const factoryObject = sdk.deployments.getFactory();
-  const factoryPackageId = sdk.getPackageId("futarchy_factory")!;
-
-  contributeTx.moveCall({
-    target: TransactionUtils.buildTarget(
-      factoryPackageId,
-      "launchpad",
-      "contribute",
-    ),
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
-    arguments: [
-      contributeTx.object(raiseId),
-      contributeTx.sharedObjectRef({
-        objectId: factoryObject!.objectId,
-        initialSharedVersion: factoryObject!.initialSharedVersion,
-        mutable: false,
-      }),
-      paymentCoin,
-      contributeTx.pure.u64(LaunchpadOperations.UNLIMITED_CAP),
-      crankFeeCoin,
-      contributeTx.object("0x6"),
-    ],
+  // Use SDK workflow for contribution
+  const contributeTx = launchpadWorkflow.contribute({
+    raiseId,
+    assetType: testCoins.asset.type,
+    stableType: testCoins.stable.type,
+    stableCoins: stableCoinIds,
+    amount: amountToContribute,
+    capTier: LaunchpadWorkflow.UNLIMITED_CAP,
+    crankFee: TransactionUtils.suiToMist(0.1),
   });
 
-  contributeTx.transferObjects([firstCoin], contributeTx.pure.address(sender));
-
-  await executeTransaction(sdk, contributeTx, {
+  await executeTransaction(sdk, contributeTx.transaction, {
     network: "devnet",
     dryRun: false,
     showEffects: true,
@@ -685,7 +538,7 @@ async function main() {
     showEvents: true,
   });
 
-  console.log("✅ Contributed! Min raise met!");
+  console.log("✅ Contributed!");
 
   // Step 7: Wait for deadline
   console.log("\n" + "=".repeat(80));
@@ -696,58 +549,25 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 30000));
   console.log("✅ Deadline passed!");
 
-  // Step 8: Complete raise (JIT conversion happens here!)
+  // Step 8: Complete raise using SDK workflow
   console.log("\n" + "=".repeat(80));
-  console.log("STEP 8: COMPLETE RAISE (JIT CONVERSION)");
+  console.log("STEP 8: COMPLETE RAISE (using sdk.workflows.launchpad)");
   console.log("=".repeat(80));
 
   console.log("\n🏛️  Creating DAO and converting specs to Intent...");
   console.log("   This will:");
   console.log("   1. Create DAO");
-  console.log("   2. Set raise.state = STATE_SUCCESSFUL");
-  console.log("   3. JIT convert success_specs → Intent");
+  console.log(`   2. Set raise.state = STATE_${shouldRaiseSucceed ? "SUCCESSFUL" : "FAILED"}`);
+  console.log(`   3. JIT convert ${shouldRaiseSucceed ? "success" : "failure"}_specs → Intent`);
   console.log("   4. Share DAO with Intent locked in");
 
-  const factoryId = sdk.deployments.getFactory()?.objectId;
-
-  if (!factoryId) {
-    throw new Error("Factory object not found");
-  }
-
-  const completeTx = new Transaction();
-
-  // Settle
-  completeTx.moveCall({
-    target: `${launchpadPkg}::launchpad::settle_raise`,
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
-    arguments: [completeTx.object(raiseId), completeTx.object("0x6")],
+  const completeTx = launchpadWorkflow.completeRaise({
+    raiseId,
+    assetType: testCoins.asset.type,
+    stableType: testCoins.stable.type,
   });
 
-  // Begin DAO creation
-  const unsharedDao = completeTx.moveCall({
-    target: `${launchpadPkg}::launchpad::begin_dao_creation`,
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
-    arguments: [
-      completeTx.object(raiseId),
-      completeTx.object(factoryId),
-      completeTx.object(registryId),
-      completeTx.object("0x6"),
-    ],
-  });
-
-  // Finalize and share (JIT conversion happens inside!)
-  completeTx.moveCall({
-    target: `${launchpadPkg}::launchpad::finalize_and_share_dao`,
-    typeArguments: [testCoins.asset.type, testCoins.stable.type],
-    arguments: [
-      completeTx.object(raiseId),
-      unsharedDao,
-      completeTx.object(registryId),
-      completeTx.object("0x6"),
-    ],
-  });
-
-  const completeResult = await executeTransaction(sdk, completeTx, {
+  const completeResult = await executeTransaction(sdk, completeTx.transaction, {
     network: "devnet",
     dryRun: false,
     showEffects: true,
@@ -755,7 +575,7 @@ async function main() {
     showEvents: true,
   });
 
-  // Check which event occurred - RaiseSuccessful or RaiseFailed
+  // Check which event occurred
   const raiseSuccessEvent = completeResult.events?.find((e: any) =>
     e.type.includes("RaiseSuccessful"),
   );
@@ -801,183 +621,42 @@ async function main() {
   console.log(`   Account ID: ${accountId}`);
   console.log("   ✅ JIT conversion complete - Intent ready to execute!");
 
-  // Step 9: Execute Intent - different paths for success vs failure
+  // Step 9: Execute Intent using SDK workflow
   console.log("\n" + "=".repeat(80));
   if (raiseActuallySucceeded) {
-    console.log("STEP 9: EXECUTE INTENT (SUCCESS PATH - STREAM + AMM POOL)");
+    console.log("STEP 9: EXECUTE INTENT (using sdk.workflows.launchpad)");
   } else {
     console.log("STEP 9: EXECUTE INTENT (FAILURE PATH - RETURN CAPS)");
   }
   console.log("=".repeat(80));
 
-  const futarchyActionsPkg = sdk.getPackageId("futarchy_actions")!;
-  const futarchyCorePkg = sdk.getPackageId("futarchy_core")!;
-  const futarchyFactoryPkg = sdk.getPackageId("futarchy_factory")!;
-  const accountActionsPkg = sdk.getPackageId("AccountActions")!;
+  // Build action types for execution
+  const actionTypes = raiseActuallySucceeded
+    ? [
+        { type: 'create_stream' as const, coinType: testCoins.stable.type },
+        {
+          type: 'create_pool_with_mint' as const,
+          assetType: testCoins.asset.type,
+          stableType: testCoins.stable.type,
+        },
+        { type: 'update_trading_params' as const },
+        { type: 'update_twap_config' as const },
+      ]
+    : [
+        { type: 'return_treasury_cap' as const, coinType: testCoins.asset.type },
+        { type: 'return_metadata' as const, coinType: testCoins.asset.type },
+      ];
 
-  const executeTx = new Transaction();
-
-  // 1. Begin execution - creates Executable hot potato
-  const executable = executeTx.moveCall({
-    target: `${futarchyFactoryPkg}::dao_init_executor::begin_execution_for_launchpad`,
-    arguments: [
-      executeTx.pure.id(raiseId), // raise_id: ID (for validation)
-      executeTx.object(accountId), // Account
-      executeTx.object(registryId), // PackageRegistry
-      executeTx.object("0x6"), // Clock
-    ],
-  });
-
-  // Create witnesses needed for execution
-  const versionWitness = executeTx.moveCall({
-    target: `${accountActionsPkg}::version::current`,
-    arguments: [],
-  });
-
-  const daoInitIntentWitness = executeTx.moveCall({
-    target: `${futarchyFactoryPkg}::dao_init_executor::dao_init_intent_witness`,
-    arguments: [],
-  });
-
-  // 2. Execute the appropriate actions based on raise outcome
-  if (raiseActuallySucceeded) {
-    console.log("\n💧 Executing SUCCESS specs: create stream and AMM pool...");
-    console.log("   Using PTB executor pattern: begin → do_init → do_init → finalize");
-
-    // Execute stream creation action (Action #1)
-    executeTx.moveCall({
-      target: `${accountActionsPkg}::vault::do_init_create_stream`,
-      typeArguments: [
-        `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
-        testCoins.stable.type, // CoinType for the stream
-        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
-      ],
-      arguments: [
-        executable, // Executable hot potato
-        executeTx.object(accountId), // Account
-        executeTx.object(registryId), // PackageRegistry
-        executeTx.object("0x6"), // Clock
-        versionWitness, // VersionWitness
-        daoInitIntentWitness, // DaoInitIntent witness
-      ],
-    });
-
-    // Execute pool creation action (Action #2)
-    console.log("   → Stream created, now creating AMM pool...");
-    executeTx.moveCall({
-      target: `${futarchyActionsPkg}::liquidity_init_actions::do_init_create_pool_with_mint`,
-      typeArguments: [
-        `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
-        testCoins.asset.type, // AssetType to mint
-        testCoins.stable.type, // StableType from vault
-        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
-      ],
-      arguments: [
-        executable, // Executable hot potato
-        executeTx.object(accountId), // Account
-        executeTx.object(registryId), // PackageRegistry
-        executeTx.object("0x6"), // Clock
-        versionWitness, // VersionWitness
-        daoInitIntentWitness, // DaoInitIntent witness
-      ],
-    });
-
-    // Execute trading params update action (Action #3)
-    console.log("   → Pool created, now updating trading params...");
-    executeTx.moveCall({
-      target: `${futarchyActionsPkg}::config_actions::do_update_trading_params`,
-      typeArguments: [
-        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
-        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
-      ],
-      arguments: [
-        executable, // Executable hot potato
-        executeTx.object(accountId), // Account
-        executeTx.object(registryId), // PackageRegistry
-        versionWitness, // VersionWitness
-        daoInitIntentWitness, // DaoInitIntent witness
-        executeTx.object("0x6"), // Clock
-      ],
-    });
-
-    // Execute TWAP config update action (Action #4)
-    console.log("   → Trading params updated, now updating TWAP config...");
-    executeTx.moveCall({
-      target: `${futarchyActionsPkg}::config_actions::do_update_twap_config`,
-      typeArguments: [
-        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
-        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
-      ],
-      arguments: [
-        executable, // Executable hot potato
-        executeTx.object(accountId), // Account
-        executeTx.object(registryId), // PackageRegistry
-        versionWitness, // VersionWitness
-        daoInitIntentWitness, // DaoInitIntent witness
-        executeTx.object("0x6"), // Clock
-      ],
-    });
-  } else {
-    console.log("\n🔄 Executing FAILURE specs: return TreasuryCap and Metadata...");
-    console.log("   Using PTB executor pattern: begin → do_init → do_init → finalize");
-
-    // Execute return TreasuryCap action
-    executeTx.moveCall({
-      target: `${accountActionsPkg}::currency::do_init_remove_treasury_cap`,
-      typeArguments: [
-        `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
-        testCoins.asset.type, // CoinType
-        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
-      ],
-      arguments: [
-        executable, // Executable hot potato
-        executeTx.object(accountId), // Account
-        executeTx.object(registryId), // PackageRegistry
-        versionWitness, // VersionWitness
-        daoInitIntentWitness, // DaoInitIntent witness
-      ],
-    });
-
-    // Execute return Metadata action
-    executeTx.moveCall({
-      target: `${accountActionsPkg}::currency::do_init_remove_metadata`,
-      typeArguments: [
-        `${futarchyCorePkg}::futarchy_config::FutarchyConfig`,
-        `${futarchyFactoryPkg}::dao_init_outcome::DaoInitOutcome`,
-        `${accountActionsPkg}::currency::CoinMetadataKey<${testCoins.asset.type}>`, // Key type from currency module
-        testCoins.asset.type, // CoinType
-        `${futarchyFactoryPkg}::dao_init_executor::DaoInitIntent`,
-      ],
-      arguments: [
-        executable, // Executable hot potato
-        executeTx.object(accountId), // Account
-        executeTx.object(registryId), // PackageRegistry
-        executeTx.moveCall({
-          target: `${accountActionsPkg}::currency::coin_metadata_key`,
-          typeArguments: [testCoins.asset.type],
-          arguments: [],
-        }), // CoinMetadataKey witness from currency module
-        versionWitness, // VersionWitness
-        daoInitIntentWitness, // DaoInitIntent witness
-      ],
-    });
-  }
-
-  // 3. Finalize execution - confirms execution and emits event
-  executeTx.moveCall({
-    target: `${futarchyFactoryPkg}::dao_init_executor::finalize_execution`,
-    arguments: [
-      executeTx.object(accountId), // Account
-      executable, // Executable hot potato
-      executeTx.object("0x6"), // Clock
-    ],
+  const executeTx = launchpadWorkflow.executeActions({
+    accountId,
+    raiseId,
+    assetType: testCoins.asset.type,
+    stableType: testCoins.stable.type,
+    actionTypes,
   });
 
   try {
-    const executeResult = await executeTransaction(sdk, executeTx, {
+    const executeResult = await executeTransaction(sdk, executeTx.transaction, {
       network: "devnet",
       dryRun: false,
       showEffects: true,
@@ -989,29 +668,24 @@ async function main() {
       console.log("✅ Stream and AMM pool created via Intent execution!");
       console.log(`   Transaction: ${executeResult.digest}`);
 
-      // Find the created stream object
       const streamObject = executeResult.objectChanges?.find((c: any) =>
         c.objectType?.includes("::vault::Stream"),
       );
-
       if (streamObject) {
         console.log(`   Stream ID: ${streamObject.objectId}`);
       }
 
-      // Find the created pool object
       const poolObject = executeResult.objectChanges?.find((c: any) =>
         c.objectType?.includes("::unified_spot_pool::UnifiedSpotPool"),
       );
-
       if (poolObject) {
         poolId = poolObject.objectId;
         console.log(`   Pool ID: ${poolId}`);
       }
-    } else{
+    } else {
       console.log("✅ TreasuryCap and Metadata returned via Intent execution!");
       console.log(`   Transaction: ${executeResult.digest}`);
 
-      // Show returned objects
       const treasuryCapObject = executeResult.objectChanges?.find((c: any) =>
         c.objectType?.includes("::coin::TreasuryCap"),
       );
@@ -1028,31 +702,24 @@ async function main() {
     }
   } catch (error: any) {
     console.error("❌ Failed to execute Intent:", error.message);
-    console.log("   This should not fail with the new execution pattern");
     throw error;
   }
 
-  // Steps 10-11: Only run for successful raises (minting/claiming not allowed on failed raises)
+  // Step 10: Claim tokens (only for successful raises)
   if (raiseActuallySucceeded) {
-    // NOTE: STEP 10 (Create AMM pool) has been moved to STEP 9 and now executes via Intent!
-    // Pool creation is now staged in success_specs and executed via do_init_create_pool_with_mint.
-    // This ensures pool creation happens atomically with other init actions during DAO creation.
-
-    // Step 10 (now 11): Claim tokens
     console.log("\n" + "=".repeat(80));
-    console.log("STEP 11: CLAIM TOKENS");
+    console.log("STEP 10: CLAIM TOKENS (using sdk.workflows.launchpad)");
     console.log("=".repeat(80));
 
     console.log("\n💰 Claiming contributor tokens...");
 
-    const claimTx = sdk.launchpad.claimTokens(
+    const claimTx = launchpadWorkflow.claimTokens(
       raiseId,
       testCoins.asset.type,
       testCoins.stable.type,
-      "0x6",
     );
 
-    const claimResult = await executeTransaction(sdk, claimTx, {
+    const claimResult = await executeTransaction(sdk, claimTx.transaction, {
       network: "devnet",
       dryRun: false,
       showEffects: true,
@@ -1064,14 +731,9 @@ async function main() {
     console.log(`   Transaction: ${claimResult.digest}`);
   } else {
     console.log("\n" + "=".repeat(80));
-    console.log("SKIPPING STEPS 10-11: RAISE FAILED");
+    console.log("SKIPPING STEP 10: RAISE FAILED");
     console.log("=".repeat(80));
-    console.log(
-      "\nℹ️  AMM pool creation and token claiming are only available for successful raises",
-    );
-    console.log(
-      "ℹ️  On failure, the failure_specs returned treasury cap & metadata to creator",
-    );
+    console.log("\nℹ️  Token claiming is only available for successful raises");
   }
 
   console.log("\n" + "=".repeat(80));
@@ -1081,32 +743,21 @@ async function main() {
   console.log("=".repeat(80));
 
   console.log("\n📋 Summary:");
-  console.log(`   ✅ Created raise`);
-  console.log(`   ✅ Staged success_specs (stream creation)`);
-  console.log(`   ✅ Staged failure_specs (return caps)`);
-  console.log(`   ✅ Locked intents (investors protected)`);
+  console.log(`   ✅ Created raise (using sdk.workflows.launchpad.createRaiseWithActions)`);
+  console.log(`   ✅ Staged success_specs (using sdk.workflows.launchpad.stageActions)`);
+  console.log(`   ✅ Staged failure_specs (using sdk.workflows.launchpad.stageActions)`);
+  console.log(`   ✅ Locked intents (using sdk.workflows.launchpad.lockIntentsAndStart)`);
+  console.log(`   ✅ Contributed (using sdk.workflows.launchpad.contribute)`);
 
   if (shouldRaiseSucceed) {
-    console.log(`   ✅ Contributed to MEET minimum (2 TSTABLE > 1 TSTABLE)`);
     console.log(`   ✅ Raise SUCCEEDED`);
-    console.log(`   ✅ JIT converted success_specs → Intent`);
-    console.log(`   ✅ DAO shared with Intent`);
-    console.log(`   ✅ Executed Intent → Created stream`);
-    console.log(`   ✅ Created AMM pool (minted + liquidity)`);
-    console.log(`   ✅ Updated trading params (trading_period = 1 min)`);
-    console.log(`   ✅ Updated TWAP config (start_delay = 0, threshold = 0)`);
-    console.log(`   ✅ LP token auto-saved to account custody`);
-    console.log(`   ✅ Claimed tokens`);
+    console.log(`   ✅ Completed raise (using sdk.workflows.launchpad.completeRaise)`);
+    console.log(`   ✅ Executed Intent (using sdk.workflows.launchpad.executeActions)`);
+    console.log(`   ✅ Claimed tokens (using sdk.workflows.launchpad.claimTokens)`);
   } else {
-    console.log(`   ✅ Contributed BELOW minimum (0.5 TSTABLE < 1 TSTABLE)`);
-    console.log(`   ✅ Raise FAILED`);
-    console.log(`   ✅ JIT converted failure_specs → Intent`);
-    console.log(`   ✅ DAO shared with Intent`);
-    console.log(
-      `   ✅ Executed Intent → Treasury cap & metadata returned to creator`,
-    );
-    console.log(`   ℹ️  No AMM pool (raise failed)`);
-    console.log(`   ℹ️  No tokens to claim (raise failed)`);
+    console.log(`   ✅ Raise FAILED (as expected)`);
+    console.log(`   ✅ Completed raise (using sdk.workflows.launchpad.completeRaise)`);
+    console.log(`   ✅ Executed Intent → caps returned to creator`);
   }
 
   console.log(`\n🔗 View raise: https://suiscan.xyz/devnet/object/${raiseId}`);

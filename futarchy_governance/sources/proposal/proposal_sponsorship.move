@@ -6,11 +6,12 @@
 /// Registry is accessed via dynamic field on Account (not passed as parameter)
 module futarchy_governance::proposal_sponsorship;
 
-use account_protocol::account::Account;
+use account_protocol::account::{Self, Account};
 use account_protocol::package_registry::PackageRegistry;
-use futarchy_core::futarchy_config;
+use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::proposal_quota_registry::{Self, ProposalQuotaRegistry};
 use futarchy_core::dao_config;
+use futarchy_core::sponsorship_auth;
 use futarchy_core::version;
 use futarchy_markets_core::proposal::{Self, Proposal};
 use futarchy_types::signed::{Self, SignedU128};
@@ -31,6 +32,13 @@ const STATE_PREMARKET: u8 = 0;
 const STATE_REVIEW: u8 = 1;
 const STATE_TRADING: u8 = 2;
 const STATE_FINALIZED: u8 = 3;
+
+// === Sponsorship Authorization Witness ===
+
+/// Local witness for creating SponsorshipAuth via futarchy_core::sponsorship_auth
+/// Only this module can instantiate this struct, which is then used to create
+/// the actual SponsorshipAuth that proposal.move accepts
+public struct Witness has drop {}
 
 // === Events ===
 
@@ -100,13 +108,14 @@ public entry fun sponsor_proposal<AssetType, StableType>(
     // This prevents manipulation after TWAP starts recording prices
     validate_sponsorship_timing(proposal, clock);
 
-    // Get registry from Account's dynamic field
-    let registry_key = futarchy_config::new_proposal_quota_registry_key();
-    let quota_registry: &mut ProposalQuotaRegistry = account.borrow_managed_asset_mut(
+    // Get registry from FutarchyConfig (embedded in Account's config)
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
         package_registry,
-        registry_key,
         version::current(),
+        futarchy_config::witness(),
     );
+    let quota_registry = futarchy_config::quota_registry_mut(config);
 
     // Validation 4: Check sponsor has available quota
     let (has_quota, _remaining) = proposal_quota_registry::check_sponsor_quota_available(
@@ -125,18 +134,16 @@ public entry fun sponsor_proposal<AssetType, StableType>(
         proposal_id,
         clock,
     );
-    // Create witness to prove authorization
-    let auth_mark = proposal::create_sponsorship_auth();
-    proposal::mark_sponsor_quota_used(proposal, sponsor, auth_mark);
+    // Create witness to prove authorization (only this module can create SponsorshipAuth)
+    proposal::mark_sponsor_quota_used(proposal, sponsor, sponsorship_auth::create(Witness {}));
 
     // Apply sponsorship to ALL non-reject outcomes (skip outcome 0)
     let num_outcomes = proposal::get_num_outcomes(proposal);
     let mut i = 1u64; // Skip outcome 0 (reject)
     while (i < num_outcomes) {
         if (!proposal::is_outcome_sponsored(proposal, i)) {
-            // Create witness to prove authorization
-            let auth = proposal::create_sponsorship_auth();
-            proposal::set_outcome_sponsorship(proposal, i, sponsored_threshold, auth);
+            // Create witness to prove authorization (only this module can create SponsorshipAuth)
+            proposal::set_outcome_sponsorship(proposal, i, sponsored_threshold, sponsorship_auth::create(Witness {}));
         };
         i = i + 1;
     };
@@ -196,13 +203,9 @@ public entry fun sponsor_proposal_to_zero<AssetType, StableType>(
     // This prevents manipulation after TWAP starts recording prices
     validate_sponsorship_timing(proposal, clock);
 
-    // Get registry from Account's dynamic field (immutable borrow for has_quota check)
-    let registry_key = futarchy_config::new_proposal_quota_registry_key();
-    let quota_registry: &ProposalQuotaRegistry = account.borrow_managed_asset(
-        package_registry,
-        registry_key,
-        version::current(),
-    );
+    // Get registry from FutarchyConfig (embedded in Account's config) - immutable borrow for has_quota check
+    let config = account.config<FutarchyConfig>();
+    let quota_registry = futarchy_config::quota_registry(config);
 
     // Validation 4: Check sponsor is a team member (has any quota entry)
     assert!(proposal_quota_registry::has_quota(quota_registry, sponsor), ENoSponsorQuota);
@@ -217,9 +220,8 @@ public entry fun sponsor_proposal_to_zero<AssetType, StableType>(
     let mut i = 1u64; // Skip outcome 0 (reject)
     while (i < num_outcomes) {
         if (!proposal::is_outcome_sponsored(proposal, i)) {
-            // Create witness to prove authorization
-            let auth = proposal::create_sponsorship_auth();
-            proposal::set_outcome_sponsorship(proposal, i, zero_threshold, auth);
+            // Create witness to prove authorization (only this module can create SponsorshipAuth)
+            proposal::set_outcome_sponsorship(proposal, i, zero_threshold, sponsorship_auth::create(Witness {}));
         };
         i = i + 1;
     };
@@ -282,13 +284,14 @@ public entry fun sponsor_outcome<AssetType, StableType>(
     // Check if this is the first outcome being sponsored for this proposal
     let quota_already_used = proposal::is_sponsor_quota_used(proposal);
 
-    // Get registry from Account's dynamic field
-    let registry_key = futarchy_config::new_proposal_quota_registry_key();
-    let quota_registry: &mut ProposalQuotaRegistry = account.borrow_managed_asset_mut(
+    // Get registry from FutarchyConfig (embedded in Account's config)
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
         package_registry,
-        registry_key,
         version::current(),
+        futarchy_config::witness(),
     );
+    let quota_registry = futarchy_config::quota_registry_mut(config);
 
     if (!quota_already_used) {
         // First outcome - check sponsor has available quota
@@ -310,16 +313,14 @@ public entry fun sponsor_outcome<AssetType, StableType>(
         );
 
         // Mark quota as used for this proposal and record sponsor
-        // Create witness to prove authorization
-        let auth = proposal::create_sponsorship_auth();
-        proposal::mark_sponsor_quota_used(proposal, sponsor, auth);
+        // Create witness to prove authorization (only this module can create SponsorshipAuth)
+        proposal::mark_sponsor_quota_used(proposal, sponsor, sponsorship_auth::create(Witness {}));
     };
     // If quota already used, subsequent outcomes are free
 
     // Apply sponsorship to this specific outcome
-    // Create witness to prove authorization
-    let auth = proposal::create_sponsorship_auth();
-    proposal::set_outcome_sponsorship(proposal, outcome_index, sponsored_threshold, auth);
+    // Create witness to prove authorization (only this module can create SponsorshipAuth)
+    proposal::set_outcome_sponsorship(proposal, outcome_index, sponsored_threshold, sponsorship_auth::create(Witness {}));
 
     // Emit event
     event::emit(ProposalSponsored {
@@ -360,13 +361,14 @@ public(package) fun refund_sponsorship_on_eviction<AssetType, StableType>(
     };
     let sponsor = *sponsor_opt.borrow();
 
-    // Get registry from Account's dynamic field
-    let registry_key = futarchy_config::new_proposal_quota_registry_key();
-    let quota_registry: &mut ProposalQuotaRegistry = account.borrow_managed_asset_mut(
+    // Get registry from FutarchyConfig (embedded in Account's config)
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
         package_registry,
-        registry_key,
         version::current(),
+        futarchy_config::witness(),
     );
+    let quota_registry = futarchy_config::quota_registry_mut(config);
 
     // Refund quota (only once, regardless of how many outcomes were sponsored)
     proposal_quota_registry::refund_sponsor_quota(
@@ -378,9 +380,8 @@ public(package) fun refund_sponsorship_on_eviction<AssetType, StableType>(
     );
 
     // Clear all sponsorships from proposal
-    // Create witness to prove authorization
-    let auth = proposal::create_sponsorship_auth();
-    proposal::clear_all_sponsorships(proposal, auth);
+    // Create witness to prove authorization (only this module can create SponsorshipAuth)
+    proposal::clear_all_sponsorships(proposal, sponsorship_auth::create(Witness {}));
 
     // Emit refund event
     event::emit(SponsorshipRefunded {
@@ -489,13 +490,9 @@ public fun can_sponsor_proposal<AssetType, StableType>(
         };
     };
 
-    // Get registry from Account's dynamic field
-    let registry_key = futarchy_config::new_proposal_quota_registry_key();
-    let quota_registry: &ProposalQuotaRegistry = account.borrow_managed_asset(
-        package_registry,
-        registry_key,
-        version::current(),
-    );
+    // Get registry from FutarchyConfig (embedded in Account's config) - immutable borrow
+    let config = account.config<FutarchyConfig>();
+    let quota_registry = futarchy_config::quota_registry(config);
 
     // Check 5: Has quota
     let (has_quota, _remaining) = proposal_quota_registry::check_sponsor_quota_available(
@@ -509,4 +506,14 @@ public fun can_sponsor_proposal<AssetType, StableType>(
     };
 
     (true, string::utf8(b""))
+}
+
+// === Test Helpers ===
+
+#[test_only]
+/// Create a SponsorshipAuth witness for testing purposes.
+/// This is only available in test mode and allows unit tests to test
+/// the proposal module's sponsorship functions directly.
+public fun create_sponsorship_auth_for_testing(): futarchy_core::sponsorship_auth::SponsorshipAuth {
+    sponsorship_auth::create_for_testing()
 }

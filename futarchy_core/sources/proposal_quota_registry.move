@@ -363,8 +363,10 @@ public fun set_sponsor_quotas(
 
 /// Check sponsorship quota availability (read-only, no state mutation)
 /// Returns (has_quota, remaining)
+/// dao_id is passed for API consistency (not used in this read-only function)
 public fun check_sponsor_quota_available(
     registry: &ProposalQuotaRegistry,
+    _dao_id: ID,
     sponsor: address,
     clock: &Clock,
 ): (bool, u64) {

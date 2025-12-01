@@ -193,7 +193,7 @@ public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, W:
     asset_coin: Coin<AssetType>,
     stable_coin: Coin<StableType>,
     fee_bps: u64,
-    witness: W,
+    _witness: W,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
@@ -289,7 +289,7 @@ public fun init_create_pool_with_mint<Config: store, AssetType: drop, StableType
     asset_amount: u64,
     stable_amount: u64,
     fee_bps: u64,
-    witness: W,
+    _witness: W,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
@@ -329,7 +329,7 @@ public fun init_create_pool_with_mint<Config: store, AssetType: drop, StableType
         ctx
     );
 
-    // 4. Add initial liquidity (returns LP token + any excess coins)
+    // 5. Add initial liquidity (returns LP token + any excess coins)
     let (lp_token, excess_asset, excess_stable) =
         unified_spot_pool::add_liquidity_and_return(
             &mut pool,
@@ -392,14 +392,12 @@ public fun init_add_liquidity<Config: store, AssetType: drop, StableType: drop, 
     asset_coin: Coin<AssetType>,
     stable_coin: Coin<StableType>,
     min_lp_out: u64,
-    witness: W,
+    _witness: W,
     ctx: &mut TxContext,
 ) {
     // Validate inputs
     assert!(coin::value(&asset_coin) > 0, EInvalidAmount);
     assert!(coin::value(&stable_coin) > 0, EInvalidAmount);
-
-    let pool_id = object::id(pool);
 
     // Add liquidity (returns LP token + excess coins)
     let (lp_token, excess_asset, excess_stable) =

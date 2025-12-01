@@ -275,8 +275,11 @@ public fun new_governance_config(
         EMaxActionsExceedsProtocol,
     );
     assert!(proposal_creation_fee > 0, EInvalidProposalFee);
+    assert!(proposal_creation_fee <= MAX_PROPOSAL_CREATION_FEE, EProposalFeeExceedsMax);
     assert!(proposal_fee_per_outcome > 0, EInvalidProposalFee);
+    assert!(proposal_fee_per_outcome <= MAX_PROPOSAL_FEE_PER_OUTCOME, EProposalFeeExceedsMax);
     assert!(max_intents_per_outcome > 0, EInvalidMaxOutcomes);
+    assert!(proposal_intent_expiry_ms >= constants::min_proposal_intent_expiry_ms(), EInvalidGracePeriod);
 
     GovernanceConfig {
         max_outcomes,

@@ -9,7 +9,7 @@
  */
 
 import { FutarchySDK } from '../src/sdk/FutarchySDK';
-import { TransactionUtils } from '../src/lib/transaction';
+import { TransactionUtils } from '../src/services/transaction';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { execSync } from 'child_process';

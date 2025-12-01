@@ -68,6 +68,7 @@ const EGrantNotCancelable: u64 = 11;
 const EExecutionTooEarly: u64 = 14;
 const EGrantExpired: u64 = 15;
 const EWrongAccount: u64 = 16;
+const ERecipientAlreadyClaimed: u64 = 17;
 const EEmptyTiers: u64 = 18;
 
 // === Core Structs ===
@@ -92,10 +93,12 @@ public struct RecipientMint has store, copy, drop {
 }
 
 /// Price tier - one unlock condition with N recipients
+/// Each recipient has their own executed flag (vector index matches recipients index)
 public struct PriceTier has store, copy, drop {
     price_condition: Option<PriceCondition>,
     recipients: vector<RecipientMint>,
-    executed: bool,
+    /// Per-recipient execution tracking: executed[i] corresponds to recipients[i]
+    executed: vector<bool>,
     description: String,
 }
 
@@ -456,9 +459,10 @@ fun validate_price_conditions_with_enforcement<AssetType, StableType>(
 }
 
 /// Find recipient's allocation in the tier
-/// Returns claimable amount for the recipient
-fun find_recipient_allocation(tier: &PriceTier, recipient: address): u64 {
+/// Returns (recipient_index, claimable_amount) for the recipient
+fun find_recipient_allocation(tier: &PriceTier, recipient: address): (u64, u64) {
     let mut claimable_amount = 0u64;
+    let mut recipient_index = 0u64;
     let mut found = false;
     let mut i = 0;
     let recipient_count = vector::length(&tier.recipients);
@@ -467,6 +471,7 @@ fun find_recipient_allocation(tier: &PriceTier, recipient: address): u64 {
         let recipient_mint = vector::borrow(&tier.recipients, i);
         if (recipient_mint.recipient == recipient) {
             claimable_amount = recipient_mint.amount;
+            recipient_index = i;
             found = true;
             break
         };
@@ -476,14 +481,16 @@ fun find_recipient_allocation(tier: &PriceTier, recipient: address): u64 {
     assert!(found, ENotRecipient);
     assert!(claimable_amount > 0, EInsufficientVested);
 
-    claimable_amount
+    (recipient_index, claimable_amount)
 }
 
-/// Update claim tracking for recipient and mark tier as executed
+/// Update claim tracking for recipient and mark their slot as executed
+/// Note: This helper is provided for future use but current claim_grant handles this inline
 fun update_claim_tracking<AssetType, StableType>(
     grant: &mut PriceBasedMintGrant<AssetType, StableType>,
     tier: &mut PriceTier,
     recipient: address,
+    recipient_index: u64,
     claimable_amount: u64,
 ) {
     // Check if already claimed
@@ -503,10 +510,8 @@ fun update_claim_tracking<AssetType, StableType>(
         table::add(&mut grant.recipient_claims, recipient, new_claimed);
     };
 
-    // Mark tier as executed
-    // Note: Currently marks tier executed when anyone claims
-    // Future enhancement: track per-recipient execution separately
-    tier.executed = true;
+    // Mark this recipient's slot as executed (per-recipient tracking)
+    *vector::borrow_mut(&mut tier.executed, recipient_index) = true;
 }
 
 // === Claim Functions ===
@@ -543,17 +548,19 @@ public fun claim_grant<AssetType, StableType>(
     let (recipient, claimable_amount) = {
         assert!(tier_index < vector::length(&grant.tiers), EInvalidAmount);
         let tier = vector::borrow_mut(&mut grant.tiers, tier_index);
-        assert!(!tier.executed, ETierAlreadyExecuted);
+
+        // Find recipient allocation and index
+        let recipient = tx_context::sender(ctx);
+        let (recipient_index, claimable_amount) = find_recipient_allocation(tier, recipient);
+
+        // Check if this specific recipient has already claimed (per-recipient tracking)
+        assert!(!*vector::borrow(&tier.executed, recipient_index), ERecipientAlreadyClaimed);
 
         // Validate price conditions
         validate_price_conditions_with_enforcement(launchpad_enforcement, use_relative_pricing, tier, spot_pool, conditional_pools, clock);
 
-        // Find recipient allocation
-        let recipient = tx_context::sender(ctx);
-        let claimable_amount = find_recipient_allocation(tier, recipient);
-
-        // Mark tier as executed before dropping the borrow
-        tier.executed = true;
+        // Mark this recipient as executed (per-recipient tracking)
+        *vector::borrow_mut(&mut tier.executed, recipient_index) = true;
 
         (recipient, claimable_amount)
     }; // tier borrow ends here
@@ -818,19 +825,31 @@ fun deserialize_recipients(reader: &mut bcs::BCS): vector<RecipientMint> {
 }
 
 /// Convert TierSpecs to PriceTiers for grant creation
+/// Initializes executed vector with false for each recipient (matching recipients by index)
 fun convert_tier_specs_to_price_tiers(tier_specs: &vector<TierSpec>): vector<PriceTier> {
     let mut tiers = vector::empty<PriceTier>();
     let mut k = 0;
 
     while (k < vector::length(tier_specs)) {
         let spec = vector::borrow(tier_specs, k);
+
+        // Initialize executed vector with false for each recipient
+        // executed[i] will track whether recipients[i] has claimed
+        let recipient_count = vector::length(&spec.recipients);
+        let mut executed = vector::empty<bool>();
+        let mut r = 0;
+        while (r < recipient_count) {
+            vector::push_back(&mut executed, false);
+            r = r + 1;
+        };
+
         let tier = PriceTier {
             price_condition: std::option::some(PriceCondition {
                 threshold: spec.price_threshold,
                 is_above: spec.is_above,
             }),
             recipients: spec.recipients,
-            executed: false,
+            executed,
             description: spec.tier_description,
         };
         vector::push_back(&mut tiers, tier);

@@ -465,9 +465,9 @@ public fun can_execute_proposal<AssetType, StableType>(
         return false
     };
 
-    // Proposal must have been approved (YES outcome)
+    // Proposal must have been approved (any outcome > 0 wins in multi-outcome proposals)
     let winning_outcome = market_state::get_winning_outcome(market);
-    if (winning_outcome != OUTCOME_ACCEPTED) {
+    if (winning_outcome == OUTCOME_REJECTED) {
         return false
     };
 

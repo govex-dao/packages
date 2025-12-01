@@ -288,7 +288,7 @@ public fun do_set_proposals_enabled<Outcome: store, IW: drop>(
     account: &mut Account,
     registry: &PackageRegistry,
     version: VersionWitness,
-    intent_witness: IW,
+    _intent_witness: IW,
     clock: &Clock,
     _ctx: &mut TxContext,
 ) {
@@ -314,13 +314,14 @@ public fun do_set_proposals_enabled<Outcome: store, IW: drop>(
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Get mutable config using internal function
-    let config = futarchy_config::internal_config_mut(account, registry, version);
-
-    // Apply the state change on the FutarchyConfig
-    // For now, skip state modification since it requires Account access
-    // This would need to be handled at a higher level with Account access
-    let _ = enabled;
+    // Get mutable config and apply the state change
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
+    futarchy_config::set_accept_new_proposals(config, enabled);
 
     // Emit event
     event::emit(ProposalsEnabledChanged {
@@ -344,14 +345,15 @@ public fun do_set_proposals_enabled_internal(
 ) {
     let SetProposalsEnabledAction { enabled } = action;  // Destructure to consume
 
-    // Get mutable config using internal function
-    let config = futarchy_config::internal_config_mut(account, registry, version);
-    
-    // Apply the state change on the FutarchyConfig
-    // For now, skip state modification since it requires Account access
-    // This would need to be handled at a higher level with Account access
-    let _ = enabled;
-    
+    // Get mutable config and apply the state change
+    let config = account::config_mut<FutarchyConfig, futarchy_config::ConfigWitness>(
+        account,
+        registry,
+        version,
+        futarchy_config::witness()
+    );
+    futarchy_config::set_accept_new_proposals(config, enabled);
+
     // Emit event
     event::emit(ProposalsEnabledChanged {
         account_id: object::id(account),
@@ -1765,7 +1767,7 @@ public fun new_metadata_table_update<Outcome, IW: drop>(
     };
     let action_data = bcs::to_bytes(&action);
     intent.add_typed_action(
-        type_name::get<UpdateConditionalMetadata>().into_string().to_string(),
+        type_name::get<MetadataTableUpdate>().into_string().to_string(),
         action_data,
         intent_witness
     );
@@ -2144,33 +2146,54 @@ public(package) fun sponsorship_config_update_action_from_bytes(
 public(package) fun config_action_from_bytes(bytes: vector<u8>): ConfigAction {
     let mut bcs = bcs::new(bytes);
     let config_type = bcs.peel_u8();
+    let remainder = bcs.into_remainder_bytes();
 
-    ConfigAction {
-        config_type,
-        trading_params: if (config_type == CONFIG_TYPE_TRADING_PARAMS) {
-            option::some(trading_params_update_action_from_bytes(bcs.into_remainder_bytes()))
-        } else {
-            option::none()
-        },
-        metadata: if (config_type == CONFIG_TYPE_METADATA) {
-            option::some(metadata_update_action_from_bytes(bcs.into_remainder_bytes()))
-        } else {
-            option::none()
-        },
-        twap_config: if (config_type == CONFIG_TYPE_TWAP) {
-            option::some(twap_config_update_action_from_bytes(bcs.into_remainder_bytes()))
-        } else {
-            option::none()
-        },
-        governance: if (config_type == CONFIG_TYPE_GOVERNANCE) {
-            option::some(governance_update_action_from_bytes(bcs.into_remainder_bytes()))
-        } else {
-            option::none()
-        },
-        metadata_table: if (config_type == CONFIG_TYPE_METADATA_TABLE) {
-            option::some(metadata_table_update_action_from_bytes(bcs.into_remainder_bytes()))
-        } else {
-            option::none()
-        },
+    if (config_type == CONFIG_TYPE_TRADING_PARAMS) {
+        ConfigAction {
+            config_type,
+            trading_params: option::some(trading_params_update_action_from_bytes(remainder)),
+            metadata: option::none(),
+            twap_config: option::none(),
+            governance: option::none(),
+            metadata_table: option::none(),
+        }
+    } else if (config_type == CONFIG_TYPE_METADATA) {
+        ConfigAction {
+            config_type,
+            trading_params: option::none(),
+            metadata: option::some(metadata_update_action_from_bytes(remainder)),
+            twap_config: option::none(),
+            governance: option::none(),
+            metadata_table: option::none(),
+        }
+    } else if (config_type == CONFIG_TYPE_TWAP) {
+        ConfigAction {
+            config_type,
+            trading_params: option::none(),
+            metadata: option::none(),
+            twap_config: option::some(twap_config_update_action_from_bytes(remainder)),
+            governance: option::none(),
+            metadata_table: option::none(),
+        }
+    } else if (config_type == CONFIG_TYPE_GOVERNANCE) {
+        ConfigAction {
+            config_type,
+            trading_params: option::none(),
+            metadata: option::none(),
+            twap_config: option::none(),
+            governance: option::some(governance_update_action_from_bytes(remainder)),
+            metadata_table: option::none(),
+        }
+    } else if (config_type == CONFIG_TYPE_METADATA_TABLE) {
+        ConfigAction {
+            config_type,
+            trading_params: option::none(),
+            metadata: option::none(),
+            twap_config: option::none(),
+            governance: option::none(),
+            metadata_table: option::some(metadata_table_update_action_from_bytes(remainder)),
+        }
+    } else {
+        abort EInvalidConfigType
     }
 }

@@ -56,8 +56,6 @@ public struct MetadataTableUpdate has drop {}
 public struct SponsorshipConfigUpdate has drop {}
 /// Update conditional metadata
 public struct UpdateConditionalMetadata has drop {}
-/// Batch config wrapper
-public struct BatchConfig has drop {}
 
 // === Marker Functions ===
 
@@ -77,7 +75,6 @@ public fun sponsorship_config_update_marker(): SponsorshipConfigUpdate {
 public fun update_conditional_metadata_marker(): UpdateConditionalMetadata {
     UpdateConditionalMetadata {}
 }
-public fun batch_config_marker(): BatchConfig { BatchConfig {} }
 
 // === Aliases ===
 use account_protocol::intents as protocol_intents;
@@ -267,17 +264,6 @@ public struct SponsorshipConfigUpdateAction has store, drop, copy {
     sponsored_threshold: Option<SignedU128>,
     waive_advancement_fees: Option<bool>,
     default_sponsor_quota_amount: Option<u64>,
-}
-
-/// Wrapper for different config action types (for batch operations)
-public struct ConfigAction has store, drop, copy {
-    config_type: u8,
-    // Only one of these will be populated
-    trading_params: Option<TradingParamsUpdateAction>,
-    metadata: Option<MetadataUpdateAction>,
-    twap_config: Option<TwapConfigUpdateAction>,
-    governance: Option<GovernanceUpdateAction>,
-    metadata_table: Option<MetadataTableUpdateAction>,
 }
 
 // === Basic Execution Functions ===
@@ -1182,59 +1168,6 @@ public fun do_update_sponsorship_config<Outcome: store, IW: drop>(
     executable::increment_action_idx(executable);
 }
 
-/// Execute a batch config action that can contain any type of config update
-/// This delegates to the appropriate handler based on config_type
-public fun do_batch_config<Outcome: store, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    _version: VersionWitness,
-    intent_witness: IW,
-    _clock: &Clock,
-    _ctx: &mut TxContext,
-) {
-    assert_account_authority(executable, account);
-    // Get action spec
-    let specs = executable::intent(executable).action_specs();
-    let spec = specs.borrow(executable::action_idx(executable));
-
-    // CRITICAL - Type check BEFORE deserialization
-    action_validation::assert_action_type<BatchConfig>(spec);
-
-    // Get action data
-    let action_data = protocol_intents::action_spec_data(spec);
-
-    // Check version before deserialization
-    let spec_version = protocol_intents::action_spec_version(spec);
-    assert!(spec_version == 1, EUnsupportedActionVersion);
-
-    // Deserialize the action
-    let action = config_action_from_bytes(*action_data);
-
-    // Note: config_action_from_bytes internally validates all bytes consumed
-    // by delegating to specific deserialization functions for each config type
-
-    // Validate that the correct field is populated for the config_type
-    if (action.config_type == CONFIG_TYPE_TRADING_PARAMS) {
-        assert!(action.trading_params.is_some(), EInvalidConfigType);
-    } else if (action.config_type == CONFIG_TYPE_METADATA) {
-        assert!(action.metadata.is_some(), EInvalidConfigType);
-    } else if (action.config_type == CONFIG_TYPE_TWAP) {
-        assert!(action.twap_config.is_some(), EInvalidConfigType);
-    } else if (action.config_type == CONFIG_TYPE_GOVERNANCE) {
-        assert!(action.governance.is_some(), EInvalidConfigType);
-    } else if (action.config_type == CONFIG_TYPE_METADATA_TABLE) {
-        assert!(action.metadata_table.is_some(), EInvalidConfigType);
-    } else {
-        abort EInvalidConfigType
-    };
-
-    // Note: The actual config updates should be handled by the individual
-    // do_ functions for each action type. This wrapper provides type safety.
-
-    // Increment action index
-    executable::increment_action_idx(executable);
-}
-
 // === Destruction Functions ===
 
 /// Destroy a SetProposalsEnabledAction
@@ -1861,76 +1794,6 @@ public fun get_metadata_table_fields(update: &MetadataTableUpdateAction): (
     )
 }
 
-/// Create a config action for trading params updates
-public fun new_config_action_trading_params(
-    params: TradingParamsUpdateAction
-): ConfigAction {
-    ConfigAction {
-        config_type: CONFIG_TYPE_TRADING_PARAMS,
-        trading_params: option::some(params),
-        metadata: option::none(),
-        twap_config: option::none(),
-        governance: option::none(),
-        metadata_table: option::none(),
-    }
-}
-
-/// Create a config action for metadata updates  
-public fun new_config_action_metadata(
-    metadata: MetadataUpdateAction
-): ConfigAction {
-    ConfigAction {
-        config_type: CONFIG_TYPE_METADATA,
-        trading_params: option::none(),
-        metadata: option::some(metadata),
-        twap_config: option::none(),
-        governance: option::none(),
-        metadata_table: option::none(),
-    }
-}
-
-/// Create a config action for TWAP config updates
-public fun new_config_action_twap(
-    twap: TwapConfigUpdateAction
-): ConfigAction {
-    ConfigAction {
-        config_type: CONFIG_TYPE_TWAP,
-        trading_params: option::none(),
-        metadata: option::none(),
-        twap_config: option::some(twap),
-        governance: option::none(),
-        metadata_table: option::none(),
-    }
-}
-
-/// Create a config action for governance updates
-public fun new_config_action_governance(
-    gov: GovernanceUpdateAction
-): ConfigAction {
-    ConfigAction {
-        config_type: CONFIG_TYPE_GOVERNANCE,
-        trading_params: option::none(),
-        metadata: option::none(),
-        twap_config: option::none(),
-        governance: option::some(gov),
-        metadata_table: option::none(),
-    }
-}
-
-/// Create a config action for metadata table updates
-public fun new_config_action_metadata_table(
-    table: MetadataTableUpdateAction
-): ConfigAction {
-    ConfigAction {
-        config_type: CONFIG_TYPE_METADATA_TABLE,
-        trading_params: option::none(),
-        metadata: option::none(),
-        twap_config: option::none(),
-        governance: option::none(),
-        metadata_table: option::some(table),
-    }
-}
-
 // === Internal Validation Functions ===
 
 /// Validate trading params update
@@ -2142,58 +2005,3 @@ public(package) fun sponsorship_config_update_action_from_bytes(
     }
 }
 
-/// Deserialize ConfigAction from bytes
-public(package) fun config_action_from_bytes(bytes: vector<u8>): ConfigAction {
-    let mut bcs = bcs::new(bytes);
-    let config_type = bcs.peel_u8();
-    let remainder = bcs.into_remainder_bytes();
-
-    if (config_type == CONFIG_TYPE_TRADING_PARAMS) {
-        ConfigAction {
-            config_type,
-            trading_params: option::some(trading_params_update_action_from_bytes(remainder)),
-            metadata: option::none(),
-            twap_config: option::none(),
-            governance: option::none(),
-            metadata_table: option::none(),
-        }
-    } else if (config_type == CONFIG_TYPE_METADATA) {
-        ConfigAction {
-            config_type,
-            trading_params: option::none(),
-            metadata: option::some(metadata_update_action_from_bytes(remainder)),
-            twap_config: option::none(),
-            governance: option::none(),
-            metadata_table: option::none(),
-        }
-    } else if (config_type == CONFIG_TYPE_TWAP) {
-        ConfigAction {
-            config_type,
-            trading_params: option::none(),
-            metadata: option::none(),
-            twap_config: option::some(twap_config_update_action_from_bytes(remainder)),
-            governance: option::none(),
-            metadata_table: option::none(),
-        }
-    } else if (config_type == CONFIG_TYPE_GOVERNANCE) {
-        ConfigAction {
-            config_type,
-            trading_params: option::none(),
-            metadata: option::none(),
-            twap_config: option::none(),
-            governance: option::some(governance_update_action_from_bytes(remainder)),
-            metadata_table: option::none(),
-        }
-    } else if (config_type == CONFIG_TYPE_METADATA_TABLE) {
-        ConfigAction {
-            config_type,
-            trading_params: option::none(),
-            metadata: option::none(),
-            twap_config: option::none(),
-            governance: option::none(),
-            metadata_table: option::some(metadata_table_update_action_from_bytes(remainder)),
-        }
-    } else {
-        abort EInvalidConfigType
-    }
-}

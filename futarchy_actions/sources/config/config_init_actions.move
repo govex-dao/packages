@@ -6,7 +6,6 @@
 module futarchy_actions::config_init_actions;
 
 use account_protocol::intents;
-use futarchy_actions::config_actions::ConfigAction;
 use futarchy_core::dao_config;
 use futarchy_types::signed::SignedU128;
 use std::ascii::String as AsciiString;
@@ -307,22 +306,6 @@ public fun add_update_conditional_metadata_spec(
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<futarchy_actions::config_actions::UpdateConditionalMetadata>(),
-        action_data,
-        1,
-    );
-    builder_mod::add(builder, action_spec);
-}
-
-/// Add batch config spec (generic wrapper for config actions)
-public fun add_batch_config_spec(
-    builder: &mut account_actions::action_spec_builder::Builder,
-    action: ConfigAction,
-) {
-    use account_actions::action_spec_builder as builder_mod;
-
-    let action_data = bcs::to_bytes(&action);
-    let action_spec = intents::new_action_spec_with_typename(
-        type_name::with_defining_ids<futarchy_actions::config_actions::BatchConfig>(),
         action_data,
         1,
     );

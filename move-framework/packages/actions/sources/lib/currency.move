@@ -54,8 +54,6 @@ const EUnsupportedActionVersion: u64 = 9;
 
 // === Action Type Markers ===
 
-/// Lock treasury cap
-public struct CurrencyLockCap has drop {}
 /// Disable currency operations
 public struct CurrencyDisable has drop {}
 /// Mint new currency
@@ -69,7 +67,6 @@ public struct RemoveTreasuryCap has drop {}
 /// Remove coin metadata (return to recipient)
 public struct RemoveMetadata has drop {}
 
-public fun currency_lock_cap(): CurrencyLockCap { CurrencyLockCap {} }
 public fun currency_disable(): CurrencyDisable { CurrencyDisable {} }
 public fun currency_mint(): CurrencyMint { CurrencyMint {} }
 public fun currency_burn(): CurrencyBurn { CurrencyBurn {} }

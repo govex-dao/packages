@@ -47,14 +47,11 @@ const EUnsupportedActionVersion: u64 = 1;
 
 // === Action Type Markers ===
 
-/// Store/lock capability
-public struct AccessControlStore has drop {}
 /// Borrow capability
 public struct AccessControlBorrow has drop {}
 /// Return borrowed capability
 public struct AccessControlReturn has drop {}
 
-public fun access_control_store(): AccessControlStore { AccessControlStore {} }
 public fun access_control_borrow(): AccessControlBorrow { AccessControlBorrow {} }
 public fun access_control_return(): AccessControlReturn { AccessControlReturn {} }
 

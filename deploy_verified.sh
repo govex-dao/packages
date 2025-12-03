@@ -374,7 +374,7 @@ main() {
     # Auto-process deployment JSONs (CRITICAL - SDK depends on this!)
     echo ""
     echo -e "${BLUE}=== Processing Deployment JSONs ===${NC}"
-    SDK_DIR="/Users/admin/govex/packages/sdk"
+    SDK_DIR="/Users/admin/govex/sdk"
     if [ -f "$SDK_DIR/scripts/process-deployments.ts" ]; then
         echo "Running: npx tsx scripts/process-deployments.ts"
         cd "$SDK_DIR"

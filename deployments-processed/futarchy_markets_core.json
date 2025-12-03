@@ -1,12 +1,12 @@
 {
   "packageName": "futarchy_markets_core",
-  "transactionDigest": "AjwZXPC9nnrPhKdgHCFSDyqdn9TeHvPHpWJ4fbwfwFhw",
-  "packageId": "0x5b1b32cc8320229ef61a380ab1827008748befb9e8965e959115f71d3c33681f",
+  "transactionDigest": "EnQ3EJdbjrs7L38PCRbZ7WCSWnJgJKqvPSXrBXhvDJC8",
+  "packageId": "0xed8a69780ec1ed19a227d5bce366755f24c34e5495948245216df6a07a6dc45b",
   "adminCaps": [
     {
       "name": "FeeAdminCap",
-      "objectId": "0xfc48e0bb6f94dccc99265fc6060a8b38c6685d2eb3e10efdd95807bf10b27509",
-      "objectType": "0x5b1b32cc8320229ef61a380ab1827008748befb9e8965e959115f71d3c33681f::fee::FeeAdminCap",
+      "objectId": "0xf467cbe03aeaae2e2019c1ae353dde4e9c781ecf62d9051f733d8d6f57a1ed96",
+      "objectType": "0xed8a69780ec1ed19a227d5bce366755f24c34e5495948245216df6a07a6dc45b::fee::FeeAdminCap",
       "owner": {
         "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"
       }
@@ -15,19 +15,19 @@
   "sharedObjects": [
     {
       "name": "FeeManager",
-      "objectId": "0xf92b54ddd09c8390182755466e50d3f917254435cf747b4e0cb1026f0374415b",
-      "objectType": "0x5b1b32cc8320229ef61a380ab1827008748befb9e8965e959115f71d3c33681f::fee::FeeManager",
+      "objectId": "0x2066369d993af422ba03461c009e6f0fb846072826e6770a8a6b576829c095c9",
+      "objectType": "0xed8a69780ec1ed19a227d5bce366755f24c34e5495948245216df6a07a6dc45b::fee::FeeManager",
       "owner": {
         "Shared": {
-          "initial_shared_version": 12
+          "initial_shared_version": 10
         }
       },
-      "initialSharedVersion": 12
+      "initialSharedVersion": 10
     }
   ],
   "ownedObjects": [],
   "upgradeCap": {
-    "objectId": "0x3f10b99d873a040efd9f106ab363ee81c7f798248fd06ea0474d9bd1d12e13a9",
+    "objectId": "0x672a9a1adfa89b70128236c655107b5c6fddcbefa56699f75e6d89fb4d937f40",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

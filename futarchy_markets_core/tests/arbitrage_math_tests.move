@@ -28,6 +28,7 @@ use sui::test_utils;
 // === Test Coins ===
 public struct ASSET has drop {}
 public struct STABLE has drop {}
+public struct LP has drop {}
 
 // === Constants ===
 const ADMIN: address = @0xAD;
@@ -1255,8 +1256,8 @@ fun test_unimodality_profit_at_b_grid() {
     );
 
     // Build TAB constants
-    let (r_asset, r_stable) = unified_spot_pool::get_reserves<ASSET, STABLE>(&spot_pool);
-    let fee_bps = unified_spot_pool::get_fee_bps<ASSET, STABLE>(&spot_pool);
+    let (r_asset, r_stable) = unified_spot_pool::get_reserves<ASSET, STABLE, LP>(&spot_pool);
+    let fee_bps = unified_spot_pool::get_fee_bps<ASSET, STABLE, LP>(&spot_pool);
 
     let (ts, as_vals, bs) = arbitrage_math::test_only_build_tab_constants(
         r_asset,
@@ -1348,14 +1349,21 @@ fun test_unimodality_profit_at_b_grid() {
 // HELPER FUNCTIONS
 // ============================================================================
 
+/// Create LP treasury for testing
+fun create_lp_treasury(ctx: &mut TxContext): coin::TreasuryCap<LP> {
+    coin::create_treasury_cap_for_testing<LP>(ctx)
+}
+
 /// Create test spot pool with given reserves
 fun create_test_spot_pool(
     asset_amount: u64,
     stable_amount: u64,
     fee_bps: u64,
     ctx: &mut TxContext,
-): UnifiedSpotPool<ASSET, STABLE> {
-    unified_spot_pool::create_pool_for_testing(
+): UnifiedSpotPool<ASSET, STABLE, LP> {
+    let lp_treasury = create_lp_treasury(ctx);
+    unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        lp_treasury,
         asset_amount,
         stable_amount,
         fee_bps,
@@ -1479,7 +1487,7 @@ fun create_test_conditional_pools_n(
 }
 
 /// Cleanup spot pool
-fun cleanup_spot_pool(pool: UnifiedSpotPool<ASSET, STABLE>) {
+fun cleanup_spot_pool(pool: UnifiedSpotPool<ASSET, STABLE, LP>) {
     test_utils::destroy(pool);
 }
 

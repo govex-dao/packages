@@ -21,6 +21,9 @@ use sui::coin;
 use sui::object;
 use sui::test_scenario as ts;
 
+// Test LP type
+public struct LP has drop {}
+
 // === Constants ===
 const DEFAULT_FEE_BPS: u16 = 30; // 0.3%
 const STATE_TRADING: u8 = 2;
@@ -31,14 +34,20 @@ fun create_test_clock(timestamp_ms: u64, ctx: &mut TxContext): Clock {
     clock::create_for_testing(ctx)
 }
 
+fun create_lp_treasury(ctx: &mut TxContext): coin::TreasuryCap<LP> {
+    coin::create_treasury_cap_for_testing<LP>(ctx)
+}
+
 fun create_test_spot_pool(
     asset_reserve: u64,
     stable_reserve: u64,
     fee_bps: u64,
     _clock: &Clock,
     ctx: &mut TxContext,
-): UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B> {
+): UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B, LP> {
+    let lp_treasury = create_lp_treasury(ctx);
     unified_spot_pool::create_pool_for_testing(
+        lp_treasury,
         asset_reserve,
         stable_reserve,
         fee_bps,

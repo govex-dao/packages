@@ -5,6 +5,8 @@ use account_actions::currency::{Self, CurrencyMint, CurrencyBurn, CurrencyDisabl
 use account_actions::version;
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
+use account_protocol::executable;
+use account_protocol::executable_resources;
 use account_protocol::intent_interface;
 use account_protocol::intents;
 use account_protocol::package_registry::{
@@ -216,7 +218,10 @@ fun test_mint_and_burn_basic() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&100u64);
+            // action_data format: amount (u64) + resource_name (string as bytes)
+            let mut action_data = bcs::to_bytes(&100u64);
+            let resource_name = b"burn_coin";
+            vector::append(&mut action_data, bcs::to_bytes(&resource_name));
             intents::add_typed_action(intent, currency::currency_burn(), action_data, iw);
         },
     );
@@ -230,11 +235,18 @@ fun test_mint_and_burn_basic() {
         scenario.ctx(),
     );
 
-    currency::do_burn<Outcome, SUI, CurrencyIntent>(
+    // Provide the coin to executable_resources before calling do_init_burn
+    executable_resources::provide_coin(
+        executable::uid_mut(&mut executable2),
+        b"burn_coin".to_string(),
+        minted_coin,
+        scenario.ctx(),
+    );
+
+    currency::do_init_burn<Outcome, SUI, CurrencyIntent>(
         &mut executable2,
         &mut account,
         &extensions,
-        minted_coin,
         version::current(),
         CurrencyIntent(),
     );
@@ -688,7 +700,10 @@ fun test_burn_wrong_value() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&50u64);
+            // action_data format: amount (u64) + resource_name (string as bytes)
+            let mut action_data = bcs::to_bytes(&50u64);
+            let resource_name = b"burn_coin";
+            vector::append(&mut action_data, bcs::to_bytes(&resource_name));
             intents::add_typed_action(intent, currency::currency_burn(), action_data, iw);
         },
     );
@@ -701,12 +716,19 @@ fun test_burn_wrong_value() {
         scenario.ctx(),
     );
 
+    // Provide the coin to executable_resources before calling do_init_burn
+    executable_resources::provide_coin(
+        executable::uid_mut(&mut exec2),
+        b"burn_coin".to_string(),
+        coin,
+        scenario.ctx(),
+    );
+
     // This should abort with EWrongValue
-    currency::do_burn<Outcome, SUI, CurrencyIntent>(
+    currency::do_init_burn<Outcome, SUI, CurrencyIntent>(
         &mut exec2,
         &mut account,
         &extensions,
-        coin,
         version::current(),
         CurrencyIntent(),
     );
@@ -791,7 +813,10 @@ fun test_delete_actions() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&10u64);
+            // action_data format: amount (u64) + resource_name (string as bytes)
+            let mut action_data = bcs::to_bytes(&10u64);
+            let resource_name = b"burn_coin";
+            vector::append(&mut action_data, bcs::to_bytes(&resource_name));
             intents::add_typed_action(intent, currency::currency_burn(), action_data, iw);
         },
     );
@@ -824,11 +849,19 @@ fun test_delete_actions() {
         Witness(),
         scenario.ctx(),
     );
-    currency::do_burn<Outcome, SUI, CurrencyIntent>(
+
+    // Provide the coin to executable_resources before calling do_init_burn
+    executable_resources::provide_coin(
+        executable::uid_mut(&mut e3),
+        b"burn_coin".to_string(),
+        c,
+        scenario.ctx(),
+    );
+
+    currency::do_init_burn<Outcome, SUI, CurrencyIntent>(
         &mut e3,
         &mut account,
         &extensions,
-        c,
         version::current(),
         CurrencyIntent(),
     );

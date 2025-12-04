@@ -91,13 +91,13 @@ public(package) fun new_proposal_intent_executed(
 
 /// Finalizes a proposal's market and determines the winning outcome
 /// This should be called after trading has ended and TWAP prices are calculated
-public fun finalize_proposal_market<AssetType, StableType>(
+public fun finalize_proposal_market<AssetType, StableType, LPType>(
     account: &mut Account,
     registry: &package_registry::PackageRegistry,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -115,13 +115,13 @@ public fun finalize_proposal_market<AssetType, StableType>(
 }
 
 /// Internal implementation shared by both finalization functions
-fun finalize_proposal_market_internal<AssetType, StableType>(
+fun finalize_proposal_market_internal<AssetType, StableType, LPType>(
     account: &mut Account,
     registry: &PackageRegistry,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
     market_state: &mut MarketState,
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     _is_early_resolution: bool,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -267,11 +267,11 @@ fun finalize_proposal_market_internal<AssetType, StableType>(
 ///
 /// CRITICAL: Respects withdraw_only_mode flag to prevent auto-reinvestment
 /// If previous proposal has withdraw_only_mode=true, its liquidity will NOT be quantum-split
-public entry fun advance_proposal_state<AssetType, StableType>(
+public entry fun advance_proposal_state<AssetType, StableType, LPType>(
     account: &mut Account,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): bool {
@@ -324,12 +324,12 @@ public entry fun advance_proposal_state<AssetType, StableType>(
 /// Entry function to finalize a proposal with quantum liquidity recombination
 /// This is THE proper way to finalize proposals that use DAO spot pool liquidity
 /// Determines winner via TWAP and returns quantum-split liquidity back to spot pool
-public entry fun finalize_proposal_with_spot_pool<AssetType, StableType>(
+public entry fun finalize_proposal_with_spot_pool<AssetType, StableType, LPType>(
     account: &mut Account,
     registry: &PackageRegistry,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut futarchy_markets_primitives::coin_escrow::TokenEscrow<AssetType, StableType>,
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {

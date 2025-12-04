@@ -425,8 +425,8 @@ public fun get_spot_price_after(detailed: &DetailedSpotQuote): u64 {
 
 /// Get combined oracle price from spot AMM
 /// Returns the spot AMM current price
-public fun get_combined_oracle_price<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun get_combined_oracle_price<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     _clock: &Clock,
 ): u128 {
     // Return the spot AMM current price
@@ -443,16 +443,16 @@ public fun check_price_threshold(price: u128, threshold: u128, is_above_threshol
 }
 
 /// Check if proposals can be created based on TWAP readiness
-public fun can_create_proposal<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun can_create_proposal<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     clock: &Clock,
 ): bool {
     unified_spot_pool::is_twap_ready(spot_pool, clock)
 }
 
 /// Get time until proposals are allowed (returns 0 if ready)
-public fun time_until_proposals_allowed<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun time_until_proposals_allowed<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     clock: &Clock,
 ): u64 {
     // Check if TWAP is ready
@@ -466,8 +466,8 @@ public fun time_until_proposals_allowed<AssetType, StableType>(
 
 /// Get initialization price for conditional AMMs
 /// Uses current spot price for immediate market initialization
-public fun get_initialization_price<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun get_initialization_price<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     _clock: &Clock,
 ): u128 {
     unified_spot_pool::get_spot_price(spot_pool)

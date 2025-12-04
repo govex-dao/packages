@@ -19,6 +19,7 @@ use sui::test_utils;
 // Test coins
 public struct ASSET has drop {}
 public struct STABLE has drop {}
+public struct LP has drop {}
 
 const ADMIN: address = @0xAD;
 const TRADER: address = @0xB0B;
@@ -29,17 +30,20 @@ const ONE_STABLE: u64 = 1_000_000_000;
 
 // === Test Helpers ===
 
-fun setup_spot_pool(scenario: &mut Scenario): (UnifiedSpotPool<ASSET, STABLE>, ID) {
+fun create_lp_treasury(ctx: &mut TxContext): coin::TreasuryCap<LP> {
+    coin::create_treasury_cap_for_testing<LP>(ctx)
+}
+
+fun setup_spot_pool(scenario: &mut Scenario): (UnifiedSpotPool<ASSET, STABLE, LP>, ID) {
     let ctx = ts::ctx(scenario);
     let pool_id = object::id_from_address(@0x1234);
+    let lp_treasury = create_lp_treasury(ctx);
 
     // Create spot pool with 1000 asset and 1000 stable
-    let asset_balance = balance::create_for_testing<ASSET>(1000 * ONE_ASSET);
-    let stable_balance = balance::create_for_testing<STABLE>(1000 * ONE_STABLE);
-
-    let spot_pool = unified_spot_pool::create_for_testing(
-        asset_balance,
-        stable_balance,
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        lp_treasury,
+        1000 * ONE_ASSET,
+        1000 * ONE_STABLE,
         30, // 0.3% fee
         ctx,
     );

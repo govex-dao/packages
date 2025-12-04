@@ -25,9 +25,15 @@ use sui::test_utils;
 // === Test Coins ===
 public struct ASSET has drop {}
 public struct STABLE has drop {}
+public struct LP has drop {}
 
 // === Constants ===
 const ADMIN: address = @0xAD;
+
+/// Create LP treasury for testing
+fun create_lp_treasury(ctx: &mut TxContext): sui::coin::TreasuryCap<LP> {
+    sui::coin::create_treasury_cap_for_testing<LP>(ctx)
+}
 
 #[test]
 /// Test that conditional→spot cost uses MAX, not SUM (2 pools)
@@ -50,7 +56,8 @@ fun test_quantum_cost_max_not_sum_two_pools() {
     // Pool 1: Will cost ~50 USDC to buy 10k assets
 
     // Spot pool: 500k asset, 1.5M stable
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         500_000,
         1_500_000,
         30,
@@ -116,7 +123,8 @@ fun test_quantum_cost_max_of_three() {
     let mut scenario = ts::begin(ADMIN);
 
     // Spot pool
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         300_000,
         900_000,
         25,
@@ -183,7 +191,8 @@ fun test_quantum_cost_max_with_ten_pools() {
     let mut scenario = ts::begin(ADMIN);
 
     // Spot pool: asset is expensive
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         200_000,
         800_000,
         30,
@@ -245,7 +254,8 @@ fun test_simulate_profit_uses_max_cost() {
     let mut scenario = ts::begin(ADMIN);
 
     // Spot: expensive
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         400_000,
         1_600_000,
         25,
@@ -311,7 +321,8 @@ fun test_quantum_cost_max_with_fifty_pools() {
     let mut scenario = ts::begin(ADMIN);
 
     // Spot pool: expensive asset
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         500_000,
         2_000_000,
         30,
@@ -371,7 +382,8 @@ fun test_quantum_cost_all_equal() {
     let mut scenario = ts::begin(ADMIN);
 
     // Spot pool
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         500_000,
         1_500_000,
         30,
@@ -440,7 +452,8 @@ fun test_max_finds_more_opportunities_than_sum_would() {
     // - With SUM: would appear unprofitable (false negative)
 
     // Spot: expensive (low asset, high stable)
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         600_000,
         1_800_000,
         25,
@@ -517,7 +530,8 @@ fun test_worst_case_massive_search_space() {
 
     // Spot pool: MAXIMUM reserves (U64::MAX - 1)
     let max_reserve = std::u64::max_value!() - 1;
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         max_reserve, // MAX assets
         max_reserve, // MAX stable
         30,
@@ -669,7 +683,8 @@ fun test_ternary_search_stability() {
         let search_space = *vector::borrow(&search_spaces, i);
 
         // Spot pool with small reserves matching search space
-        let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+        let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
             search_space * 100,
             search_space * 300,
             30,
@@ -739,7 +754,8 @@ fun test_ternary_search_stability_spot_to_cond() {
         let search_space = *vector::borrow(&search_spaces, i);
 
         // Spot pool: cheaper (for spot→conditional arbitrage)
-        let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+        let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
             search_space * 100,
             search_space * 200, // Lower price than conditionals
             30,
@@ -804,7 +820,8 @@ fun test_worst_case_tiny_search_space() {
     let mut scenario = ts::begin(ADMIN);
 
     // Spot pool: Small reserves, creating small search space
-    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE>(
+    let spot_pool = unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        create_lp_treasury(ts::ctx(&mut scenario)),
         1_000, // Small pool
         3_000, // 3:1 ratio
         30,

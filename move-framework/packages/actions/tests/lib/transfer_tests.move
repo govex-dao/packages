@@ -1,10 +1,12 @@
 #[test_only]
 module account_actions::transfer_tests;
 
-use account_actions::transfer::{Self as acc_transfer, TransferObject};
+use account_actions::transfer::{Self as acc_transfer};
 use account_actions::version;
 use account_protocol::account::{Self, Account};
 use account_protocol::deps;
+use account_protocol::executable;
+use account_protocol::executable_resources;
 use account_protocol::intent_interface;
 use account_protocol::intents;
 use account_protocol::package_registry::{
@@ -114,7 +116,10 @@ fun test_transfer_basic() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&RECIPIENT);
+            // action_data format: recipient (address) + resource_name (string as bytes)
+            let mut action_data = bcs::to_bytes(&RECIPIENT);
+            let resource_name = b"transfer_coin";
+            vector::append(&mut action_data, bcs::to_bytes(&resource_name));
             intents::add_typed_action(intent, acc_transfer::transfer_object(), action_data, iw);
         },
     );
@@ -135,8 +140,16 @@ fun test_transfer_basic() {
     // Create a coin to transfer
     let coin = coin::mint_for_testing<SUI>(100, scenario.ctx());
 
+    // Provide the coin to executable_resources before calling do_init_transfer
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"transfer_coin".to_string(),
+        coin,
+        scenario.ctx(),
+    );
+
     // Execute the transfer
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, coin, TransferIntent());
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
 
     // Confirm execution
     account.confirm_execution(executable);
@@ -176,8 +189,10 @@ fun test_transfer_to_sender() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = vector::empty();
-            intents::add_typed_action(intent, acc_transfer::transfer_object(), action_data, iw);
+            // action_data format for transfer_to_sender: resource_name (string as bytes)
+            let resource_name = b"transfer_coin";
+            let action_data = bcs::to_bytes(&resource_name);
+            intents::add_typed_action(intent, acc_transfer::transfer_to_sender(), action_data, iw);
         },
     );
 
@@ -194,10 +209,17 @@ fun test_transfer_to_sender() {
     // Create a coin to transfer
     let coin = coin::mint_for_testing<SUI>(200, scenario.ctx());
 
-    // Execute the transfer to sender
-    acc_transfer::do_transfer_to_sender<Outcome, Coin<SUI>, _>(
-        &mut executable,
+    // Provide the coin to executable_resources before calling do_init_transfer_to_sender
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"transfer_coin".to_string(),
         coin,
+        scenario.ctx(),
+    );
+
+    // Execute the transfer to sender
+    acc_transfer::do_init_transfer_to_sender<Outcome, Coin<SUI>, _>(
+        &mut executable,
         TransferIntent(),
         scenario.ctx(),
     );
@@ -238,22 +260,31 @@ fun test_multiple_transfers() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
+            let mut action_data1 = bcs::to_bytes(&RECIPIENT);
+            let resource_name1 = b"coin1";
+            vector::append(&mut action_data1, bcs::to_bytes(&resource_name1));
             intents::add_typed_action(
                 intent,
                 acc_transfer::transfer_object(),
-                bcs::to_bytes(&RECIPIENT),
+                action_data1,
                 iw,
             );
+            let mut action_data2 = bcs::to_bytes(&@0xDEAD);
+            let resource_name2 = b"coin2";
+            vector::append(&mut action_data2, bcs::to_bytes(&resource_name2));
             intents::add_typed_action(
                 intent,
                 acc_transfer::transfer_object(),
-                bcs::to_bytes(&@0xDEAD),
+                action_data2,
                 iw,
             );
+            let mut action_data3 = bcs::to_bytes(&@0xFACE);
+            let resource_name3 = b"coin3";
+            vector::append(&mut action_data3, bcs::to_bytes(&resource_name3));
             intents::add_typed_action(
                 intent,
                 acc_transfer::transfer_object(),
-                bcs::to_bytes(&@0xFACE),
+                action_data3,
                 iw,
             );
         },
@@ -268,14 +299,33 @@ fun test_multiple_transfers() {
         scenario.ctx(),
     );
 
-    // Create coins and execute each transfer
+    // Create coins and provide to executable_resources
     let coin1 = coin::mint_for_testing<SUI>(100, scenario.ctx());
     let coin2 = coin::mint_for_testing<SUI>(200, scenario.ctx());
     let coin3 = coin::mint_for_testing<SUI>(300, scenario.ctx());
 
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, coin1, TransferIntent());
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, coin2, TransferIntent());
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, coin3, TransferIntent());
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"coin1".to_string(),
+        coin1,
+        scenario.ctx(),
+    );
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"coin2".to_string(),
+        coin2,
+        scenario.ctx(),
+    );
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"coin3".to_string(),
+        coin3,
+        scenario.ctx(),
+    );
+
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
 
     account.confirm_execution(executable);
 
@@ -323,16 +373,22 @@ fun test_transfer_different_types() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
+            let mut action_data1 = bcs::to_bytes(&RECIPIENT);
+            let resource_name1 = b"sui_coin";
+            vector::append(&mut action_data1, bcs::to_bytes(&resource_name1));
             intents::add_typed_action(
                 intent,
                 acc_transfer::transfer_object(),
-                bcs::to_bytes(&RECIPIENT),
+                action_data1,
                 iw,
             );
+            let mut action_data2 = bcs::to_bytes(&RECIPIENT);
+            let resource_name2 = b"test_coin";
+            vector::append(&mut action_data2, bcs::to_bytes(&resource_name2));
             intents::add_typed_action(
                 intent,
                 acc_transfer::transfer_object(),
-                bcs::to_bytes(&RECIPIENT),
+                action_data2,
                 iw,
             );
         },
@@ -351,12 +407,21 @@ fun test_transfer_different_types() {
     let sui_coin = coin::mint_for_testing<SUI>(100, scenario.ctx());
     let test_coin = coin::mint_for_testing<TEST_COIN>(500, scenario.ctx());
 
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, sui_coin, TransferIntent());
-    acc_transfer::do_transfer<Outcome, Coin<TEST_COIN>, _>(
-        &mut executable,
-        test_coin,
-        TransferIntent(),
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"sui_coin".to_string(),
+        sui_coin,
+        scenario.ctx(),
     );
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"test_coin".to_string(),
+        test_coin,
+        scenario.ctx(),
+    );
+
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
+    acc_transfer::do_init_transfer<Outcome, Coin<TEST_COIN>, _>(&mut executable, TransferIntent());
 
     account.confirm_execution(executable);
 
@@ -414,7 +479,9 @@ fun test_delete_transfer_action() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&RECIPIENT);
+            let mut action_data = bcs::to_bytes(&RECIPIENT);
+            let resource_name = b"transfer_coin";
+            vector::append(&mut action_data, bcs::to_bytes(&resource_name));
             intents::add_typed_action(intent, acc_transfer::transfer_object(), action_data, iw);
         },
     );
@@ -430,7 +497,13 @@ fun test_delete_transfer_action() {
     );
 
     let coin = coin::mint_for_testing<SUI>(50, scenario.ctx());
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, coin, TransferIntent());
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"transfer_coin".to_string(),
+        coin,
+        scenario.ctx(),
+    );
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
     account.confirm_execution(executable);
 
     // Now the intent has no more execution times and can be destroyed
@@ -466,17 +539,25 @@ fun test_transfer_mixed_with_sender() {
         TransferIntent(),
         scenario.ctx(),
         |intent, iw| {
+            let mut action_data1 = bcs::to_bytes(&RECIPIENT);
+            let resource_name1 = b"coin1";
+            vector::append(&mut action_data1, bcs::to_bytes(&resource_name1));
             intents::add_typed_action(
                 intent,
                 acc_transfer::transfer_object(),
-                bcs::to_bytes(&RECIPIENT),
+                action_data1,
                 iw,
             );
-            intents::add_typed_action(intent, acc_transfer::transfer_object(), vector::empty(), iw);
+            let resource_name2 = b"coin2";
+            let action_data2 = bcs::to_bytes(&resource_name2);
+            intents::add_typed_action(intent, acc_transfer::transfer_to_sender(), action_data2, iw);
+            let mut action_data3 = bcs::to_bytes(&@0xBEEF);
+            let resource_name3 = b"coin3";
+            vector::append(&mut action_data3, bcs::to_bytes(&resource_name3));
             intents::add_typed_action(
                 intent,
                 acc_transfer::transfer_object(),
-                bcs::to_bytes(&@0xBEEF),
+                action_data3,
                 iw,
             );
         },
@@ -495,14 +576,32 @@ fun test_transfer_mixed_with_sender() {
     let coin2 = coin::mint_for_testing<SUI>(222, scenario.ctx());
     let coin3 = coin::mint_for_testing<SUI>(333, scenario.ctx());
 
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, coin1, TransferIntent());
-    acc_transfer::do_transfer_to_sender<Outcome, Coin<SUI>, _>(
-        &mut executable,
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"coin1".to_string(),
+        coin1,
+        scenario.ctx(),
+    );
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"coin2".to_string(),
         coin2,
+        scenario.ctx(),
+    );
+    executable_resources::provide_object(
+        executable::uid_mut(&mut executable),
+        b"coin3".to_string(),
+        coin3,
+        scenario.ctx(),
+    );
+
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
+    acc_transfer::do_init_transfer_to_sender<Outcome, Coin<SUI>, _>(
+        &mut executable,
         TransferIntent(),
         scenario.ctx(),
     );
-    acc_transfer::do_transfer<Outcome, Coin<SUI>, _>(&mut executable, coin3, TransferIntent());
+    acc_transfer::do_init_transfer<Outcome, Coin<SUI>, _>(&mut executable, TransferIntent());
 
     account.confirm_execution(executable);
 

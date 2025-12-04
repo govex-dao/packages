@@ -30,12 +30,21 @@ use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::object;
 use sui::test_scenario as ts;
+use sui::test_utils;
+
+// Test LP type
+public struct LP has drop {}
 
 // === Constants ===
 const DEFAULT_FEE_BPS: u16 = 30; // 0.3%
 const PRICE_SCALE: u128 = 1_000_000_000_000; // 1e12
 
 // === Test Helpers ===
+
+#[test_only]
+fun create_lp_treasury(ctx: &mut TxContext): coin::TreasuryCap<LP> {
+    coin::create_treasury_cap_for_testing<LP>(ctx)
+}
 
 #[test_only]
 fun create_test_clock(timestamp_ms: u64, ctx: &mut TxContext): Clock {
@@ -50,8 +59,10 @@ fun create_test_spot_pool(
     stable_reserve: u64,
     _clock: &Clock,
     ctx: &mut TxContext,
-): UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B> {
-    unified_spot_pool::create_pool_for_testing(
+): UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B, LP> {
+    let lp_treasury = create_lp_treasury(ctx);
+    unified_spot_pool::create_pool_for_testing<TEST_COIN_A, TEST_COIN_B, LP>(
+        lp_treasury,
         asset_reserve,
         stable_reserve,
         (DEFAULT_FEE_BPS as u64),
@@ -178,7 +189,7 @@ fun get_all_pool_k_values(escrow: &TokenEscrow<TEST_COIN_A, TEST_COIN_B>): vecto
 }
 
 #[test_only]
-fun get_spot_k_value(spot_pool: &UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B>): u128 {
+fun get_spot_k_value(spot_pool: &UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B, LP>): u128 {
     let (a, s) = unified_spot_pool::get_reserves(spot_pool);
     (a as u128) * (s as u128)
 }

@@ -79,8 +79,8 @@ const STATE_TRADING: u8 = 2; // Must match proposal.move
 /// }
 /// tx.transferObjects([balance], user); // Final: 1 NFT with all dust!
 /// ```
-public fun swap_spot_stable_to_asset<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+public fun swap_spot_stable_to_asset<AssetType, StableType, LPType>(
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     mut stable_in: Coin<StableType>,
@@ -206,8 +206,8 @@ public fun swap_spot_stable_to_asset<AssetType, StableType>(
 /// }
 /// tx.transferObjects([balance], user); // Final: 1 NFT with all dust!
 /// ```
-public fun swap_spot_asset_to_stable<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+public fun swap_spot_asset_to_stable<AssetType, StableType, LPType>(
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     mut asset_in: Coin<AssetType>,
@@ -509,9 +509,9 @@ public fun swap_in_batch<AssetType, StableType, InputCoin, OutputCoin>(
 ///   arguments: [batch, spot_pool, proposal, escrow, session, recipient, clock]
 /// });
 /// ```
-public fun finalize_conditional_swaps<AssetType, StableType>(
+public fun finalize_conditional_swaps<AssetType, StableType, LPType>(
     batch: ConditionalSwapBatch<AssetType, StableType>,
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     _proposal: &mut Proposal<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     session: swap_core::SwapSession,

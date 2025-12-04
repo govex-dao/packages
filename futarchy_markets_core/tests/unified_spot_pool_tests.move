@@ -1,15 +1,15 @@
 #[test_only]
 module futarchy_markets_core::unified_spot_pool_tests;
 
-use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool, LPToken};
-use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
+use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_one_shot_utils::test_coin_a::TEST_COIN_A;
 use futarchy_one_shot_utils::test_coin_b::TEST_COIN_B;
-use std::option;
-use sui::balance;
 use sui::clock::{Self, Clock};
-use sui::coin::{Self, Coin};
+use sui::coin::{Self, Coin, TreasuryCap};
 use sui::test_scenario as ts;
+
+// === Test LP Coin Type ===
+public struct TEST_LP has drop {}
 
 // === Constants ===
 const INITIAL_LIQUIDITY: u64 = 100_000_000; // 100 tokens
@@ -24,192 +24,9 @@ fun create_test_clock(timestamp_ms: u64, ctx: &mut TxContext): Clock {
     clock
 }
 
-// === Pool Creation Tests ===
-
-#[test]
-fun test_new_basic_pool() {
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(1000000, ctx);
-
-    let pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
-        DEFAULT_FEE_BPS,
-        option::none(),
-        5000, // oracle_conditional_threshold_bps (50%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Verify initial state
-    let (asset_reserve, stable_reserve) = unified_spot_pool::get_reserves(&pool);
-    assert!(asset_reserve == 0, 0);
-    assert!(stable_reserve == 0, 1);
-    assert!(unified_spot_pool::lp_supply(&pool) == 0, 2);
-    assert!(unified_spot_pool::is_aggregator_enabled(&pool), 3); // Aggregator is now always enabled
-
-    // Cleanup
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_new_with_aggregator() {
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(1000000, ctx);
-
-    let pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        DEFAULT_FEE_BPS,
-        option::none(),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Verify aggregator is enabled
-    assert!(unified_spot_pool::is_aggregator_enabled(&pool), 0);
-    assert!(!unified_spot_pool::has_active_escrow(&pool), 1);
-
-    // Cleanup
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-// === LP Token Tests ===
-
-#[test]
-fun test_lp_token_amount() {
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(1000000, ctx);
-
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
-        DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
-        ctx,
-    );
-
-    // Add initial liquidity
-    let asset_coin = coin::mint_for_testing<TEST_COIN_A>(INITIAL_LIQUIDITY, ctx);
-    let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
-
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_coin,
-        stable_coin,
-        0, // min_lp_out
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Verify LP token amount
-    assert!(unified_spot_pool::lp_token_amount(&lp_token) > 0, 0);
-
-    // Cleanup
-    clock::destroy_for_testing(clock);
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_lp_token_unlocked() {
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(1000000, ctx);
-
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
-        DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
-        ctx,
-    );
-
-    let asset_coin = coin::mint_for_testing<TEST_COIN_A>(INITIAL_LIQUIDITY, ctx);
-    let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
-
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_coin,
-        stable_coin,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // LP token should be unlocked by default (no proposal lock)
-    assert!(!unified_spot_pool::is_locked_in_proposal(&lp_token), 0);
-    assert!(option::is_none(&unified_spot_pool::get_locked_proposal(&lp_token)), 1);
-    assert!(!unified_spot_pool::is_withdraw_mode(&lp_token), 2);
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_lp_token_proposal_lock() {
-    use sui::object;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(1000000, ctx);
-
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
-        DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
-        ctx,
-    );
-
-    let asset_coin = coin::mint_for_testing<TEST_COIN_A>(INITIAL_LIQUIDITY, ctx);
-    let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
-
-    let (mut lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_coin,
-        stable_coin,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Create a fake proposal ID
-    let proposal_id = object::id_from_address(@0xABCD);
-
-    // Lock in proposal
-    unified_spot_pool::lock_in_proposal_for_testing(&mut lp_token, proposal_id);
-
-    // Verify lock
-    assert!(unified_spot_pool::is_locked_in_proposal(&lp_token), 0);
-    assert!(option::is_some(&unified_spot_pool::get_locked_proposal(&lp_token)), 1);
-    assert!(*option::borrow(&unified_spot_pool::get_locked_proposal(&lp_token)) == proposal_id, 2);
-
-    // Unlock from proposal
-    unified_spot_pool::unlock_from_proposal_for_testing(&mut lp_token);
-    assert!(!unified_spot_pool::is_locked_in_proposal(&lp_token), 3);
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
+#[test_only]
+fun create_test_lp_treasury(ctx: &mut TxContext): TreasuryCap<TEST_LP> {
+    coin::create_treasury_cap_for_testing<TEST_LP>(ctx)
 }
 
 // === Add Liquidity Tests ===
@@ -219,43 +36,41 @@ fun test_add_liquidity_initial() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     let asset_coin = coin::mint_for_testing<TEST_COIN_A>(INITIAL_LIQUIDITY, ctx);
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
 
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Verify reserves updated
     let (asset_reserve, stable_reserve) = unified_spot_pool::get_reserves(&pool);
     assert!(asset_reserve == INITIAL_LIQUIDITY, 0);
     assert!(stable_reserve == INITIAL_LIQUIDITY, 1);
 
-    // Verify LP token minted
-    let lp_amount = unified_spot_pool::lp_token_amount(&lp_token);
+    // Verify LP coin minted (using coin::value instead of lp_token_amount)
+    let lp_amount = coin::value(&lp_coin);
     assert!(lp_amount > 0, 2);
 
     // Verify LP supply increased
     assert!(unified_spot_pool::lp_supply(&pool) > 0, 3);
 
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    // Cleanup - burn LP coin instead of destroy_lp_token_for_testing
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -265,45 +80,42 @@ fun test_add_liquidity_initial() {
 fun test_add_liquidity_proportional() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Initial liquidity
     let asset1 = coin::mint_for_testing<TEST_COIN_A>(100_000, ctx);
     let stable1 = coin::mint_for_testing<TEST_COIN_B>(100_000, ctx);
-    let (lp1, _excess_asset1, _excess_stable1) = unified_spot_pool::add_liquidity(
+    let (lp1, excess_asset1, excess_stable1) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset1,
         stable1,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset1);
-    coin::burn_for_testing(_excess_stable1);
+    coin::burn_for_testing(excess_asset1);
+    coin::burn_for_testing(excess_stable1);
 
     let initial_lp_supply = unified_spot_pool::lp_supply(&pool);
 
     // Add more liquidity (proportional)
     let asset2 = coin::mint_for_testing<TEST_COIN_A>(50_000, ctx);
     let stable2 = coin::mint_for_testing<TEST_COIN_B>(50_000, ctx);
-    let (lp2, _excess_asset2, _excess_stable2) = unified_spot_pool::add_liquidity(
+    let (lp2, excess_asset2, excess_stable2) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset2,
         stable2,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset2);
-    coin::burn_for_testing(_excess_stable2);
+    coin::burn_for_testing(excess_asset2);
+    coin::burn_for_testing(excess_stable2);
 
     // Verify reserves
     let (asset_reserve, stable_reserve) = unified_spot_pool::get_reserves(&pool);
@@ -314,8 +126,8 @@ fun test_add_liquidity_proportional() {
     assert!(unified_spot_pool::lp_supply(&pool) > initial_lp_supply, 2);
 
     // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp1);
-    unified_spot_pool::destroy_lp_token_for_testing(lp2);
+    coin::burn_for_testing(lp1);
+    coin::burn_for_testing(lp2);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -326,32 +138,29 @@ fun test_add_liquidity_proportional() {
 fun test_add_liquidity_zero_amount() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     let asset_coin = coin::zero<TEST_COIN_A>(ctx);
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
 
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -362,15 +171,12 @@ fun test_add_liquidity_zero_amount() {
 fun test_add_liquidity_below_minimum() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
@@ -378,17 +184,17 @@ fun test_add_liquidity_below_minimum() {
     let asset_coin = coin::mint_for_testing<TEST_COIN_A>(10, ctx);
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(10, ctx);
 
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -399,15 +205,12 @@ fun test_add_liquidity_below_minimum() {
 fun test_add_liquidity_slippage_exceeded() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
@@ -415,17 +218,17 @@ fun test_add_liquidity_slippage_exceeded() {
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
 
     // Set impossibly high min_lp_out
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         999_999_999_999, // Impossibly high
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -437,35 +240,32 @@ fun test_add_liquidity_slippage_exceeded() {
 fun test_remove_liquidity_success() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Add liquidity
     let asset_coin = coin::mint_for_testing<TEST_COIN_A>(INITIAL_LIQUIDITY, ctx);
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(INITIAL_LIQUIDITY, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
-    // Remove liquidity
+    // Remove liquidity (LP coin is burned inside remove_liquidity)
     let (asset_out, stable_out) = unified_spot_pool::remove_liquidity(
         &mut pool,
-        lp_token,
+        lp_coin,
         0, // min_asset_out
         0, // min_stable_out
         ctx,
@@ -483,46 +283,6 @@ fun test_remove_liquidity_success() {
     ts::end(scenario);
 }
 
-#[test]
-#[expected_failure(abort_code = 4)] // EZeroAmount
-fun test_remove_liquidity_zero_amount() {
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-
-    let clock = create_test_clock(0, ctx);
-
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
-        DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
-        ctx,
-    );
-
-    // Create LP token with zero amount (not locked in proposal, not in withdraw mode)
-    let lp_token = unified_spot_pool::create_lp_token_for_testing<TEST_COIN_A, TEST_COIN_B>(
-        0, // amount
-        option::none(), // locked_in_proposal
-        false, // withdraw_mode
-        ctx,
-    );
-
-    let (asset_out, stable_out) = unified_spot_pool::remove_liquidity(
-        &mut pool,
-        lp_token,
-        0,
-        0,
-        ctx,
-    );
-
-    coin::burn_for_testing(asset_out);
-    coin::burn_for_testing(stable_out);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
 // === Swap Tests ===
 
 #[test]
@@ -530,28 +290,26 @@ fun test_swap_asset_for_stable() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
     let clock = create_test_clock(1000000, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Add liquidity
     let asset_liq = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_liq = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_liq,
         stable_liq,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Swap asset for stable
     let asset_in = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
@@ -568,7 +326,7 @@ fun test_swap_asset_for_stable() {
 
     // Cleanup
     coin::burn_for_testing(stable_out);
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -579,28 +337,26 @@ fun test_swap_stable_for_asset() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
     let clock = create_test_clock(1000000, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Add liquidity
     let asset_liq = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_liq = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_liq,
         stable_liq,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Swap stable for asset
     let stable_in = coin::mint_for_testing<TEST_COIN_B>(10_000, ctx);
@@ -617,7 +373,7 @@ fun test_swap_stable_for_asset() {
 
     // Cleanup
     coin::burn_for_testing(asset_out);
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -629,35 +385,33 @@ fun test_swap_zero_amount() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
     let clock = create_test_clock(1000000, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Add liquidity
     let asset_liq = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_liq = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_liq,
         stable_liq,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Try to swap zero amount
     let asset_in = coin::zero<TEST_COIN_A>(ctx);
     let stable_out = unified_spot_pool::swap_asset_for_stable(&mut pool, asset_in, 0, &clock, ctx);
 
     coin::burn_for_testing(stable_out);
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -669,28 +423,26 @@ fun test_swap_slippage_exceeded() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
     let clock = create_test_clock(1000000, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Add liquidity
     let asset_liq = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_liq = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_liq,
         stable_liq,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Swap with impossibly high min_out
     let asset_in = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
@@ -703,7 +455,7 @@ fun test_swap_slippage_exceeded() {
     );
 
     coin::burn_for_testing(stable_out);
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -715,15 +467,12 @@ fun test_swap_slippage_exceeded() {
 fun test_get_reserves() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
@@ -735,15 +484,15 @@ fun test_get_reserves() {
     // Add liquidity
     let asset_coin = coin::mint_for_testing<TEST_COIN_A>(50_000, ctx);
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(75_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Check reserves updated
     let (asset_reserve2, stable_reserve2) = unified_spot_pool::get_reserves(&pool);
@@ -751,7 +500,7 @@ fun test_get_reserves() {
     assert!(stable_reserve2 == 75_000, 3);
 
     // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -761,15 +510,12 @@ fun test_get_reserves() {
 fun test_get_spot_price() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
@@ -779,22 +525,22 @@ fun test_get_spot_price() {
     // Add liquidity (1:1 ratio)
     let asset_coin = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Price should be approximately 1:1 (with precision)
     let price = unified_spot_pool::get_spot_price(&pool);
     assert!(price > 0, 1);
 
     // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -804,30 +550,27 @@ fun test_get_spot_price() {
 fun test_simulate_swap() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
-
     let clock = create_test_clock(0, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Add liquidity
     let asset_coin = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable_coin = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_coin,
         stable_coin,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Simulate swap asset to stable
     let simulated_out = unified_spot_pool::simulate_swap_asset_to_stable(&pool, 10_000);
@@ -838,7 +581,7 @@ fun test_simulate_swap() {
     assert!(simulated_out2 > 0, 1);
 
     // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
@@ -851,29 +594,27 @@ fun test_complete_pool_lifecycle() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
     let clock = create_test_clock(1000000, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
     // 1. Create pool
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // 2. Add initial liquidity
     let asset1 = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
     let stable1 = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp1, _excess_asset1, _excess_stable1) = unified_spot_pool::add_liquidity(
+    let (lp1, excess_asset1, excess_stable1) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset1,
         stable1,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset1);
-    coin::burn_for_testing(_excess_stable1);
+    coin::burn_for_testing(excess_asset1);
+    coin::burn_for_testing(excess_stable1);
 
     // 3. Perform swaps
     let asset_in = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
@@ -883,663 +624,55 @@ fun test_complete_pool_lifecycle() {
     // 4. Add more liquidity
     let asset2 = coin::mint_for_testing<TEST_COIN_A>(500_000, ctx);
     let stable2 = coin::mint_for_testing<TEST_COIN_B>(500_000, ctx);
-    let (lp2, _excess_asset2, _excess_stable2) = unified_spot_pool::add_liquidity(
+    let (lp2, excess_asset2, excess_stable2) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset2,
         stable2,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset2);
-    coin::burn_for_testing(_excess_stable2);
+    coin::burn_for_testing(excess_asset2);
+    coin::burn_for_testing(excess_stable2);
 
-    // 5. Remove liquidity
+    // 5. Remove liquidity (lp2 is burned inside)
     let (asset_out, stable_out) = unified_spot_pool::remove_liquidity(&mut pool, lp2, 0, 0, ctx);
     coin::burn_for_testing(asset_out);
     coin::burn_for_testing(stable_out);
 
     // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp1);
+    coin::burn_for_testing(lp1);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);
 }
 
-// === Fee Schedule Tests ===
-
-#[test]
-fun test_fee_schedule_basic_decay() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let mut clock = create_test_clock(0, ctx);
-
-    // Create fee schedule: 99% → 0.3% over 2 hours
-    let schedule = fee_scheduler::new_schedule(9900, 7_200_000);
-
-    let mut pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        30, // 0.3% final fee
-        option::some(schedule),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Swap at t=0 (99% fee)
-    let asset_in = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
-    let stable_out = unified_spot_pool::swap_asset_for_stable(&mut pool, asset_in, 0, &clock, ctx);
-
-    // At 99% fee, output should be ~1% of normal (9900 bps fee vs 30 bps)
-    let initial_output = coin::value(&stable_out);
-    assert!(initial_output > 0, 0);
-    coin::burn_for_testing(stable_out);
-
-    // Advance to t=2 hours (fee should be 0.3%)
-    clock::increment_for_testing(&mut clock, 7_200_000);
-
-    let asset_in2 = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
-    let stable_out2 = unified_spot_pool::swap_asset_for_stable(
-        &mut pool,
-        asset_in2,
-        0,
-        &clock,
-        ctx,
-    );
-    let final_output = coin::value(&stable_out2);
-
-    // Final output should be MUCH higher than initial (lower fee)
-    assert!(final_output > initial_output * 50, 1); // At least 50x more output
-    coin::burn_for_testing(stable_out2);
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_protocol_fee_collection_during_mev_protection() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(0, ctx);
-
-    // Create fee schedule: 99% → 0.3% over 2 hours
-    let schedule = fee_scheduler::new_schedule(9900, 7_200_000);
-
-    let mut pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        30, // 0.3% final fee
-        option::some(schedule),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(10_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(10_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Check initial protocol fees (should be zero)
-    let (initial_asset_fees, initial_stable_fees) = unified_spot_pool::get_protocol_fee_amounts(
-        &pool,
-    );
-    assert!(initial_asset_fees == 0, 0);
-    assert!(initial_stable_fees == 0, 1);
-
-    // Swap at t=0 with 99% MEV fee
-    let swap_amount = 1_000_000;
-    let asset_in = coin::mint_for_testing<TEST_COIN_A>(swap_amount, ctx);
-    let stable_out = unified_spot_pool::swap_asset_for_stable(&mut pool, asset_in, 0, &clock, ctx);
-    coin::burn_for_testing(stable_out);
-
-    // Check protocol fees collected
-    let (asset_fees_after, stable_fees_after) = unified_spot_pool::get_protocol_fee_amounts(&pool);
-
-    // Protocol should have collected 10% of the 99% fee in AssetType (swapped-in token)
-    // Total fee = ~990,000 (99% of 1M), protocol share = ~99,000 (10% of fee)
-    assert!(asset_fees_after > 90_000, 2); // At least 90k (accounting for AMM math)
-    assert!(asset_fees_after < 110_000, 3); // But less than 110k
-    assert!(stable_fees_after == 0, 4); // No stable fees yet (swapped in asset)
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_protocol_fee_collection_both_directions() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(0, ctx);
-
-    // Create fee schedule: 99% → 0.3% over 2 hours
-    let schedule = fee_scheduler::new_schedule(5000, 3_600_000);
-
-    let mut pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        30,
-        option::some(schedule),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Enable fee schedule: 50% → 0.3% over 1 hour
-    let schedule = fee_scheduler::new_schedule(5000, 3_600_000);
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(10_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(10_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Swap asset → stable
-    let asset_in = coin::mint_for_testing<TEST_COIN_A>(100_000, ctx);
-    let stable_out = unified_spot_pool::swap_asset_for_stable(&mut pool, asset_in, 0, &clock, ctx);
-    coin::burn_for_testing(stable_out);
-
-    // Check fees (should be in asset only)
-    let (asset_fees_1, stable_fees_1) = unified_spot_pool::get_protocol_fee_amounts(&pool);
-    assert!(asset_fees_1 > 0, 0);
-    assert!(stable_fees_1 == 0, 1);
-
-    // Swap stable → asset
-    let stable_in = coin::mint_for_testing<TEST_COIN_B>(100_000, ctx);
-    let asset_out = unified_spot_pool::swap_stable_for_asset(&mut pool, stable_in, 0, &clock, ctx);
-    coin::burn_for_testing(asset_out);
-
-    // Check fees (should have both now)
-    let (asset_fees_2, stable_fees_2) = unified_spot_pool::get_protocol_fee_amounts(&pool);
-    assert!(asset_fees_2 == asset_fees_1, 2); // Asset fees unchanged
-    assert!(stable_fees_2 > 0, 3); // Stable fees collected
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_protocol_fee_split_90_10() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(0, ctx);
-
-    let mut pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        1000, // 10% base fee for easier math
-        option::none(),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // No MEV schedule - just test base fee split
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(10_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(10_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    let initial_lp_value = unified_spot_pool::lp_token_amount(&lp_token);
-
-    // Swap with 10% fee
-    let swap_amount = 1_000_000;
-    let asset_in = coin::mint_for_testing<TEST_COIN_A>(swap_amount, ctx);
-    let stable_out = unified_spot_pool::swap_asset_for_stable(&mut pool, asset_in, 0, &clock, ctx);
-    coin::burn_for_testing(stable_out);
-
-    // Total fee = ~100,000 (10% of 1M)
-    // LP share = 90,000 (90%)
-    // Protocol share = 10,000 (10%)
-
-    let (protocol_asset_fees, protocol_stable_fees) = unified_spot_pool::get_protocol_fee_amounts(
-        &pool,
-    );
-
-    // Protocol should have ~10% of total fee
-    assert!(protocol_asset_fees >= 9_000, 0); // At least 9k
-    assert!(protocol_asset_fees <= 11_000, 1); // At most 11k
-
-    // LPs should have received ~90% of fee as increased reserves
-    let (final_asset_reserve, _) = unified_spot_pool::get_reserves(&pool);
-
-    // Total assets in pool = initial + swap_amount
-    // Protocol fees are taken out separately, so:
-    // final_asset_reserve = initial + swap_amount - protocol_fees
-    // LP fee is the implicit increase from the swap
-    // Since reserves show total after protocol fee extraction:
-    let total_fee = protocol_asset_fees * 10; // Protocol is 10%, so total = protocol * 10
-    let lp_fee_received = total_fee - protocol_asset_fees; // LP gets the rest (90%)
-
-    // LP fees should be ~9x protocol fees (90% vs 10%)
-    assert!(lp_fee_received >= protocol_asset_fees * 8, 2); // At least 8x
-    assert!(lp_fee_received <= protocol_asset_fees * 10, 3); // At most 10x
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_no_protocol_fee_without_aggregator() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(0, ctx);
-
-    // Create pool WITHOUT aggregator
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
-        30,
-        option::none(),
-        5000,
-        50,
-        &clock,
-        ctx,
-    );
-
-    // Enable fee schedule
-    let schedule = fee_scheduler::new_schedule(9900, 7_200_000);
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Swap with 99% MEV fee
-    let asset_in = coin::mint_for_testing<TEST_COIN_A>(100_000, ctx);
-    let stable_out = unified_spot_pool::swap_asset_for_stable(&mut pool, asset_in, 0, &clock, ctx);
-    coin::burn_for_testing(stable_out);
-
-    // Protocol fees should still be zero (no aggregator = all fees to LPs)
-    // NOTE: Pool without aggregator doesn't track protocol fees
-    // All 99% fee goes to LPs
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_fee_decay_linear_progression() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let mut clock = create_test_clock(0, ctx);
-
-    // Create fee schedule: 9900 bps (99%) → 100 bps (1%) over 10 hours
-    let schedule = fee_scheduler::new_schedule(9900, 36_000_000);
-
-    let mut pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        100, // 1% final fee
-        option::some(schedule),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(100_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(100_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Test at 0%, 25%, 50%, 75%, 100% of duration
-    let test_times = vector[0, 9_000_000, 18_000_000, 27_000_000, 36_000_000];
-    // Expected fees: ~9900, ~7475, ~5050, ~2525, ~100 bps
-
-    let mut prev_output = 0u64;
-    let mut i = 0;
-    while (i < 5) {
-        let time = *vector::borrow(&test_times, i);
-        clock::set_for_testing(&mut clock, time);
-
-        let asset_in = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
-        let stable_out = unified_spot_pool::swap_asset_for_stable(
-            &mut pool,
-            asset_in,
-            0,
-            &clock,
-            ctx,
-        );
-        let output = coin::value(&stable_out);
-
-        // Output should increase as fee decreases (linear decay)
-        if (i > 0) {
-            assert!(output > prev_output, i);
-        };
-
-        prev_output = output;
-        coin::burn_for_testing(stable_out);
-        i = i + 1;
-    };
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_protocol_fee_accumulation_multiple_swaps() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(0, ctx);
-
-    // Create fee schedule: 99% → 0.3% over 2 hours
-    let schedule = fee_scheduler::new_schedule(5000, 3_600_000); // 50% → 0.3%
-
-    let mut pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        30,
-        option::some(schedule),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Enable high MEV fee
-    let schedule = fee_scheduler::new_schedule(5000, 3_600_000); // 50% → 0.3%
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(100_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(100_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Perform 10 swaps and track fee accumulation
-    let mut prev_fees = 0u64;
-    let mut i = 0;
-    while (i < 10) {
-        let asset_in = coin::mint_for_testing<TEST_COIN_A>(100_000, ctx);
-        let stable_out = unified_spot_pool::swap_asset_for_stable(
-            &mut pool,
-            asset_in,
-            0,
-            &clock,
-            ctx,
-        );
-        coin::burn_for_testing(stable_out);
-
-        let (current_fees, _) = unified_spot_pool::get_protocol_fee_amounts(&pool);
-
-        // Fees should monotonically increase
-        assert!(current_fees > prev_fees, i);
-        prev_fees = current_fees;
-
-        i = i + 1;
-    };
-
-    // Final protocol fees should be substantial
-    let (final_asset_fees, _) = unified_spot_pool::get_protocol_fee_amounts(&pool);
-    assert!(final_asset_fees > 40_000, 0); // At least 40k from 10 swaps
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_zero_duration_skips_mev_protection() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(0, ctx);
-
-    // Create fee schedule: 99% → 0.3% over 2 hours
-    let schedule = fee_scheduler::new_schedule(9900, 0);
-
-    let mut pool = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        30, // 0.3% final fee
-        option::none(),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Zero duration = skip MEV, use final fee immediately
-    let schedule = fee_scheduler::new_schedule(9900, 0);
-
-    // Add liquidity
-    let asset_liq = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
-    let stable_liq = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
-        &mut pool,
-        asset_liq,
-        stable_liq,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
-
-    // Swap at t=0 should use final fee (0.3%), not initial (99%)
-    let asset_in = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
-    let stable_out = unified_spot_pool::swap_asset_for_stable(&mut pool, asset_in, 0, &clock, ctx);
-
-    let output = coin::value(&stable_out);
-
-    // Output should be high (low fee), not low (high fee)
-    // At 0.3% fee from 10k input, output should be ~9970
-    assert!(output > 9_000, 0); // Much more than if 99% fee was applied
-
-    coin::burn_for_testing(stable_out);
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
-    unified_spot_pool::destroy_for_testing(pool);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-#[test]
-fun test_fee_schedule_clear() {
-    use futarchy_markets_primitives::fee_scheduler;
-
-    let mut scenario = ts::begin(@0x1);
-    let ctx = ts::ctx(&mut scenario);
-    let clock = create_test_clock(0, ctx);
-
-    // Create pool WITH fee schedule (high initial fee)
-    let schedule = fee_scheduler::new_schedule(9900, 7_200_000);
-    let mut pool_with_schedule = unified_spot_pool::new_with_aggregator<TEST_COIN_A, TEST_COIN_B>(
-        30,
-        option::some(schedule),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Create pool WITHOUT fee schedule (uses base fee only)
-    let mut pool_without_schedule = unified_spot_pool::new_with_aggregator<
-        TEST_COIN_A,
-        TEST_COIN_B,
-    >(
-        30,
-        option::none(),
-        8000, // oracle_conditional_threshold_bps (80%)
-        50, // conditional_liquidity_ratio_percent (50%)
-        &clock,
-        ctx,
-    );
-
-    // Add liquidity to both pools
-    let asset_liq1 = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
-    let stable_liq1 = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token1, _excess_asset1, _excess_stable1) = unified_spot_pool::add_liquidity(
-        &mut pool_with_schedule,
-        asset_liq1,
-        stable_liq1,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset1);
-    coin::burn_for_testing(_excess_stable1);
-
-    let asset_liq2 = coin::mint_for_testing<TEST_COIN_A>(1_000_000, ctx);
-    let stable_liq2 = coin::mint_for_testing<TEST_COIN_B>(1_000_000, ctx);
-    let (lp_token2, _excess_asset2, _excess_stable2) = unified_spot_pool::add_liquidity(
-        &mut pool_without_schedule,
-        asset_liq2,
-        stable_liq2,
-        0,
-        ctx,
-    );
-    coin::burn_for_testing(_excess_asset2);
-    coin::burn_for_testing(_excess_stable2);
-
-    // Swap with high fee (pool with schedule)
-    let asset_in1 = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
-    let stable_out1 = unified_spot_pool::swap_asset_for_stable(
-        &mut pool_with_schedule,
-        asset_in1,
-        0,
-        &clock,
-        ctx,
-    );
-    let output1 = coin::value(&stable_out1);
-    coin::burn_for_testing(stable_out1);
-
-    // Swap with base fee only (pool without schedule)
-    let asset_in2 = coin::mint_for_testing<TEST_COIN_A>(10_000, ctx);
-    let stable_out2 = unified_spot_pool::swap_asset_for_stable(
-        &mut pool_without_schedule,
-        asset_in2,
-        0,
-        &clock,
-        ctx,
-    );
-    let output2 = coin::value(&stable_out2);
-
-    // Output should be much higher without fee schedule (lower fees)
-    assert!(output2 > output1 * 50, 0);
-
-    coin::burn_for_testing(stable_out2);
-
-    // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token1);
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token2);
-    unified_spot_pool::destroy_for_testing(pool_with_schedule);
-    unified_spot_pool::destroy_for_testing(pool_without_schedule);
-    clock::destroy_for_testing(clock);
-    ts::end(scenario);
-}
-
-// === Edge Cases ===
+// === Multiple Swaps Test ===
 
 #[test]
 fun test_multiple_swaps_same_direction() {
     let mut scenario = ts::begin(@0x1);
     let ctx = ts::ctx(&mut scenario);
     let clock = create_test_clock(1000000, ctx);
+    let lp_treasury = create_test_lp_treasury(ctx);
 
-    let mut pool = unified_spot_pool::new<TEST_COIN_A, TEST_COIN_B>(
+    let mut pool = unified_spot_pool::new_for_testing<TEST_COIN_A, TEST_COIN_B, TEST_LP>(
+        lp_treasury,
         DEFAULT_FEE_BPS,
-        option::none(),
-        5000,
-        50,
-        &clock,
         ctx,
     );
 
     // Add liquidity
     let asset_liq = coin::mint_for_testing<TEST_COIN_A>(10_000_000, ctx);
     let stable_liq = coin::mint_for_testing<TEST_COIN_B>(10_000_000, ctx);
-    let (lp_token, _excess_asset, _excess_stable) = unified_spot_pool::add_liquidity(
+    let (lp_coin, excess_asset, excess_stable) = unified_spot_pool::add_liquidity(
         &mut pool,
         asset_liq,
         stable_liq,
         0,
         ctx,
     );
-    coin::burn_for_testing(_excess_asset);
-    coin::burn_for_testing(_excess_stable);
+    coin::burn_for_testing(excess_asset);
+    coin::burn_for_testing(excess_stable);
 
     // Perform multiple swaps
     let mut i = 0;
@@ -1562,7 +695,7 @@ fun test_multiple_swaps_same_direction() {
     assert!(stable_reserve > 0, 1);
 
     // Cleanup
-    unified_spot_pool::destroy_lp_token_for_testing(lp_token);
+    coin::burn_for_testing(lp_coin);
     unified_spot_pool::destroy_for_testing(pool);
     clock::destroy_for_testing(clock);
     ts::end(scenario);

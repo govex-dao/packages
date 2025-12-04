@@ -22,7 +22,7 @@ use futarchy_core::dao_config::{
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
 use futarchy_markets_core::fee::{Self, FeeManager};
-use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
+// NOTE: Spot pool is now created via init actions (liquidity_init_actions), not here
 use futarchy_one_shot_utils::coin_registry;
 use futarchy_one_shot_utils::constants;
 use futarchy_types::signed::{Self as signed, SignedU128};
@@ -442,22 +442,9 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     // Create fee manager for this DAO
     let _dao_fee_manager_id = object::id(fee_manager); // Use factory fee manager for now
 
-    // Extract conditional_liquidity_ratio_percent from trading_params
-    let conditional_liquidity_ratio_percent = dao_config::conditional_liquidity_ratio_percent(
-        &trading_params,
-    );
-
-    // Create the unified spot pool with aggregator support enabled
-    // This provides TWAP oracle, registry, and full aggregator features
-    let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
-        amm_total_fee_bps, // Factory uses same fee for both conditional and spot
-        option::none(), // No launch fee schedule by default (can be added via init specs)
-        8000, // oracle_conditional_threshold_bps (80% threshold from trading params)
-        conditional_liquidity_ratio_percent, // From DAO config!
-        clock,
-        ctx,
-    );
-    let spot_pool_id = object::id(&spot_pool);
+    // NOTE: Spot pool is NOT created here - it will be created via init actions
+    // (liquidity_init_actions::init_create_pool) which allows proper LP coin type handling.
+    // The init_specs should include a CreatePool action with LP treasury cap.
 
     // Create the futarchy configuration
     let config = futarchy_config::new<AssetType, StableType>(
@@ -565,8 +552,8 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     // --- Phase 4: Final Atomic Sharing ---
     // All objects are shared at the end of the function. If any step above failed,
     // the transaction would abort and no objects would be created.
+    // NOTE: Spot pool is created and shared via init actions, not here.
     transfer::public_share_object(account);
-    unified_spot_pool::share(spot_pool);
 
     // --- Phase 5: Update Factory State and Emit Event ---
 
@@ -693,16 +680,8 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
     // Create fee manager for this DAO
     let _dao_fee_manager_id = object::id(fee_manager); // Use factory fee manager for now
 
-    // Create the unified spot pool with aggregator support enabled
-    let spot_pool = unified_spot_pool::new_with_aggregator<AssetType, StableType>(
-        amm_total_fee_bps, // Factory uses same fee for both conditional and spot
-        option::none(), // No launch fee schedule by default (can be added via init specs)
-        8000, // oracle_conditional_threshold_bps (80% threshold)
-        50, // conditional_liquidity_ratio_percent (50%)
-        clock,
-        ctx,
-    );
-    let spot_pool_id = object::id(&spot_pool);
+    // NOTE: Spot pool is NOT created here - it will be created via init actions
+    // (liquidity_init_actions::init_create_pool) which allows proper LP coin type handling.
 
     // Create the futarchy configuration (uses safe default: challenge enabled = true)
     let config = futarchy_config::new<AssetType, StableType>(
@@ -816,8 +795,8 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
     // --- Phase 4: Final Atomic Sharing ---
     // All objects are shared at the end of the function. If any step above failed,
     // the transaction would abort and no objects would be created.
+    // NOTE: Spot pool is created and shared via init actions, not here.
     transfer::public_share_object(account);
-    unified_spot_pool::share(spot_pool);
 
     // --- Phase 5: Update Factory State and Emit Event ---
 

@@ -403,10 +403,10 @@ public fun register_outcome_caps_with_escrow<
 /// - NO escrow backing needed for bootstrap reserves
 /// - Quantum split will add the REAL liquidity with proper escrow backing
 /// - Recombination only withdraws quantum-split amounts, NOT bootstrap reserves
-public fun create_conditional_amm_pools<AssetType, StableType>(
+public fun create_conditional_amm_pools<AssetType, StableType, LPType>(
     proposal: &Proposal<AssetType, StableType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {

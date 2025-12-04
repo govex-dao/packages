@@ -54,20 +54,15 @@ Complete list of all action types across all packages. Each action follows the 3
 
 ---
 
-## futarchy_actions (21 actions)
+## futarchy_actions (16 actions)
 
 ### Liquidity Actions
 | Marker | SDK ID | Description |
 |--------|--------|-------------|
-| `CreatePool` | `create_pool` | Create AMM pool (ResourceRequest pattern) |
-| `CreatePoolWithMint` | `create_pool_with_mint` | Create pool with minted tokens (deterministic) |
-| `UpdatePoolParams` | `update_pool_params` | Update pool parameters |
+| `CreatePoolWithMint` | `create_pool_with_mint` | Create pool with minted tokens (deterministic, launchpad only) |
 | `AddLiquidity` | `add_liquidity` | Add liquidity to pool (ResourceRequest pattern) |
-| `WithdrawLpToken` | `withdraw_lp_token` | Withdraw LP tokens (ResourceRequest pattern) |
 | `RemoveLiquidity` | `remove_liquidity` | Remove liquidity from pool (ResourceRequest pattern) |
 | `Swap` | `swap` | Execute swap (ResourceRequest pattern) |
-| `CollectFees` | `collect_fees` | Collect protocol fees |
-| `WithdrawFees` | `withdraw_fees` | Withdraw collected fees |
 
 ### Config Actions
 | Marker | SDK ID | Description |
@@ -142,10 +137,10 @@ Complete list of all action types across all packages. Each action follows the 3
 | Package | Action Count |
 |---------|--------------|
 | account_actions | 22 |
-| futarchy_actions | 21 |
+| futarchy_actions | 16 |
 | futarchy_governance_actions | 20 |
 | futarchy_oracle_actions | 2 |
-| **Total** | **65** |
+| **Total** | **60** |
 
 ---
 
@@ -153,13 +148,17 @@ Complete list of all action types across all packages. Each action follows the 3
 
 ### ResourceRequest Pattern Actions
 The following actions use the ResourceRequest (hot potato) pattern and require `fulfill_*` calls. They are **NOT** suitable for launchpad/proposal execution:
-- `CreatePool`
 - `AddLiquidity`
-- `WithdrawLpToken`
 - `RemoveLiquidity`
 - `Swap`
 
-For launchpad/proposal flows, use `CreatePoolWithMint` instead which follows the deterministic 3-layer pattern.
+For launchpad flows, use `CreatePoolWithMint` which follows the deterministic 3-layer pattern.
+
+### LP Token Changes
+LP tokens are now standard `Coin<LPType>` instead of a custom `LPToken` struct. This means:
+- LP tokens are stored in vaults like any other coin
+- No special `WithdrawLpToken` action needed - use standard vault operations
+- `UnifiedSpotPool` now has 3 type parameters: `<AssetType, StableType, LPType>`
 
 ### Deterministic Actions
 All other actions follow the deterministic 3-layer pattern:

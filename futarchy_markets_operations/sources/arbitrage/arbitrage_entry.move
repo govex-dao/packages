@@ -73,8 +73,8 @@ public struct SwapQuote has copy, drop {
 ///     // Arbitrage bot can capture quote.expected_arb_profit (approximately)
 /// }
 /// ```
-public fun get_quote_asset_to_stable<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun get_quote_asset_to_stable<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     amount_in: u64,
 ): SwapQuote {
@@ -109,8 +109,8 @@ public fun get_quote_asset_to_stable<AssetType, StableType>(
 }
 
 /// Get swap quote for stable → asset direction
-public fun get_quote_stable_to_asset<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun get_quote_stable_to_asset<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     amount_in: u64,
 ): SwapQuote {
@@ -164,8 +164,8 @@ public fun get_quote_stable_to_asset<AssetType, StableType>(
 ///     execute_arbitrage(...);
 /// }
 /// ```
-public fun simulate_pure_arbitrage<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun simulate_pure_arbitrage<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64,
 ): (u64, u128, bool) {
@@ -178,8 +178,8 @@ public fun simulate_pure_arbitrage<AssetType, StableType>(
 
 /// Simulate arbitrage in specific direction (asset→stable)
 /// NOTE: New code should use simulate_pure_arbitrage for bidirectional search
-public fun simulate_pure_arbitrage_asset_to_stable<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun simulate_pure_arbitrage_asset_to_stable<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64,
 ): (u64, u128) {
@@ -203,8 +203,8 @@ public fun simulate_pure_arbitrage_asset_to_stable<AssetType, StableType>(
 
 /// Simulate arbitrage in specific direction (stable→asset)
 /// NOTE: New code should use simulate_pure_arbitrage for bidirectional search
-public fun simulate_pure_arbitrage_stable_to_asset<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun simulate_pure_arbitrage_stable_to_asset<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64,
 ): (u64, u128) {

@@ -41,8 +41,8 @@ const PRICE_SCALE: u128 = 1_000_000_000_000; // 1e12
 /// ## Returns
 /// - `floor`: Minimum spot price that prevents Spot→Cond→Spot arbitrage
 /// - `ceiling`: Maximum spot price that prevents Cond→Spot→Cond arbitrage
-public fun compute_noarb_band<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_noarb_band<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     pools: &vector<LiquidityPool>,
 ): (u128, u128) {
     let n = pools.length();
@@ -112,8 +112,8 @@ public fun compute_noarb_band<AssetType, StableType>(
 /// ## Panics
 /// - If spot price is below floor (enables Spot→Cond→Spot arb)
 /// - If spot price is above ceiling (enables Cond→Spot→Cond arb)
-public fun ensure_spot_in_band<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun ensure_spot_in_band<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     pools: &vector<LiquidityPool>,
 ) {
     let p_spot = unified_spot_pool::get_spot_price(spot_pool); // Returns u128 on PRICE_SCALE
@@ -124,8 +124,8 @@ public fun ensure_spot_in_band<AssetType, StableType>(
 
 /// Check if spot price is within band without reverting
 /// Returns: (is_in_band, current_price, floor, ceiling)
-public fun check_spot_in_band<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun check_spot_in_band<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     pools: &vector<LiquidityPool>,
 ): (bool, u128, u128, u128) {
     let p_spot = unified_spot_pool::get_spot_price(spot_pool);

@@ -10,11 +10,10 @@
 module futarchy_markets_core::arbitrage_core;
 
 use futarchy_markets_core::arbitrage_math;
-use futarchy_markets_core::proposal::Proposal;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::market_state;
-use sui::balance::{Self, Balance};
+use sui::balance;
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 
@@ -25,8 +24,8 @@ const EInsufficientProfit: u64 = 1;
 
 /// Validate arbitrage is profitable before execution
 /// (Copied from arbitrage_executor.move lines 84-98)
-public fun validate_profitable<AssetType, StableType>(
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+public fun validate_profitable<AssetType, StableType, LPType>(
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     escrow: &TokenEscrow<AssetType, StableType>,
     arb_amount: u64,
     min_profit_out: u64,
@@ -48,8 +47,8 @@ public fun validate_profitable<AssetType, StableType>(
 
 /// Swap stable → asset in spot pool
 /// (Copied from arbitrage_executor.move lines 108-114)
-public fun spot_swap_stable_to_asset<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+public fun spot_swap_stable_to_asset<AssetType, StableType, LPType>(
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     stable_for_arb: Coin<StableType>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -65,8 +64,8 @@ public fun spot_swap_stable_to_asset<AssetType, StableType>(
 
 /// Swap asset → stable in spot pool
 /// (Copied from arbitrage_executor.move lines 386-392)
-public fun spot_swap_asset_to_stable<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+public fun spot_swap_asset_to_stable<AssetType, StableType, LPType>(
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     asset_for_arb: Coin<AssetType>,
     clock: &Clock,
     ctx: &mut TxContext,

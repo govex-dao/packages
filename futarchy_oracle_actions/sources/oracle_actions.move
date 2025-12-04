@@ -392,10 +392,10 @@ fun validate_claim_eligibility<AssetType, StableType>(
 }
 
 /// Validate price conditions (tier-specific + launchpad global minimum)
-fun validate_price_conditions<AssetType, StableType>(
+fun validate_price_conditions<AssetType, StableType, LPType>(
     grant: &PriceBasedMintGrant<AssetType, StableType>,
     tier: &PriceTier,
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditional_pools: &vector<LiquidityPool>,
     clock: &Clock,
 ) {
@@ -411,11 +411,11 @@ fun validate_price_conditions<AssetType, StableType>(
 
 /// Validate price conditions with pre-extracted launchpad enforcement
 /// This avoids borrow conflicts when tier is already mutably borrowed
-fun validate_price_conditions_with_enforcement<AssetType, StableType>(
+fun validate_price_conditions_with_enforcement<AssetType, StableType, LPType>(
     launchpad_enforcement: LaunchpadEnforcement,
     use_relative_pricing: bool,
     tier: &PriceTier,
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     _conditional_pools: &vector<LiquidityPool>,
     clock: &Clock,
 ) {
@@ -525,14 +525,14 @@ fun update_claim_tracking<AssetType, StableType>(
 /// - Claim tracking and tier execution
 ///
 /// Returns ResourceRequest that must be fulfilled in same PTB
-public fun claim_grant<AssetType, StableType>(
+public fun claim_grant<AssetType, StableType, LPType>(
     account: &Account,
     registry: &PackageRegistry,
     version: VersionWitness,
     grant: &mut PriceBasedMintGrant<AssetType, StableType>,
     tier_index: u64,
     claim_cap: &GrantClaimCap,
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditional_pools: &vector<LiquidityPool>,
     clock: &Clock,
     ctx: &mut TxContext,

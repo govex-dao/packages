@@ -3,111 +3,27 @@
 
 /// Simplified Quantum LP Management
 ///
-/// Single LP token level with DAO-configured liquidity splitting:
-/// - Withdrawals allowed if they don't violate minimum liquidity in conditional AMMs
-/// - If withdrawal blocked, LP auto-locked until proposal ends
-/// - Quantum split ratio controlled by DAO config (10-90%), with safety cap from conditional capacity
-/// - No manual split/redeem - all automatic
+/// With Coin-based LP tokens, management is simpler:
+/// - LP operations blocked during active proposals via pool.active_proposal_id
+/// - Quantum split ratio controlled by DAO config (10-90%)
+/// - No per-LP-token locking needed - pool-level blocking is sufficient
 module futarchy_markets_core::quantum_lp_manager;
 
-use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool, LPToken};
+use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm;
-use futarchy_markets_primitives::market_state::{Self, MarketState};
+use futarchy_markets_primitives::market_state;
 use futarchy_one_shot_utils::math;
 use sui::clock::Clock;
 use sui::coin;
-
-// === Constants ===
-const MINIMUM_LIQUIDITY_BUFFER: u64 = 1000; // Minimum liquidity to maintain in each AMM
-
-// === Withdrawal Check ===
-
-/// Check if LP withdrawal would violate minimum liquidity in ANY conditional AMM
-/// Returns (can_withdraw, min_violating_amm_index)
-public fun would_violate_minimum_liquidity<AssetType, StableType>(
-    lp_token: &LPToken<AssetType, StableType>,
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
-    market_state: &MarketState,
-): (bool, Option<u8>) {
-    let lp_amount = unified_spot_pool::lp_token_amount(lp_token);
-    let total_lp_supply = unified_spot_pool::lp_supply(spot_pool);
-
-    if (lp_amount == 0 || total_lp_supply == 0) {
-        return (true, option::none())
-    };
-
-    // Check each conditional AMM
-    let pools = market_state::borrow_amm_pools(market_state);
-    let mut i = 0;
-    while (i < pools.length()) {
-        let pool = &pools[i];
-        let (asset_reserve, stable_reserve) = conditional_amm::get_reserves(pool);
-        let cond_lp_supply = conditional_amm::get_lp_supply(pool);
-
-        if (cond_lp_supply > 0) {
-            // Calculate proportional withdrawal from this conditional AMM
-            let asset_out = math::mul_div_to_64(lp_amount, asset_reserve, cond_lp_supply);
-            let stable_out = math::mul_div_to_64(lp_amount, stable_reserve, cond_lp_supply);
-
-            // Check if remaining would be below minimum
-            let remaining_asset = asset_reserve - asset_out;
-            let remaining_stable = stable_reserve - stable_out;
-
-            if (
-                remaining_asset < MINIMUM_LIQUIDITY_BUFFER ||
-                remaining_stable < MINIMUM_LIQUIDITY_BUFFER
-            ) {
-                return (false, option::some((i as u8)))
-            };
-        };
-
-        i = i + 1;
-    };
-
-    (true, option::none())
-}
-
-/// Attempt to withdraw LP with minimum liquidity check
-/// If withdrawal would violate minimum, LP is locked in proposal and set to withdraw mode
-/// Returns: (can_withdraw_now, proposal_id_if_locked)
-public fun check_and_lock_if_needed<AssetType, StableType>(
-    lp_token: &mut LPToken<AssetType, StableType>,
-    spot_pool: &UnifiedSpotPool<AssetType, StableType>,
-    market_state: &MarketState,
-    proposal_id: ID,
-): (bool, Option<ID>) {
-    // Check if already locked
-    if (unified_spot_pool::is_locked_in_proposal(lp_token)) {
-        let locked_proposal = unified_spot_pool::get_locked_proposal(lp_token);
-        return (false, locked_proposal)
-    };
-
-    // Check if withdrawal would violate minimum liquidity
-    let (can_withdraw, _violating_amm) = would_violate_minimum_liquidity(
-        lp_token,
-        spot_pool,
-        market_state,
-    );
-
-    if (can_withdraw) {
-        // Withdrawal allowed
-        (true, option::none())
-    } else {
-        // Lock in proposal and set withdraw mode
-        unified_spot_pool::lock_in_proposal(lp_token, proposal_id);
-        unified_spot_pool::set_withdraw_mode(lp_token, true);
-        (false, option::some(proposal_id))
-    }
-}
 
 // === Auto-Participation Logic ===
 
 /// Quantum split with configurable ratio
 /// x% stays in spot pool, (100-x)% quantum splits to ALL conditional pools
 /// Enforces 6-hour gap between proposals and blocks LP operations during proposals
-public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+public fun auto_quantum_split_on_proposal_start<AssetType, StableType, LPType>(
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     proposal_id: ID,
     conditional_liquidity_ratio_percent: u64, // Percent to quantum split (0-100)
@@ -145,9 +61,6 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
     );
 
     // Deposit to escrow as quantum backing and update supplies for all outcomes
-    // CRITICAL: Must use lp_deposit_quantum (not deposit_spot_liquidity) to maintain
-    // the quantum invariant: escrow == supply + wrapped for each outcome.
-    // This function atomically deposits, tracks LP backing, and updates supplies.
     let (_deposited_asset, _deposited_stable) = coin_escrow::lp_deposit_quantum(
         escrow,
         asset_balance,
@@ -167,7 +80,7 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
     while (i < pools.length()) {
         let pool = &mut pools[i];
 
-        // Add liquidity to conditional AMM - divided equally among all pools
+        // Add liquidity to conditional AMM
         let _lp_amount = conditional_amm::add_liquidity_proportional(
             pool,
             asset_per_pool,
@@ -184,16 +97,9 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType>(
 /// Simplified recombination - returns system liquidity from winning conditional pool back to spot
 /// Clears active_proposal_id to unblock LP operations and records proposal end time
 /// Returns only AMM reserves (LP fees included), NOT protocol fees.
-///
-/// IMPORTANT: Protocol fees are collected separately via collect_protocol_fees() in
-/// liquidity_interact.move. They go to the FeeManager, not back to LPs.
-///
-/// Due to quantum model, pool reserves can grow beyond escrow backing through
-/// user trades. We cap withdrawals at escrow balance to prevent failures. User deposits
-/// remain in escrow for their redemptions.
-public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
+public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType, LPType>(
     winning_outcome: u64,
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -204,7 +110,6 @@ public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
         let pool_mut = market_state::get_pool_mut_by_outcome(market_state, (winning_outcome as u8));
 
         // Get AMM reserves (original liquidity + LP fees)
-        // Protocol fees are NOT included - they're collected separately
         conditional_amm::empty_all_amm_liquidity(
             pool_mut,
             ctx,
@@ -216,24 +121,18 @@ public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
     let total_stable = stable_amount;
 
     // SAFETY: Cap withdrawals at LP backing to preserve user redemptions
-    // The LP deposited a specific amount via quantum split - we return at most that amount.
-    // User deposits remain in escrow for their redemptions.
-    // Also cap at escrow balance for safety (should never exceed LP backing + user backing).
     let lp_asset = coin_escrow::get_lp_deposited_asset(escrow);
     let lp_stable = coin_escrow::get_lp_deposited_stable(escrow);
     let escrow_asset = coin_escrow::get_escrowed_asset_balance(escrow);
     let escrow_stable = coin_escrow::get_escrowed_stable_balance(escrow);
 
     // Get user deposits to ensure we leave enough for redemptions
-    // Users can swap between types (deposit stable, redeem asset), so we track
-    // total deposits and reserve that much of EACH type for safety.
     let user_total_buffer = coin_escrow::get_user_deposited_total(escrow);
 
     // Cap at minimum of: requested amount, LP backing, escrow balance minus user buffer
     let withdraw_asset = {
         let amt = if (total_asset > lp_asset) { lp_asset } else { total_asset };
         let amt = if (amt > escrow_asset) { escrow_asset } else { amt };
-        // Ensure we leave enough for user redemptions (cross-type swaps possible)
         let max_withdraw = if (escrow_asset > user_total_buffer) {
             escrow_asset - user_total_buffer
         } else {
@@ -244,7 +143,6 @@ public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
     let withdraw_stable = {
         let amt = if (total_stable > lp_stable) { lp_stable } else { total_stable };
         let amt = if (amt > escrow_stable) { escrow_stable } else { amt };
-        // Ensure we leave enough for user redemptions (cross-type swaps possible)
         let max_withdraw = if (escrow_stable > user_total_buffer) {
             escrow_stable - user_total_buffer
         } else {
@@ -270,6 +168,3 @@ public fun auto_redeem_on_proposal_end_from_escrow<AssetType, StableType>(
     // Clear active_proposal_id and record end time - this unblocks LP operations
     unified_spot_pool::clear_active_proposal(spot_pool, clock);
 }
-
-// Old entry functions for bucket-based withdrawal removed
-// LP operations now blocked during proposals - users must wait

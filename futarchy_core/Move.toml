@@ -9,11 +9,11 @@ futarchy_types = { local = "../futarchy_types" }
 AccountProtocol = { local = "../move-framework/packages/protocol" }
 AccountActions = { local = "../move-framework/packages/actions" }
 [addresses]
-futarchy_core = "0xc67984870e65323982233f9859797b9ef899de98160e5736646923d04dff01fa"
-futarchy_types = "0x0515629b4b7ca29785fb472fae4c2778fc38f2bfa4da79e2bc25362d8dbe5b7c"
-futarchy_one_shot_utils = "0x28c9d47b9267a0012fd403de63ffba1c5f3a65b447c5b80da3df277feadfb6db"
-account_protocol = "0xc318615056aa8aca8aab1312c1e3604aab3aff0f0e2a7a7824fe2646f91d6381"
-account_actions = "0x187eeffedb81b4802817e3f0387ca736303fb9d80f4d42e5f966f3c202cfdcc3"
+futarchy_core = "0xee6fd24c69815b8a4740e1f0de1f60ae1a07517e0ddd936695ca72302197a680"
+futarchy_types = "0x926bc9c6504a2b1fa288f13efccd5b3e25caff89f982c8185d77f4d60078bbc4"
+futarchy_one_shot_utils = "0x32841cbc60b75874bcafd94e3aad34cdaa80805b662ce5b79d83daa3d5f8df3a"
+account_protocol = "0xb0026b60f2035cb8bfb3a746ebb1c6af9bd037207ee9ea3123dcfec805f19ea1"
+account_actions = "0x0a8230033b38d682c699807d3ddff4bcd0bd94e21992461166b93e5f9243f253"
 # Named addresses will be accessible in Move as `@name`. They're also exported:
 # for example, `std  = "0x0"` is exported by the Standard Library.
 # alice  = "0x0"

@@ -15,6 +15,9 @@ use sui::coin;
 use sui::object;
 use sui::test_scenario as ts;
 
+// Test LP type
+public struct LP has drop {}
+
 // === Constants ===
 const INITIAL_SPOT_RESERVE: u64 = 10_000_000_000; // 10,000 tokens (9 decimals)
 const INITIAL_CONDITIONAL_RESERVE: u64 = 1_000_000_000; // 1,000 tokens per outcome
@@ -30,6 +33,11 @@ fun create_test_clock(timestamp_ms: u64, ctx: &mut TxContext): Clock {
     clock
 }
 
+#[test_only]
+fun create_lp_treasury(ctx: &mut TxContext): coin::TreasuryCap<LP> {
+    coin::create_treasury_cap_for_testing<LP>(ctx)
+}
+
 /// Create spot pool with initial liquidity
 #[test_only]
 fun create_test_spot_pool(
@@ -37,8 +45,10 @@ fun create_test_spot_pool(
     stable_reserve: u64,
     _clock: &Clock,
     ctx: &mut TxContext,
-): UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B> {
+): UnifiedSpotPool<TEST_COIN_A, TEST_COIN_B, LP> {
+    let lp_treasury = create_lp_treasury(ctx);
     unified_spot_pool::create_pool_for_testing(
+        lp_treasury,
         asset_reserve,
         stable_reserve,
         (DEFAULT_FEE_BPS as u64),

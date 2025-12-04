@@ -144,19 +144,19 @@ fun test_withdraw_from_empty_manager() {
 }
 
 // === Integration Test Notes ===
-
-/// NOTE: Full end-to-end governance fee withdrawal test would require:
-///
-/// 1. Setting up protocol DAO Account with managed assets
-/// 2. Creating PackageRegistry and registering packages
-/// 3. Transferring FeeAdminCap to DAO account as managed asset with key "protocol:fee_admin_cap"
-/// 4. Creating a proposal with Intent containing WithdrawFeesToTreasury action
-/// 5. Creating Executable from approved proposal
-/// 6. Executing the governance action via do_withdraw_fees_to_treasury
-/// 7. Verifying fees deposited into DAO vault
-///
-/// This requires extensive setup across multiple packages (AccountProtocol, futarchy_core, etc.)
-/// and is better suited for SDK-level integration tests using TypeScript.
-///
-/// The tests above verify the core withdrawal functionality works correctly.
-/// SDK integration tests should verify the governance action execution flow.
+//
+// NOTE: Full end-to-end governance fee withdrawal test would require:
+//
+// 1. Setting up protocol DAO Account with managed assets
+// 2. Creating PackageRegistry and registering packages
+// 3. Transferring FeeAdminCap to DAO account as managed asset with key "protocol:fee_admin_cap"
+// 4. Creating a proposal with Intent containing WithdrawFeesToTreasury action
+// 5. Creating Executable from approved proposal
+// 6. Executing the governance action via do_withdraw_fees_to_treasury
+// 7. Verifying fees deposited into DAO vault
+//
+// This requires extensive setup across multiple packages (AccountProtocol, futarchy_core, etc.)
+// and is better suited for SDK-level integration tests using TypeScript.
+//
+// The tests above verify the core withdrawal functionality works correctly.
+// SDK integration tests should verify the governance action execution flow.

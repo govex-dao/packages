@@ -41,6 +41,7 @@ use sui::test_utils;
 // === Test Coins ===
 public struct ASSET has drop {}
 public struct STABLE has drop {}
+public struct LP has drop {}
 
 // === Constants ===
 const ADMIN: address = @0xAD;
@@ -691,14 +692,21 @@ fun test_benchmark_cond_to_spot_50_pools_small() {
 // HELPER FUNCTIONS
 // ============================================================================
 
+/// Create LP treasury for testing
+fun create_lp_treasury(ctx: &mut TxContext): sui::coin::TreasuryCap<LP> {
+    sui::coin::create_treasury_cap_for_testing<LP>(ctx)
+}
+
 /// Create test spot pool
 fun create_spot_pool(
     asset: u64,
     stable: u64,
     fee_bps: u64,
     ctx: &mut TxContext,
-): UnifiedSpotPool<ASSET, STABLE> {
-    unified_spot_pool::create_pool_for_testing(
+): UnifiedSpotPool<ASSET, STABLE, LP> {
+    let lp_treasury = create_lp_treasury(ctx);
+    unified_spot_pool::create_pool_for_testing<ASSET, STABLE, LP>(
+        lp_treasury,
         asset,
         stable,
         fee_bps,
@@ -732,7 +740,7 @@ fun create_n_conditional_pools(
 }
 
 /// Cleanup spot pool
-fun cleanup_spot_pool(pool: UnifiedSpotPool<ASSET, STABLE>) {
+fun cleanup_spot_pool(pool: UnifiedSpotPool<ASSET, STABLE, LP>) {
     test_utils::destroy(pool);
 }
 

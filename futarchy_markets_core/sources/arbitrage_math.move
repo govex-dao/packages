@@ -157,8 +157,8 @@ const MIN_COARSE_THRESHOLD: u64 = 3;
 /// **Direction Flag (is_cond_to_spot)**:
 /// - true = Conditional→Spot: Buy from conditional pools, recombine, sell to spot
 /// - false = Spot→Conditional: Buy from spot, split, sell to conditional pools
-public fun compute_optimal_arbitrage_for_n_outcomes<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_optimal_arbitrage_for_n_outcomes<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
 ): (u64, u128, bool) {
@@ -174,8 +174,8 @@ public fun compute_optimal_arbitrage_for_n_outcomes<AssetType, StableType>(
 }
 
 /// Compute optimal Spot → Conditional arbitrage (FEELESS with smart bounding)
-public fun compute_optimal_spot_to_conditional<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_optimal_spot_to_conditional<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
 ): (u64, u128) {
@@ -184,8 +184,8 @@ public fun compute_optimal_spot_to_conditional<AssetType, StableType>(
 }
 
 /// Compute optimal Conditional → Spot arbitrage (FEELESS with smart bounding)
-public fun compute_optimal_conditional_to_spot<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_optimal_conditional_to_spot<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
 ): (u64, u128) {
@@ -196,8 +196,8 @@ public fun compute_optimal_conditional_to_spot<AssetType, StableType>(
 /// Original x-parameterization interface (for compatibility)
 /// Now uses feeless implementation internally
 /// spot_swap_is_stable_to_asset: true if spot swap is stable→asset, false if asset→stable
-public fun compute_optimal_spot_arbitrage<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_optimal_spot_arbitrage<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     spot_swap_is_stable_to_asset: bool,
 ): (u64, u128) {
@@ -225,8 +225,8 @@ public fun compute_optimal_spot_arbitrage<AssetType, StableType>(
 /// Returns: (optimal_amount, is_cond_to_spot)
 /// - is_cond_to_spot=true: Buy from conditional pools, recombine, sell to spot
 /// - is_cond_to_spot=false: Buy from spot, split, sell to conditional pools
-fun compute_optimal_arbitrage_feeless_with_hint<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun compute_optimal_arbitrage_feeless_with_hint<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint: 0 = use global bound
 ): (u64, bool) {
@@ -268,8 +268,8 @@ fun compute_optimal_arbitrage_feeless_with_hint<AssetType, StableType>(
 /// Returns: (optimal_amount, is_cond_to_spot)
 /// - is_cond_to_spot=true: Buy from conditional pools, recombine, sell to spot
 /// - is_cond_to_spot=false: Buy from spot, split, sell to conditional pools
-public fun compute_optimal_arbitrage_feeless<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_optimal_arbitrage_feeless<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
 ): (u64, bool) {
     // Delegate to version with global bound (no hint)
@@ -284,8 +284,8 @@ public fun compute_optimal_arbitrage_feeless<AssetType, StableType>(
 ///
 /// NOTE: This returns ASSET amount (not stable input) to match execution semantics
 /// Execution flow: spot asset → cond asset → cond stable → spot stable
-fun compute_optimal_spot_to_conditional_feeless_with_hint<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun compute_optimal_spot_to_conditional_feeless_with_hint<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
 ): (u64, u128) {
@@ -357,8 +357,8 @@ fun compute_optimal_spot_to_conditional_feeless_with_hint<AssetType, StableType>
 /// - profit: Expected profit in stable terms
 ///
 /// NOTE: This returns STABLE input (not asset amount) to match execution semantics
-fun compute_optimal_conditional_to_spot_feeless_with_hint<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun compute_optimal_conditional_to_spot_feeless_with_hint<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     user_swap_output: u64, // Hint for smart bounding (0 = use global bound)
 ): (u64, u128) {
@@ -880,8 +880,8 @@ fun safe_cross_product_le(a: u128, b: u128, c: u128, d: u128): bool {
 /// Calculate arbitrage profit for specific amount (simulation)
 /// spot_swap_is_stable_to_asset: true = Spot→Conditional (buy from spot, sell to conditionals)
 /// spot_swap_is_stable_to_asset: false = Conditional→Spot (buy from conditionals, sell to spot)
-public fun calculate_spot_arbitrage_profit<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun calculate_spot_arbitrage_profit<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     arbitrage_amount: u64,
     spot_swap_is_stable_to_asset: bool,
@@ -900,8 +900,8 @@ public fun calculate_spot_arbitrage_profit<AssetType, StableType>(
     }
 }
 
-fun simulate_spot_to_conditional_profit<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun simulate_spot_to_conditional_profit<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     arbitrage_amount: u64,
     spot_swap_is_stable_to_asset: bool,
@@ -939,8 +939,8 @@ fun simulate_spot_to_conditional_profit<AssetType, StableType>(
 }
 
 /// Simulate Conditional → Spot arbitrage profit (for testing/verification)
-public fun simulate_conditional_to_spot_profit<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun simulate_conditional_to_spot_profit<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     arbitrage_amount: u64,
 ): u128 {
@@ -982,8 +982,8 @@ public fun simulate_conditional_to_spot_profit<AssetType, StableType>(
 }
 
 /// Conditional arbitrage (legacy compatibility)
-public fun calculate_conditional_arbitrage_profit<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun calculate_conditional_arbitrage_profit<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     swapped_outcome_idx: u8,
     arbitrage_amount: u64,
@@ -1157,8 +1157,8 @@ fun calculate_conditional_cost(conditionals: &vector<LiquidityPool>, b: u64): u1
 /// Uses ternary search to find optimal split that maximizes total asset output
 ///
 /// Returns: (optimal_amount_to_route, max_asset_output)
-public fun compute_optimal_route_stable_to_asset<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_optimal_route_stable_to_asset<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     stable_input: u64,
 ): (u64, u64) {
@@ -1191,8 +1191,8 @@ public fun compute_optimal_route_stable_to_asset<AssetType, StableType>(
 }
 
 /// Simulate full routing: stable → asset → conditionals → stable → asset
-fun simulate_full_route_stable_to_asset<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun simulate_full_route_stable_to_asset<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     stable_input: u64,
 ): u64 {
@@ -1223,8 +1223,8 @@ fun simulate_full_route_stable_to_asset<AssetType, StableType>(
 }
 
 /// Ternary search to find optimal split between direct and routed
-fun ternary_search_optimal_routing_stable_to_asset<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun ternary_search_optimal_routing_stable_to_asset<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     stable_input: u64,
 ): (u64, u64) {
@@ -1291,8 +1291,8 @@ fun ternary_search_optimal_routing_stable_to_asset<AssetType, StableType>(
 }
 
 /// Evaluate output for a given split: route `routed_amount` through conditionals, rest direct
-fun evaluate_split_routing_stable_to_asset<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun evaluate_split_routing_stable_to_asset<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     total_stable_input: u64,
     routed_amount: u64,
@@ -1323,8 +1323,8 @@ fun evaluate_split_routing_stable_to_asset<AssetType, StableType>(
 /// Analogous to stable→asset routing but in reverse direction
 ///
 /// Returns: (optimal_amount_to_route, max_stable_output)
-public fun compute_optimal_route_asset_to_stable<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+public fun compute_optimal_route_asset_to_stable<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     asset_input: u64,
 ): (u64, u64) {
@@ -1357,8 +1357,8 @@ public fun compute_optimal_route_asset_to_stable<AssetType, StableType>(
 }
 
 /// Simulate full routing: asset → stable → conditionals → asset → stable
-fun simulate_full_route_asset_to_stable<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun simulate_full_route_asset_to_stable<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     asset_input: u64,
 ): u64 {
@@ -1389,8 +1389,8 @@ fun simulate_full_route_asset_to_stable<AssetType, StableType>(
 }
 
 /// Ternary search to find optimal split for asset→stable routing
-fun ternary_search_optimal_routing_asset_to_stable<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun ternary_search_optimal_routing_asset_to_stable<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     asset_input: u64,
 ): (u64, u64) {
@@ -1451,8 +1451,8 @@ fun ternary_search_optimal_routing_asset_to_stable<AssetType, StableType>(
 }
 
 /// Evaluate output for asset→stable split routing
-fun evaluate_split_routing_asset_to_stable<AssetType, StableType>(
-    spot: &UnifiedSpotPool<AssetType, StableType>,
+fun evaluate_split_routing_asset_to_stable<AssetType, StableType, LPType>(
+    spot: &UnifiedSpotPool<AssetType, StableType, LPType>,
     conditionals: &vector<LiquidityPool>,
     total_asset_input: u64,
     routed_amount: u64,

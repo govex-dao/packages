@@ -5,28 +5,28 @@
 ///
 /// This module provides public functions for creating AMM pools during init.
 /// These functions work with unshared Account objects before DAO is shared.
+///
+/// LP tokens are now standard Sui Coins. Pool creation requires:
+/// - TreasuryCap<LPType> with zero supply
+/// - CoinMetadata<LPType> with name/symbol = "GOVEX_LP_TOKEN"
 module futarchy_actions::liquidity_init_actions;
 
-use account_actions::{vault, init_actions, version};
+use account_actions::{vault, version, init_actions};
 use account_protocol::{
     account::{Self as account_mod, Account},
     package_registry::PackageRegistry,
     executable::{Self as executable_mod, Executable},
-    intents::{Self, ActionSpec},
+    intents,
     version_witness::VersionWitness,
     bcs_validation,
     action_validation,
 };
 use futarchy_core::futarchy_config;
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
-use std::option;
 use std::string::{Self, String};
-use std::vector;
 use sui::bcs;
 use sui::clock::Clock;
-use sui::coin::{Self, Coin};
-use sui::object::{Self, ID};
-use sui::tx_context::TxContext;
+use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
 
 // === Constants ===
 const DEFAULT_VAULT_NAME: vector<u8> = b"treasury";
@@ -65,7 +65,6 @@ public fun add_create_pool_with_mint_spec(
 ) {
     use account_actions::action_spec_builder;
     use std::type_name;
-    use sui::bcs;
 
     // Create action struct
     let action = CreatePoolWithMintAction {
@@ -91,22 +90,26 @@ public fun add_create_pool_with_mint_spec(
 
 /// Execute init_create_pool_with_mint from a staged action
 /// Accepts typed action directly (zero deserialization cost!)
-public fun dispatch_create_pool_with_mint<Config: store, AssetType: drop, StableType: drop, W: copy + drop>(
+public fun dispatch_create_pool_with_mint<Config: store, AssetType: drop, StableType: drop, LPType: drop, W: copy + drop>(
     account: &mut Account,
     registry: &PackageRegistry,
     action: &CreatePoolWithMintAction,
+    lp_treasury_cap: TreasuryCap<LPType>,
+    lp_metadata: &CoinMetadata<LPType>,
     witness: W,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
     // Execute with the exact parameters from the staged action
-    init_create_pool_with_mint<Config, AssetType, StableType, W>(
+    init_create_pool_with_mint<Config, AssetType, StableType, LPType, W>(
         account,
         registry,
         action.vault_name,
         action.asset_amount,
         action.stable_amount,
         action.fee_bps,
+        lp_treasury_cap,
+        lp_metadata,
         witness,
         clock,
         ctx,
@@ -122,10 +125,12 @@ public fun dispatch_create_pool_with_mint<Config: store, AssetType: drop, Stable
 /// 1. begin_execution() creates Executable hot potato
 /// 2. PTB calls do_init_* functions in sequence (including this one)
 /// 3. finalize_execution() confirms the executable
-public fun do_init_create_pool_with_mint<Config: store, Outcome: store, AssetType: drop, StableType: drop, IW: copy + drop>(
+public fun do_init_create_pool_with_mint<Config: store, Outcome: store, AssetType: drop, StableType: drop, LPType: drop, IW: copy + drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
+    lp_treasury_cap: TreasuryCap<LPType>,
+    lp_metadata: &CoinMetadata<LPType>,
     clock: &Clock,
     _version_witness: VersionWitness,
     _intent_witness: IW,
@@ -157,13 +162,15 @@ public fun do_init_create_pool_with_mint<Config: store, Outcome: store, AssetTyp
     bcs_validation::validate_all_bytes_consumed(reader);
 
     // 7. Execute with deserialized params
-    let pool_id = init_create_pool_with_mint<Config, AssetType, StableType, IW>(
+    let pool_id = init_create_pool_with_mint<Config, AssetType, StableType, LPType, IW>(
         account,
         registry,
         vault_name,
         asset_amount,
         stable_amount,
         fee_bps,
+        lp_treasury_cap,
+        lp_metadata,
         _intent_witness,
         clock,
         ctx,
@@ -180,18 +187,24 @@ public fun do_init_create_pool_with_mint<Config: store, Outcome: store, AssetTyp
 /// Create AMM pool during DAO init (before account is shared)
 ///
 /// This function:
-/// 1. Creates a new UnifiedSpotPool
+/// 1. Creates a new UnifiedSpotPool with Coin-based LP tokens
 /// 2. Adds initial liquidity
 /// 3. Shares the pool (makes it public)
-/// 4. Deposits LP token to custody AUTOMATICALLY
+/// 4. Deposits LP coin to vault AUTOMATICALLY
 /// 5. Returns excess coins to treasury vault
 ///
+/// Requires:
+/// - TreasuryCap<LPType> with zero supply
+/// - CoinMetadata<LPType> with name/symbol = "GOVEX_LP_TOKEN"
+///
 /// Returns: pool_id for use in subsequent init actions
-public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, W: copy + drop>(
+public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, LPType: drop, W: copy + drop>(
     account: &mut Account,
     registry: &PackageRegistry,
     asset_coin: Coin<AssetType>,
     stable_coin: Coin<StableType>,
+    lp_treasury_cap: TreasuryCap<LPType>,
+    lp_metadata: &CoinMetadata<LPType>,
     fee_bps: u64,
     _witness: W,
     clock: &Clock,
@@ -206,8 +219,11 @@ public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, W:
     let config = account_mod::config(account);
     let conditional_liquidity_ratio_percent = futarchy_config::conditional_liquidity_ratio_percent(config);
 
-    // 2. Create pool with FULL FUTARCHY FEATURES
-    let mut pool = unified_spot_pool::new<AssetType, StableType>(
+    // 2. Create pool with FULL FUTARCHY FEATURES + Coin-based LP
+    // Pool validates LP coin metadata (name/symbol = "GOVEX_LP_TOKEN", supply = 0)
+    let mut pool = unified_spot_pool::new<AssetType, StableType, LPType>(
+        lp_treasury_cap,
+        lp_metadata,
         fee_bps,
         option::none(), // No dynamic fee schedule
         5000, // oracle_conditional_threshold_bps (50%)
@@ -216,9 +232,9 @@ public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, W:
         ctx
     );
 
-    // 2. Add initial liquidity (returns LP token + any excess coins)
-    let (lp_token, excess_asset, excess_stable) =
-        unified_spot_pool::add_liquidity_and_return(
+    // 3. Add initial liquidity (returns LP coin + any excess coins)
+    let (lp_coin, excess_asset, excess_stable) =
+        unified_spot_pool::add_liquidity(
             &mut pool,
             asset_coin,
             stable_coin,
@@ -229,150 +245,40 @@ public fun init_create_pool<Config: store, AssetType: drop, StableType: drop, W:
     // Get pool ID before sharing
     let pool_id = object::id(&pool);
 
-    // 3. Share the pool so it can be accessed by anyone
+    // 4. Share the pool so it can be accessed by anyone
     unified_spot_pool::share(pool);
 
-    // 4. Store LP token in account as managed asset (AUTOMATIC STORAGE!)
-    let token_id = object::id(&lp_token);
-    account_mod::add_managed_asset(
-        account,
-        registry,
-        token_id, // Use token_id directly as key
-        lp_token,
-        version::current(),
-    );
-
-    // 5. Return any excess coins to treasury vault
+    // 5. Store LP coin in vault (standard Coin storage!)
+    // Use init_vault_deposit since account is still unshared during pool creation
     let vault_name = string::utf8(DEFAULT_VAULT_NAME);
-
-    if (coin::value(&excess_asset) > 0) {
-        vault::deposit_approved<Config, AssetType>(
-            account,
-            registry,
-            vault_name,
-            excess_asset,
-        );
-    } else {
-        coin::destroy_zero(excess_asset);
-    };
-
-    if (coin::value(&excess_stable) > 0) {
-        vault::deposit_approved<Config, StableType>(
-            account,
-            registry,
-            vault_name,
-            excess_stable,
-        );
-    } else {
-        coin::destroy_zero(excess_stable);
-    };
-
-    pool_id
-}
-
-/// Create AMM pool during DAO init with minted asset and stable from vault
-///
-/// This function:
-/// 1. Mints new asset tokens using the DAO's treasury cap
-/// 2. Withdraws stable coins from the DAO's vault (raised from launchpad)
-/// 3. Creates a new UnifiedSpotPool
-/// 4. Adds initial liquidity
-/// 5. Shares the pool (makes it public)
-/// 6. Deposits LP token to custody AUTOMATICALLY (DAO-owned LP!)
-/// 7. Returns excess coins to treasury vault
-///
-/// Returns: pool_id for use in subsequent init actions
-public fun init_create_pool_with_mint<Config: store, AssetType: drop, StableType: drop, W: copy + drop>(
-    account: &mut Account,
-    registry: &PackageRegistry,
-    vault_name: string::String,
-    asset_amount: u64,
-    stable_amount: u64,
-    fee_bps: u64,
-    _witness: W,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): ID {
-    // Validate inputs
-    assert!(asset_amount > 0, EInvalidAmount);
-    assert!(stable_amount > 0, EInvalidAmount);
-    assert!(fee_bps <= 10000, EInvalidRatio); // Max 100%
-
-    // 1. Mint asset tokens from DAO treasury cap
-    let asset_coin = account_actions::init_actions::init_mint_to_coin<Config, AssetType>(
-        account,
-        registry,
-        asset_amount,
-        ctx
-    );
-
-    // 2. Withdraw stable coins from DAO vault (raised funds from launchpad)
-    let stable_coin = account_actions::init_actions::init_vault_spend<Config, StableType>(
+    init_actions::init_vault_deposit<Config, LPType>(
         account,
         registry,
         vault_name,
-        stable_amount,
-        ctx
+        lp_coin,
+        ctx,
     );
 
-    // 3. Get DAO config to read conditional_liquidity_ratio_percent
-    let config = account_mod::config(account);
-    let conditional_liquidity_ratio_percent = futarchy_config::conditional_liquidity_ratio_percent(config);
-
-    // 4. Create pool with FULL FUTARCHY FEATURES
-    let mut pool = unified_spot_pool::new<AssetType, StableType>(
-        fee_bps,
-        option::none(), // No dynamic fee schedule
-        5000, // oracle_conditional_threshold_bps (50%)
-        conditional_liquidity_ratio_percent, // From DAO config!
-        clock,
-        ctx
-    );
-
-    // 5. Add initial liquidity (returns LP token + any excess coins)
-    let (lp_token, excess_asset, excess_stable) =
-        unified_spot_pool::add_liquidity_and_return(
-            &mut pool,
-            asset_coin,
-            stable_coin,
-            0, // min_lp_out = 0 for initial liquidity (no slippage)
-            ctx
-        );
-
-    // Get pool ID before sharing
-    let pool_id = object::id(&pool);
-
-    // 5. Share the pool so it can be accessed by anyone
-    unified_spot_pool::share(pool);
-
-    // 6. Store LP token in account as managed asset (DAO OWNS THE LP!)
-    let token_id = object::id(&lp_token);
-    account_mod::add_managed_asset(
-        account,
-        registry,
-        token_id, // Use token_id directly as key
-        lp_token,
-        version::current(),
-    );
-
-    // 7. Return any excess coins to treasury vault
+    // 6. Return any excess coins to treasury vault
     if (coin::value(&excess_asset) > 0) {
-        vault::deposit_approved<Config, AssetType>(
+        init_actions::init_vault_deposit<Config, AssetType>(
             account,
             registry,
             vault_name,
             excess_asset,
+            ctx,
         );
     } else {
         coin::destroy_zero(excess_asset);
     };
 
     if (coin::value(&excess_stable) > 0) {
-        vault::deposit_approved<Config, StableType>(
+        init_actions::init_vault_deposit<Config, StableType>(
             account,
             registry,
             vault_name,
             excess_stable,
+            ctx,
         );
     } else {
         coin::destroy_zero(excess_stable);
@@ -381,66 +287,71 @@ public fun init_create_pool_with_mint<Config: store, AssetType: drop, StableType
     pool_id
 }
 
-/// Add liquidity to an existing pool during DAO init
+/// Create AMM pool during DAO init with minted asset tokens
 ///
-/// Similar to init_create_pool but for adding to existing pools.
-/// LP token is automatically deposited to custody.
-public fun init_add_liquidity<Config: store, AssetType: drop, StableType: drop, W: copy + drop>(
+/// This variant mints new asset tokens from TreasuryCap and uses stable from vault.
+/// Requires:
+/// - TreasuryCap<LPType> with zero supply
+/// - CoinMetadata<LPType> with name/symbol = "GOVEX_LP_TOKEN"
+public fun init_create_pool_with_mint<Config: store, AssetType: drop, StableType: drop, LPType: drop, W: copy + drop>(
     account: &mut Account,
     registry: &PackageRegistry,
-    pool: &mut UnifiedSpotPool<AssetType, StableType>,
-    asset_coin: Coin<AssetType>,
-    stable_coin: Coin<StableType>,
-    min_lp_out: u64,
-    _witness: W,
+    vault_name: String,
+    asset_amount: u64,
+    stable_amount: u64,
+    fee_bps: u64,
+    lp_treasury_cap: TreasuryCap<LPType>,
+    lp_metadata: &CoinMetadata<LPType>,
+    witness: W,
+    clock: &Clock,
     ctx: &mut TxContext,
-) {
+): ID {
+    use account_actions::currency;
+
     // Validate inputs
-    assert!(coin::value(&asset_coin) > 0, EInvalidAmount);
-    assert!(coin::value(&stable_coin) > 0, EInvalidAmount);
+    assert!(asset_amount > 0 && stable_amount > 0, EInvalidAmount);
+    assert!(fee_bps <= 10000, EInvalidRatio);
 
-    // Add liquidity (returns LP token + excess coins)
-    let (lp_token, excess_asset, excess_stable) =
-        unified_spot_pool::add_liquidity_and_return(
-            pool,
-            asset_coin,
-            stable_coin,
-            min_lp_out,
-            ctx
-        );
+    // 1. Mint asset tokens from TreasuryCap
+    let asset_treasury_cap = currency::borrow_treasury_cap_mut<AssetType>(account, registry);
+    let asset_coin = coin::mint<AssetType>(asset_treasury_cap, asset_amount, ctx);
 
-    // Store LP token in account as managed asset
-    let token_id = object::id(&lp_token);
-    account_mod::add_managed_asset(
+    // 2. Withdraw stable from vault (permissionless for approved coin types)
+    let dao_address = account.addr();
+    let stable_coin = vault::withdraw_permissionless<Config, StableType>(
         account,
         registry,
-        token_id, // Use token_id directly as key
-        lp_token,
-        version::current(),
+        dao_address,
+        vault_name,
+        stable_amount,
+        ctx,
     );
 
-    // Return excess to vault
-    let vault_name = string::utf8(DEFAULT_VAULT_NAME);
+    // 3. Create pool with LP coin infrastructure
+    init_create_pool<Config, AssetType, StableType, LPType, W>(
+        account,
+        registry,
+        asset_coin,
+        stable_coin,
+        lp_treasury_cap,
+        lp_metadata,
+        fee_bps,
+        witness,
+        clock,
+        ctx,
+    )
+}
 
-    if (coin::value(&excess_asset) > 0) {
-        vault::deposit_approved<Config, AssetType>(
-            account,
-            registry,
-            vault_name,
-            excess_asset,
-        );
-    } else {
-        coin::destroy_zero(excess_asset);
-    };
+// === Garbage Collection ===
 
-    if (coin::value(&excess_stable) > 0) {
-        vault::deposit_approved<Config, StableType>(
-            account,
-            registry,
-            vault_name,
-            excess_stable,
-        );
-    } else {
-        coin::destroy_zero(excess_stable);
-    };
+/// Delete create pool with mint action from expired intent
+public fun delete_create_pool_with_mint(expired: &mut intents::Expired) {
+    let action_spec = intents::remove_action_spec(expired);
+    let action_data = intents::action_spec_action_data(action_spec);
+    let mut reader = bcs::new(action_data);
+    reader.peel_vec_u8(); // vault_name
+    reader.peel_u64(); // asset_amount
+    reader.peel_u64(); // stable_amount
+    reader.peel_u64(); // fee_bps
+    let _ = reader.into_remainder_bytes();
 }

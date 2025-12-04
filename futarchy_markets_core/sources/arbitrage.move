@@ -17,7 +17,6 @@ use futarchy_markets_primitives::coin_escrow::{Self, TokenEscrow};
 use futarchy_markets_primitives::conditional_amm;
 use futarchy_markets_primitives::conditional_balance::{Self, ConditionalMarketBalance};
 use futarchy_markets_primitives::market_state;
-use std::option;
 use sui::clock::Clock;
 use sui::coin;
 
@@ -50,8 +49,8 @@ use sui::coin;
 /// # Returns
 /// * Option<ConditionalMarketBalance> - Some(balance) if arbitrage ran or existing balance provided, None otherwise
 /// * Use in PTB: Pass return value to next call's `existing_balance_opt`
-public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType>(
-    spot_pool: &mut UnifiedSpotPool<AssetType, StableType>,
+public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType, LPType>(
+    spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
     mut existing_balance_opt: option::Option<ConditionalMarketBalance<AssetType, StableType>>,
     _clock: &Clock,

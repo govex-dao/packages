@@ -1,12 +1,12 @@
 {
   "packageName": "futarchy_oracle",
-  "transactionDigest": "GL8d6shQF9X5JjcTRRD2NkVTv18AghirxKjnX7A8Q9zA",
-  "packageId": "0xbb610760ac4dc51c8e886d1d881f63d766fe62a94dea06775d3dbc28d2579b25",
+  "transactionDigest": "5xq2EY3hQQm4AFKis9nhDUU7GKsWfXoFtGLCWSQMdY7D",
+  "packageId": "0x59f1f9760e4fe884aea8728b24c657ee84a2342d1765b6d63225010fb92c5080",
   "adminCaps": [],
   "sharedObjects": [],
   "ownedObjects": [],
   "upgradeCap": {
-    "objectId": "0xae898159da67bcb4f821444d0d470b7c83c00fc57c6f9165772bb9fdf7904227",
+    "objectId": "0x4ad33c4f08b26068e6453c1d4bc6e24f10a76a083bb52c3ac7ae02b481850b48",
     "objectType": "0x2::package::UpgradeCap",
     "owner": {
       "AddressOwner": "0x65f839fe74834f8935c386bee6eea7b1c9e1cd2f3d6175cdaba36be18c14927b"

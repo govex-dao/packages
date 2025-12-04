@@ -142,27 +142,11 @@ fun test_return_treasury_cap_and_metadata() {
         currency_init_actions::add_return_metadata_spec(&mut builder, metadata_recipient);
         let init_specs = action_spec_builder::into_vector(builder);
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Multi Action DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO to test multiple currency returns".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,
@@ -286,27 +270,11 @@ fun test_wrong_action_order_fails() {
         currency_init_actions::add_return_metadata_spec(&mut builder, metadata_recipient);
         let init_specs = action_spec_builder::into_vector(builder);
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Order Test DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO to test action order".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,
@@ -395,27 +363,11 @@ fun test_create_dao_with_empty_specs() {
         // Empty init specs
         let init_specs = vector::empty();
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Empty Specs DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO with no init actions".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,

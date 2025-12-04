@@ -12,11 +12,11 @@ futarchy_markets_core = { local = "../futarchy_markets_core" }
 futarchy_markets_operations = { local = "../futarchy_markets_operations" }
 AccountProtocol = { local = "../move-framework/packages/protocol" }
 [addresses]
-futarchy_oracle = "0x59f1f9760e4fe884aea8728b24c657ee84a2342d1765b6d63225010fb92c5080"
-futarchy_types = "0x926bc9c6504a2b1fa288f13efccd5b3e25caff89f982c8185d77f4d60078bbc4"
-futarchy_one_shot_utils = "0x32841cbc60b75874bcafd94e3aad34cdaa80805b662ce5b79d83daa3d5f8df3a"
-futarchy_core = "0xee6fd24c69815b8a4740e1f0de1f60ae1a07517e0ddd936695ca72302197a680"
-futarchy_markets_core = "0xf19d6dda333f3b73f36e4ccf4057487a6b3caa3ea83c564b71cb10ec8ca57f9c"
-futarchy_markets_operations = "0x1b3c2c6379de0b9bd28c8b4e26108a45bbd613386b84c500fa5c1f41faf58a36"
-account_protocol = "0xb0026b60f2035cb8bfb3a746ebb1c6af9bd037207ee9ea3123dcfec805f19ea1"
-account_actions = "0x0a8230033b38d682c699807d3ddff4bcd0bd94e21992461166b93e5f9243f253"
+futarchy_oracle = "0x190b4f8cb1b996f292f5d2bed05e2629b8bf60e025720bf56d0adccf4687c9f7"
+futarchy_types = "0xea70df14f1f94f5eabd90fbfc8207f74f934ab5158dfe7fd93f18967ebf93cc9"
+futarchy_one_shot_utils = "0xe022dcd795a690451e952ecf0061d8963763d3f04264d322d575708e9627eef9"
+futarchy_core = "0xfcf142b2ee39aa09c0d584572132763c42f4cb24313fad0a2c7c20fb648107c7"
+futarchy_markets_core = "0x7a7d9c051ccd66fdf230d4dafa9b88d2de431c2dd44e110fb82d27f0fb79b38b"
+futarchy_markets_operations = "0xecbf8e3d877bbe8e8a4bf30a1bed3baa36035bd4e0d869a3bdf08d9724903e64"
+account_protocol = "0x25da6201b6b625faa955a54ff564b517670cc9bb6041caa53702907869d055c4"
+account_actions = "0x4340a2955fc5c6c0a7ac7e2a9c397d4471c68d952c5673ac8cf8f91cefaca96f"

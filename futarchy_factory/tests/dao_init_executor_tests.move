@@ -143,27 +143,11 @@ fun test_execute_return_treasury_cap_intent() {
         currency_init_actions::add_return_treasury_cap_spec(&mut builder, recipient);
         let init_specs = action_spec_builder::into_vector(builder);
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Treasury Return DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO to test treasury cap return".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,
@@ -274,27 +258,11 @@ fun test_execute_multiple_treasury_cap_returns() {
         currency_init_actions::add_return_treasury_cap_spec(&mut builder, recipient);
         let init_specs = action_spec_builder::into_vector(builder);
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Multi Action DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO to test treasury cap return".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,
@@ -387,27 +355,11 @@ fun test_execute_return_metadata_intent() {
         currency_init_actions::add_return_metadata_spec(&mut builder, recipient);
         let init_specs = action_spec_builder::into_vector(builder);
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Metadata Return DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO to test metadata return".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,
@@ -505,27 +457,11 @@ fun test_execute_wrong_action_type_fails() {
         currency_init_actions::add_return_metadata_spec(&mut builder, recipient);
         let init_specs = action_spec_builder::into_vector(builder);
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Wrong Action DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO to test wrong action".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,

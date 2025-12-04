@@ -9,23 +9,15 @@ use account_actions::currency;
 use account_actions::vault;
 use account_protocol::account::{Self, Account};
 use account_protocol::intents::ActionSpec;
-use account_protocol::package_registry::{Self as package_registry, PackageRegistry};
+use account_protocol::package_registry::{Self, PackageRegistry};
 use futarchy_factory::dao_init_executor;
-use futarchy_core::dao_config::{
-    Self,
-    DaoConfig,
-    TradingParams,
-    TwapConfig,
-    GovernanceConfig,
-    MetadataConfig
-};
+use futarchy_core::dao_config;
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use futarchy_core::version;
 use futarchy_markets_core::fee::{Self, FeeManager};
 // NOTE: Spot pool is now created via init actions (liquidity_init_actions), not here
 use futarchy_one_shot_utils::coin_registry;
 use futarchy_one_shot_utils::constants;
-use futarchy_types::signed::{Self as signed, SignedU128};
 use std::ascii::String as AsciiString;
 use std::option::Option;
 use std::string::{String, String as UTF8String};
@@ -55,23 +47,9 @@ public fun coin_metadata_key<CoinType>(): CoinMetadataKey<CoinType> {
 const EPaused: u64 = 1;
 const EStableTypeNotAllowed: u64 = 2;
 const EBadWitness: u64 = 3;
-const EHighTwapThreshold: u64 = 4;
-const ELowTwapWindowCap: u64 = 5;
-const ELongTradingTime: u64 = 6;
-const ELongReviewTime: u64 = 7;
-const ELongTwapDelayTime: u64 = 8;
-const ETwapInitialTooLarge: u64 = 9;
-const EDelayNearTotalTrading: u64 = 10;
 const EInvalidStateForAction: u64 = 11;
 const EPermanentlyDisabled: u64 = 12;
 const EAlreadyDisabled: u64 = 13;
-
-// === Constants ===
-const TWAP_MINIMUM_WINDOW_CAP: u64 = 1;
-const MAX_TRADING_TIME: u64 = 604_800_000; // 7 days in ms
-const MAX_REVIEW_TIME: u64 = 604_800_000; // 7 days in ms
-const MAX_TWAP_START_DELAY: u64 = 86_400_000; // 1 day in ms
-const MAX_TWAP_THRESHOLD: u64 = 1_000_000; // 10x increase required to pass
 
 // === Structs ===
 
@@ -205,66 +183,15 @@ fun init(witness: FACTORY, ctx: &mut TxContext) {
     transfer::public_transfer(validator_cap, ctx.sender());
 }
 
-/// Create a new futarchy DAO with Extensions
-public fun create_dao<AssetType: drop, StableType: drop>(
-    factory: &mut Factory,
-    registry: &PackageRegistry,
-    fee_manager: &mut FeeManager,
-    payment: Coin<SUI>,
-    affiliate_id: UTF8String, // Partner identifier (UUID from subclient, empty string if none)
-    min_asset_amount: u64,
-    min_stable_amount: u64,
-    dao_name: AsciiString,
-    icon_url_string: AsciiString,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    twap_start_delay: u64,
-    twap_step_max: u64,
-    twap_initial_observation: u128,
-    twap_threshold: SignedU128,
-    amm_total_fee_bps: u64,
-    description: UTF8String,
-    max_outcomes: u64,
-    _agreement_lines: vector<UTF8String>,
-    _agreement_difficulties: vector<u64>,
-    treasury_cap: TreasuryCap<AssetType>,
-    coin_metadata: CoinMetadata<AssetType>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Validate caps at entry point
-    coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
-
-    create_dao_internal_with_extensions<AssetType, StableType>(
-        factory,
-        registry,
-        fee_manager,
-        payment,
-        affiliate_id,
-        min_asset_amount,
-        min_stable_amount,
-        dao_name,
-        icon_url_string,
-        review_period_ms,
-        trading_period_ms,
-        twap_start_delay,
-        twap_step_max,
-        twap_initial_observation,
-        twap_threshold,
-        amm_total_fee_bps,
-        description,
-        max_outcomes,
-        _agreement_lines,
-        _agreement_difficulties,
-        treasury_cap,
-        coin_metadata,
-        vector::empty<ActionSpec>(),
-        clock,
-        ctx,
-    );
-}
-
 /// Create a new futarchy DAO with init specs
+///
+/// Uses default configuration for all DAO settings. Use init_specs to customize:
+/// - MetadataUpdate: Set dao_name, icon_url, description
+/// - TradingParamsUpdate: Set min amounts, review/trading periods, fees
+/// - TwapConfigUpdate: Set TWAP parameters
+/// - GovernanceUpdate: Set max outcomes, fees, etc.
+/// - CreatePool: Create spot pool with LP tokens
+/// - CreateStream: Set up vesting schedules
 ///
 /// This creates a DAO and stages init intents that can be executed in the same PTB:
 /// 1. Factory creates DAO and stages intents (this function)
@@ -273,27 +200,12 @@ public fun create_dao<AssetType: drop, StableType: drop>(
 /// 4. PTB calls dao_init_executor::finalize_execution() to complete
 ///
 /// All steps happen in ONE transaction - if any fails, nothing is created.
-public fun create_dao_with_specs<AssetType: drop, StableType: drop>(
+public fun create_dao<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
     registry: &PackageRegistry,
     fee_manager: &mut FeeManager,
     payment: Coin<SUI>,
-    affiliate_id: UTF8String,
-    min_asset_amount: u64,
-    min_stable_amount: u64,
-    dao_name: AsciiString,
-    icon_url_string: AsciiString,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    twap_start_delay: u64,
-    twap_step_max: u64,
-    twap_initial_observation: u128,
-    twap_threshold: SignedU128,
-    amm_total_fee_bps: u64,
-    description: UTF8String,
-    max_outcomes: u64,
-    agreement_lines: vector<UTF8String>,
-    agreement_difficulties: vector<u64>,
+    affiliate_id: UTF8String, // Partner identifier (UUID from subclient, empty string if none)
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
     init_specs: vector<ActionSpec>,
@@ -303,27 +215,12 @@ public fun create_dao_with_specs<AssetType: drop, StableType: drop>(
     // Validate caps at entry point
     coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
 
-    create_dao_internal_with_extensions<AssetType, StableType>(
+    create_dao_internal<AssetType, StableType>(
         factory,
         registry,
         fee_manager,
         payment,
         affiliate_id,
-        min_asset_amount,
-        min_stable_amount,
-        dao_name,
-        icon_url_string,
-        review_period_ms,
-        trading_period_ms,
-        twap_start_delay,
-        twap_step_max,
-        twap_initial_observation,
-        twap_threshold,
-        amm_total_fee_bps,
-        description,
-        max_outcomes,
-        agreement_lines,
-        agreement_difficulties,
         treasury_cap,
         coin_metadata,
         init_specs,
@@ -332,29 +229,15 @@ public fun create_dao_with_specs<AssetType: drop, StableType: drop>(
     );
 }
 
-/// Internal function to create a DAO with Extensions and optional TreasuryCap
+/// Internal function to create a DAO with default configs
+/// All configuration is done via init_specs (init actions)
 #[allow(lint(share_owned))]
-public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableType: drop>(
+fun create_dao_internal<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
     registry: &PackageRegistry,
     fee_manager: &mut FeeManager,
     payment: Coin<SUI>,
     affiliate_id: UTF8String,
-    min_asset_amount: u64,
-    min_stable_amount: u64,
-    dao_name: AsciiString,
-    icon_url_string: AsciiString,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    twap_start_delay: u64,
-    twap_step_max: u64,
-    twap_initial_observation: u128,
-    twap_threshold: SignedU128,
-    amm_total_fee_bps: u64,
-    description: UTF8String,
-    max_outcomes: u64,
-    _agreement_lines: vector<UTF8String>,
-    _agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
     init_specs: vector<ActionSpec>,
@@ -377,54 +260,16 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     // DoS protection: limit affiliate_id length (UUID is 36 chars, leave room for custom IDs)
     assert!(affiliate_id.length() <= 64, EInvalidStateForAction);
 
-    // Validate parameters
-    assert!(twap_step_max >= TWAP_MINIMUM_WINDOW_CAP, ELowTwapWindowCap);
-    assert!(review_period_ms <= MAX_REVIEW_TIME, ELongReviewTime);
-    assert!(trading_period_ms <= MAX_TRADING_TIME, ELongTradingTime);
-    assert!(twap_start_delay <= MAX_TWAP_START_DELAY, ELongTwapDelayTime);
-    assert!((twap_start_delay + 60_000) < trading_period_ms, EDelayNearTotalTrading);
-    assert!(signed::magnitude(&twap_threshold) <= (MAX_TWAP_THRESHOLD as u128), EHighTwapThreshold);
-    assert!(
-        twap_initial_observation <= (18446744073709551615u128) * 1_000_000_000_000,
-        ETwapInitialTooLarge,
-    );
+    // Use all default configs - init actions will set real values
+    let trading_params = dao_config::default_trading_params();
+    let twap_config = dao_config::default_twap_config();
+    let governance_config = dao_config::default_governance_config();
 
-    // Create config parameters using the structured approach
-    let trading_params = dao_config::new_trading_params(
-        min_asset_amount,
-        min_stable_amount,
-        review_period_ms,
-        trading_period_ms,
-        amm_total_fee_bps, // conditional AMM fee
-        amm_total_fee_bps, // spot AMM fee (same as conditional)
-        0, // market_op_review_period_ms (0 = immediate, allows atomic market init)
-        1000, // max_amm_swap_percent_bps (10% max swap per proposal)
-        80, // conditional_liquidity_ratio_percent (80%, base 100 - enforced 1-99% range)
-    );
-
-    let twap_config = dao_config::new_twap_config(
-        twap_start_delay,
-        twap_step_max,
-        twap_initial_observation,
-        twap_threshold,
-    );
-
-    let governance_config = dao_config::new_governance_config(
-        max_outcomes,
-        20,
-        500000, // proposal_creation_fee (0.5 of stable token, e.g., 0.5 USDC)
-        1000000, // proposal_fee_per_outcome (1.0 of stable token per extra outcome)
-        true,
-        10,
-        31_536_000_000,
-        true,
-        false, // show_proposal_details (default: false for security)
-    );
-
+    // Minimal metadata - init actions will update
     let metadata_config = dao_config::new_metadata_config(
-        dao_name,
-        url::new_unsafe(icon_url_string),
-        description,
+        b"DAO".to_ascii_string(), // Default name (init actions will override)
+        url::new_unsafe_from_bytes(b""), // Empty icon (init actions will override)
+        b"".to_string(), // Empty description (init actions will override)
     );
 
     let dao_config = dao_config::new_dao_config(
@@ -560,10 +405,10 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
     // Update factory state
     factory.dao_count = factory.dao_count + 1;
 
-    // Emit event
+    // Emit event with default metadata (init actions will update actual values)
     event::emit(DAOCreated {
         account_id,
-        dao_name,
+        dao_name: b"DAO".to_ascii_string(), // Default (init actions will set real name)
         asset_type: get_type_string<AssetType>(),
         stable_type: get_type_string<StableType>(),
         creator: ctx.sender(),
@@ -573,27 +418,13 @@ public(package) fun create_dao_internal_with_extensions<AssetType: drop, StableT
 }
 
 #[test_only]
-/// Internal function to create a DAO for testing without Extensions
+/// Internal function to create a DAO for testing
+/// Uses default configs like the production version - customize via init_specs
 fun create_dao_internal_test<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
     registry: &PackageRegistry,
     fee_manager: &mut FeeManager,
     payment: Coin<SUI>,
-    min_asset_amount: u64,
-    min_stable_amount: u64,
-    dao_name: AsciiString,
-    icon_url_string: AsciiString,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    twap_start_delay: u64,
-    twap_step_max: u64,
-    twap_initial_observation: u128,
-    twap_threshold: SignedU128,
-    amm_total_fee_bps: u64,
-    description: UTF8String,
-    max_outcomes: u64,
-    _agreement_lines: vector<UTF8String>,
-    _agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
     init_specs: vector<ActionSpec>,
@@ -615,54 +446,16 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
 
     let affiliate_id = b"".to_string();
 
-    // Validate parameters
-    assert!(twap_step_max >= TWAP_MINIMUM_WINDOW_CAP, ELowTwapWindowCap);
-    assert!(review_period_ms <= MAX_REVIEW_TIME, ELongReviewTime);
-    assert!(trading_period_ms <= MAX_TRADING_TIME, ELongTradingTime);
-    assert!(twap_start_delay <= MAX_TWAP_START_DELAY, ELongTwapDelayTime);
-    assert!((twap_start_delay + 60_000) < trading_period_ms, EDelayNearTotalTrading);
-    assert!(signed::magnitude(&twap_threshold) <= (MAX_TWAP_THRESHOLD as u128), EHighTwapThreshold);
-    assert!(
-        twap_initial_observation <= (18446744073709551615u128) * 1_000_000_000_000,
-        ETwapInitialTooLarge,
-    );
+    // Use all default configs - init actions will set real values
+    let trading_params = dao_config::default_trading_params();
+    let twap_config = dao_config::default_twap_config();
+    let governance_config = dao_config::default_governance_config();
 
-    // Create config parameters using the structured approach
-    let trading_params = dao_config::new_trading_params(
-        min_asset_amount,
-        min_stable_amount,
-        review_period_ms,
-        trading_period_ms,
-        amm_total_fee_bps, // conditional AMM fee
-        amm_total_fee_bps, // spot AMM fee (same as conditional)
-        0, // market_op_review_period_ms (0 = immediate, allows atomic market init)
-        1000, // max_amm_swap_percent_bps (10% max swap per proposal)
-        80, // conditional_liquidity_ratio_percent (80%, base 100 - enforced 1-99% range)
-    );
-
-    let twap_config = dao_config::new_twap_config(
-        twap_start_delay,
-        twap_step_max,
-        twap_initial_observation,
-        twap_threshold,
-    );
-
-    let governance_config = dao_config::new_governance_config(
-        max_outcomes,
-        20,
-        500000, // proposal_creation_fee (0.5 of stable token, e.g., 0.5 USDC)
-        1000000, // proposal_fee_per_outcome (1.0 of stable token per extra outcome)
-        true,
-        10,
-        31_536_000_000,
-        true,
-        false, // show_proposal_details (default: false for security)
-    );
-
+    // Minimal metadata - init actions will update
     let metadata_config = dao_config::new_metadata_config(
-        dao_name,
-        url::new_unsafe(icon_url_string),
-        description,
+        b"DAO".to_ascii_string(),
+        url::new_unsafe_from_bytes(b""),
+        b"".to_string(),
     );
 
     let dao_config = dao_config::new_dao_config(
@@ -803,10 +596,10 @@ fun create_dao_internal_test<AssetType: drop, StableType: drop>(
     // Update factory state
     factory.dao_count = factory.dao_count + 1;
 
-    // Emit event
+    // Emit event with default metadata
     event::emit(DAOCreated {
         account_id,
-        dao_name,
+        dao_name: b"DAO".to_ascii_string(),
         asset_type: get_type_string<AssetType>(),
         stable_type: get_type_string<StableType>(),
         creator: ctx.sender(),
@@ -1238,92 +1031,13 @@ public fun create_factory(ctx: &mut TxContext) {
 }
 
 #[test_only]
-/// Create a DAO for testing without Extensions
-public entry fun create_dao_test<AssetType: drop, StableType: drop>(
+/// Create a DAO for testing
+/// Uses default configs - customize via init_specs
+public fun create_dao_test<AssetType: drop, StableType: drop>(
     factory: &mut Factory,
     registry: &package_registry::PackageRegistry,
     fee_manager: &mut FeeManager,
     payment: Coin<SUI>,
-    min_asset_amount: u64,
-    min_stable_amount: u64,
-    dao_name: AsciiString,
-    icon_url_string: AsciiString,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    twap_start_delay: u64,
-    twap_step_max: u64,
-    twap_initial_observation: u128,
-    twap_threshold_magnitude: u128,
-    twap_threshold_negative: bool,
-    amm_total_fee_bps: u64,
-    description: UTF8String,
-    max_outcomes: u64,
-    _agreement_lines: vector<UTF8String>,
-    _agreement_difficulties: vector<u64>,
-    treasury_cap: TreasuryCap<AssetType>,
-    coin_metadata: CoinMetadata<AssetType>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Validate caps at entry point
-    coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
-
-    // For testing, we bypass the Extensions requirement
-    // by directly calling the test internal function
-    let twap_threshold = signed::new(twap_threshold_magnitude, twap_threshold_negative);
-
-    create_dao_internal_test<AssetType, StableType>(
-        factory,
-        registry,
-        fee_manager,
-        payment,
-        min_asset_amount,
-        min_stable_amount,
-        dao_name,
-        icon_url_string,
-        review_period_ms,
-        trading_period_ms,
-        twap_start_delay,
-        twap_step_max,
-        twap_initial_observation,
-        twap_threshold,
-        amm_total_fee_bps,
-        description,
-        max_outcomes,
-        _agreement_lines,
-        _agreement_difficulties,
-        treasury_cap,
-        coin_metadata,
-        vector::empty(),
-        clock,
-        ctx,
-    );
-}
-
-#[test_only]
-/// Create a DAO for testing with init specs
-/// Used to test the create_dao_with_specs flow
-public fun create_dao_with_specs_test<AssetType: drop, StableType: drop>(
-    factory: &mut Factory,
-    registry: &package_registry::PackageRegistry,
-    fee_manager: &mut FeeManager,
-    payment: Coin<SUI>,
-    min_asset_amount: u64,
-    min_stable_amount: u64,
-    dao_name: AsciiString,
-    icon_url_string: AsciiString,
-    review_period_ms: u64,
-    trading_period_ms: u64,
-    twap_start_delay: u64,
-    twap_step_max: u64,
-    twap_initial_observation: u128,
-    twap_threshold_magnitude: u128,
-    twap_threshold_negative: bool,
-    amm_total_fee_bps: u64,
-    description: UTF8String,
-    max_outcomes: u64,
-    _agreement_lines: vector<UTF8String>,
-    _agreement_difficulties: vector<u64>,
     treasury_cap: TreasuryCap<AssetType>,
     coin_metadata: CoinMetadata<AssetType>,
     init_specs: vector<ActionSpec>,
@@ -1333,28 +1047,11 @@ public fun create_dao_with_specs_test<AssetType: drop, StableType: drop>(
     // Validate caps at entry point
     coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
 
-    let twap_threshold = signed::new(twap_threshold_magnitude, twap_threshold_negative);
-
     create_dao_internal_test<AssetType, StableType>(
         factory,
         registry,
         fee_manager,
         payment,
-        min_asset_amount,
-        min_stable_amount,
-        dao_name,
-        icon_url_string,
-        review_period_ms,
-        trading_period_ms,
-        twap_start_delay,
-        twap_step_max,
-        twap_initial_observation,
-        twap_threshold,
-        amm_total_fee_bps,
-        description,
-        max_outcomes,
-        _agreement_lines,
-        _agreement_difficulties,
         treasury_cap,
         coin_metadata,
         init_specs,

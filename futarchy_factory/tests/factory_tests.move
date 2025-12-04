@@ -122,30 +122,15 @@ fun test_basic_dao_creation() {
         let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET>>(&scenario);
         let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET>>(&scenario);
 
-        // Create DAO with test parameters
+        // Create DAO with default config (init_specs can customize)
         factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000, // min_asset_amount
-            100_000, // min_stable_amount
-            b"Test DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000, // review_period_ms (1 day)
-            259200000, // trading_period_ms (3 days)
-            60000, // twap_start_delay (1 minute)
-            10, // twap_step_max
-            1_000_000_000_000, // twap_initial_observation
-            500_000, // twap_threshold_magnitude (0.5 or 50% increase)
-            false, // twap_threshold_negative
-            30, // amm_total_fee_bps (0.3%)
-            b"Test DAO for basic creation".to_string(),
-            3, // max_outcomes
-            vector::empty(), // agreement_lines
-            vector::empty(), // agreement_difficulties
             treasury_cap,
             coin_metadata,
+            vector::empty(), // init_specs - empty for basic test
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -187,24 +172,9 @@ fun test_multiple_dao_creation() {
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"DAO 1".to_ascii_string(),
-            b"https://example.com/icon1.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000, // twap_threshold_magnitude
-            false, // twap_threshold_negative
-            30,
-            b"First DAO".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
+            vector::empty(),
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -237,24 +207,9 @@ fun test_multiple_dao_creation() {
             &registry,
             &mut fee_manager,
             payment,
-            200_000,
-            200_000,
-            b"DAO 2".to_ascii_string(),
-            b"https://example.com/icon2.png".to_ascii_string(),
-            172800000,
-            432000000,
-            120000,
-            20,
-            2_000_000_000_000,
-            750_000, // twap_threshold_magnitude
-            false, // twap_threshold_negative
-            50,
-            b"Second DAO".to_string(),
-            5,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
+            vector::empty(),
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -297,24 +252,9 @@ fun test_dao_creation_with_unallowed_stable() {
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Invalid DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000, // twap_threshold_magnitude
-            false, // twap_threshold_negative
-            30,
-            b"Should fail".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
+            vector::empty(),
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -379,24 +319,9 @@ fun test_permanent_disable_prevents_dao_creation() {
             &registry,
             &mut fee_manager,
             payment,
-            1_000_000,
-            1_000_000,
-            b"Test DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86_400_000, // 1 day review
-            86_400_000, // 1 day trading
-            60_000, // 1 minute delay
-            10, // twap_step_max
-            1_000_000_000_000, // twap_initial_observation
-            100_000, // twap_threshold_magnitude (0.1 = 10%)
-            false, // twap_threshold_negative
-            30, // 0.3% AMM fee
-            b"Test DAO Description".to_string(),
-            2, // max_outcomes
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
+            vector::empty(),
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -473,24 +398,9 @@ fun test_otw_coin_compatibility() {
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"OTW Test DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"Testing OTW compatibility".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
+            vector::empty(),
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -559,28 +469,12 @@ fun test_create_dao_with_empty_specs() {
         let treasury_cap = ts::take_from_sender<TreasuryCap<TEST_ASSET>>(&scenario);
         let coin_metadata = ts::take_from_sender<CoinMetadata<TEST_ASSET>>(&scenario);
 
-        // Create with empty specs - should work same as create_dao_test
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        // Create with empty specs
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Empty Specs DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO with empty init specs".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             vector::empty(), // Empty init specs
@@ -632,27 +526,11 @@ fun test_create_dao_with_specs_creates_intent() {
         );
         let init_specs = vector[action_spec];
 
-        factory::create_dao_with_specs_test<TEST_ASSET, TEST_STABLE_REGULAR>(
+        factory::create_dao_test<TEST_ASSET, TEST_STABLE_REGULAR>(
             &mut factory,
             &registry,
             &mut fee_manager,
             payment,
-            100_000,
-            100_000,
-            b"Specs DAO".to_ascii_string(),
-            b"https://example.com/icon.png".to_ascii_string(),
-            86400000,
-            259200000,
-            60000,
-            10,
-            1_000_000_000_000,
-            500_000,
-            false,
-            30,
-            b"DAO with init specs".to_string(),
-            3,
-            vector::empty(),
-            vector::empty(),
             treasury_cap,
             coin_metadata,
             init_specs,

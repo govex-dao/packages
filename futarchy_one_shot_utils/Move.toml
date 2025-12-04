@@ -6,4 +6,4 @@ license = "BSL"
 [dependencies]
 
 [addresses]
-futarchy_one_shot_utils = "0x32841cbc60b75874bcafd94e3aad34cdaa80805b662ce5b79d83daa3d5f8df3a"
+futarchy_one_shot_utils = "0xe022dcd795a690451e952ecf0061d8963763d3f04264d322d575708e9627eef9"

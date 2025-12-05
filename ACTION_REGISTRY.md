@@ -4,18 +4,17 @@ Complete list of all action types across all packages. Each action follows the 3
 
 ---
 
-## account_actions (22 actions)
+## account_actions (21 actions)
 
 ### Vault Actions
 | Marker | SDK ID | Description |
 |--------|--------|-------------|
-| `VaultDeposit` | `deposit` | Deposit coins into a vault |
-| `VaultSpend` | `spend` | Spend coins from a vault |
+| `VaultDeposit` | `deposit` | Deposit coins into a vault (takes from executable_resources) |
+| `VaultSpend` | `spend` | Spend coins from a vault (provides to executable_resources) |
 | `VaultApproveCoinType` | `approve_coin_type` | Approve a coin type for vault |
 | `VaultRemoveApprovedCoinType` | `remove_approved_coin_type` | Remove approved coin type |
 | `CreateStream` | `create_stream` | Create a vesting stream |
 | `CancelStream` | `cancel_stream` | Cancel an active stream |
-| `Withdraw` | `withdraw` | Withdraw from vault |
 
 ### Currency Actions
 | Marker | SDK ID | Description |
@@ -36,8 +35,8 @@ Complete list of all action types across all packages. Each action follows the 3
 ### Transfer Actions
 | Marker | SDK ID | Description |
 |--------|--------|-------------|
-| `TransferObject` | `transfer` | Transfer object to recipient |
-| `TransferToSender` | `transfer_to_sender` | Transfer object to transaction sender |
+| `TransferObject` | `transfer` | Transfer object to recipient (takes from executable_resources) |
+| `TransferToSender` | `transfer_to_sender` | Transfer object to transaction sender (takes from executable_resources) |
 
 ### Package Upgrade Actions
 | Marker | SDK ID | Description |
@@ -136,11 +135,11 @@ Complete list of all action types across all packages. Each action follows the 3
 
 | Package | Action Count |
 |---------|--------------|
-| account_actions | 22 |
+| account_actions | 21 |
 | futarchy_actions | 16 |
 | futarchy_governance_actions | 20 |
 | futarchy_oracle_actions | 2 |
-| **Total** | **60** |
+| **Total** | **59** |
 
 ---
 
@@ -159,6 +158,16 @@ LP tokens are now standard `Coin<LPType>` instead of a custom `LPToken` struct. 
 - LP tokens are stored in vaults like any other coin
 - No special `WithdrawLpToken` action needed - use standard vault operations
 - `UnifiedSpotPool` now has 3 type parameters: `<AssetType, StableType, LPType>`
+
+### Composable Actions via executable_resources
+Actions can pass objects to each other using `executable_resources`:
+- `VaultSpend` puts coin in executable_resources with a `resource_name`
+- `TransferObject` or `VaultDeposit` takes from executable_resources using the same `resource_name`
+
+Example: To withdraw from vault and transfer to recipient:
+```
+ActionSpecs: [VaultSpend(resource_name="my_coin"), TransferObject(resource_name="my_coin")]
+```
 
 ### Deterministic Actions
 All other actions follow the deterministic 3-layer pattern:

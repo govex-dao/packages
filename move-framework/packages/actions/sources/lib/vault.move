@@ -90,9 +90,6 @@ public struct CancelStream has drop {}
 /// Create stream (marker type for action validation)
 public struct CreateStream has drop {}
 
-/// Withdraw from vault (marker type for init-time withdrawal actions)
-public struct Withdraw has drop {}
-
 // === Structs ===
 
 /// Dynamic Field key for the Vault.
@@ -779,6 +776,8 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
 
 /// Processes a SpendAction and takes a coin from the vault.
 /// If spend_all is true, withdraws entire balance regardless of amount field.
+/// The coin is provided to executable_resources under the given resource_name
+/// for consumption by subsequent actions (e.g., TransferObject, Deposit).
 public fun do_spend<Config: store, Outcome: store, CoinType: drop, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
@@ -786,7 +785,7 @@ public fun do_spend<Config: store, Outcome: store, CoinType: drop, IW: drop>(
     version_witness: VersionWitness,
     _intent_witness: IW,
     ctx: &mut TxContext
-): Coin<CoinType> {
+) {
     executable.intent().assert_is_account(account.addr());
 
     // Get BCS bytes from ActionSpec
@@ -807,12 +806,13 @@ public fun do_spend<Config: store, Outcome: store, CoinType: drop, IW: drop>(
     let name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
     let amount = bcs::peel_u64(&mut reader);
     let spend_all = bcs::peel_bool(&mut reader);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
 
     let vault: &mut Vault = account.borrow_managed_data_mut(registry, VaultKey(name), version_witness);
-    let balance_mut = vault.bag.borrow_mut<_, Balance<_>>(type_name::with_defining_ids<CoinType>());
+    let balance_mut: &mut Balance<CoinType> = vault.bag.borrow_mut<_, Balance<CoinType>>(type_name::with_defining_ids<CoinType>());
 
     // Determine actual amount to withdraw
     let withdraw_amount = if (spend_all) {
@@ -821,17 +821,22 @@ public fun do_spend<Config: store, Outcome: store, CoinType: drop, IW: drop>(
         amount  // Spend specified amount
     };
 
-    let coin = coin::take(balance_mut, withdraw_amount, ctx);
+    let coin: Coin<CoinType> = coin::take(balance_mut, withdraw_amount, ctx);
 
     if (balance_mut.value() == 0)
         vault.bag.remove<_, Balance<CoinType>>(type_name::with_defining_ids<CoinType>()).destroy_zero();
 
-    // Store coin info in context for potential use by later actions
-    // PTBs handle object flow naturally - no context storage needed
+    // Provide coin to executable_resources for subsequent actions
+    // Use provide_object so take_object can retrieve it (compatible with do_init_transfer)
+    executable_resources::provide_object<Coin<CoinType>>(
+        executable::uid_mut(executable),
+        resource_name,
+        coin,
+        ctx,
+    );
 
     // Increment action index
     executable::increment_action_idx(executable);
-    coin
 }
 
 /// Deletes a SpendAction from an expired intent.
@@ -1435,50 +1440,6 @@ public fun do_init_create_stream<Config: store, Outcome: store, CoinType: drop, 
     executable::increment_action_idx(executable);
 
     stream_id
-}
-
-/// Reads WithdrawAndTransferAction from Executable, withdraws from vault, and transfers to recipient
-/// Used during DAO initialization to transfer coins from treasury
-public fun do_init_withdraw_and_transfer<Config: store, Outcome: store, CoinType: drop, IW: drop>(
-    executable: &mut Executable<Outcome>,
-    account: &mut Account,
-    registry: &PackageRegistry,
-    _version_witness: VersionWitness,
-    _intent_witness: IW,
-    ctx: &mut TxContext,
-) {
-    executable.intent().assert_is_account(account.addr());
-
-    // Get BCS bytes from ActionSpec
-    let specs = executable.intent().action_specs();
-    let spec = specs.borrow(executable.action_idx());
-
-    // CRITICAL: Assert that the action type is what we expect
-    action_validation::assert_action_type<Withdraw>(spec);
-
-    let action_data = intents::action_spec_data(spec);
-
-    // Check version before deserialization
-    let spec_version = intents::action_spec_version(spec);
-    assert!(spec_version == 1, EUnsupportedActionVersion);
-
-    // Deserialize WithdrawAndTransferAction
-    let mut reader = bcs::new(*action_data);
-    let vault_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
-    let amount = bcs::peel_u64(&mut reader);
-    let recipient = bcs::peel_address(&mut reader);
-
-    // Validate all bytes consumed
-    bcs_validation::validate_all_bytes_consumed(reader);
-
-    // Withdraw from vault
-    let coin = do_spend_unshared<CoinType>(account, registry, vault_name, amount, ctx);
-
-    // Transfer to recipient
-    transfer::public_transfer(coin, recipient);
-
-    // Increment action index
-    executable::increment_action_idx(executable);
 }
 
 // === Preview Functions ===

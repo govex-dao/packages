@@ -14,14 +14,16 @@
 /// Actions tested:
 /// - do_init_create_stream (vault with funds)
 /// - do_init_create_pool_with_mint (vault with stables + treasury cap)
-/// - do_init_withdraw_and_transfer (vault with funds)
+/// - do_spend + do_init_transfer (VaultSpend + TransferObject pattern)
 #[test_only]
 module action_tests::launchpad_init_action_tests;
 
 use account_actions::action_spec_builder;
 use account_actions::stream_init_actions;
 use account_actions::transfer_init_actions;
+use account_actions::transfer;
 use account_actions::vault;
+use account_actions::vault_init_actions;
 use account_actions::version;
 use account_protocol::account::{Self as account_mod, Account};
 use account_protocol::intents;
@@ -401,16 +403,16 @@ fun test_do_init_create_stream() {
 }
 
 #[test]
-/// Test do_init_withdraw_and_transfer via launchpad flow
+/// Test VaultSpend + TransferObject pattern via launchpad flow
 ///
 /// This test:
 /// 1. Creates a launchpad raise
-/// 2. Stages a WithdrawAndTransfer action as success spec
+/// 2. Stages VaultSpend + TransferObject actions as success spec
 /// 3. Contributes to meet minimum
 /// 4. Settles and creates DAO (deposits stables into vault)
-/// 5. Executes the withdraw and transfer via dao_init_executor
+/// 5. Executes the spend and transfer via dao_init_executor
 /// 6. Verifies recipient receives the funds
-fun test_do_init_withdraw_and_transfer() {
+fun test_spend_and_transfer() {
     let sender = @0xA;
     let contributor = @0xB;
     let transfer_recipient = @0xC;
@@ -424,15 +426,25 @@ fun test_do_init_withdraw_and_transfer() {
     // Create raise
     create_raise(&mut scenario, sender);
 
-    // Build withdraw and transfer spec
+    // Build spend + transfer spec (composable pattern)
     let mut builder = action_spec_builder::new();
     let withdraw_amount = 5_000_000_000; // 5k stable
+    let resource_name = b"stable_to_transfer".to_string();
 
-    transfer_init_actions::add_withdraw_and_transfer_spec(
+    // Action 1: Spend from vault (puts coin in executable_resources)
+    vault_init_actions::add_spend_spec(
         &mut builder,
         b"treasury".to_string(), // vault_name
         withdraw_amount,
+        false, // spend_all
+        resource_name,
+    );
+
+    // Action 2: Transfer to recipient (takes coin from executable_resources)
+    transfer_init_actions::add_transfer_object_spec(
+        &mut builder,
         transfer_recipient,
+        resource_name,
     );
 
     // Stage success specs
@@ -452,7 +464,7 @@ fun test_do_init_withdraw_and_transfer() {
     // Settle and create DAO
     settle_and_create_dao(&mut scenario, sender, &clock);
 
-    // Execute the withdraw and transfer action
+    // Execute the spend and transfer actions
     ts::next_tx(&mut scenario, sender);
     {
         let mut account = ts::take_shared<Account>(&scenario);
@@ -471,8 +483,8 @@ fun test_do_init_withdraw_and_transfer() {
         let version_witness = version::current();
         let intent_witness = dao_init_executor::dao_init_intent_witness();
 
-        // Execute withdraw and transfer
-        vault::do_init_withdraw_and_transfer<
+        // Action 1: Execute spend (puts coin in executable_resources)
+        vault::do_spend<
             futarchy_core::futarchy_config::FutarchyConfig,
             dao_init_outcome::DaoInitOutcome,
             TEST_STABLE_REGULAR,
@@ -484,6 +496,16 @@ fun test_do_init_withdraw_and_transfer() {
             version_witness,
             intent_witness,
             ts::ctx(&mut scenario),
+        );
+
+        // Action 2: Execute transfer (takes from executable_resources)
+        transfer::do_init_transfer<
+            dao_init_outcome::DaoInitOutcome,
+            Coin<TEST_STABLE_REGULAR>,
+            dao_init_executor::DaoInitIntent,
+        >(
+            &mut executable,
+            intent_witness,
         );
 
         // Finalize

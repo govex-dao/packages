@@ -4,6 +4,17 @@ Complete list of all action types across all packages. Each action follows the 3
 
 ---
 
+## account_protocol (3 actions)
+
+### Per-Account Dependencies Management
+| Marker | SDK ID | Description |
+|--------|--------|-------------|
+| `ConfigToggleUnverified` | `toggle_unverified_allowed` | Toggle whether unverified packages can be added to per-account deps |
+| `ConfigAddDep` | `add_dep` | Add a package to per-account deps table |
+| `ConfigRemoveDep` | `remove_dep` | Remove a package from per-account deps table |
+
+---
+
 ## account_actions (21 actions)
 
 ### Vault Actions
@@ -135,11 +146,12 @@ Complete list of all action types across all packages. Each action follows the 3
 
 | Package | Action Count |
 |---------|--------------|
+| account_protocol | 3 |
 | account_actions | 21 |
 | futarchy_actions | 16 |
 | futarchy_governance_actions | 20 |
 | futarchy_oracle_actions | 2 |
-| **Total** | **59** |
+| **Total** | **62** |
 
 ---
 

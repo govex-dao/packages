@@ -5,6 +5,7 @@
 module futarchy_actions::liquidity_actions_tests;
 
 use futarchy_actions::liquidity_actions;
+use std::string;
 use sui::object;
 use sui::test_scenario::{Self as ts, Scenario};
 use sui::test_utils::destroy;
@@ -46,6 +47,8 @@ fun test_new_add_liquidity_action() {
         1000u64, // asset_amount
         2000u64, // stable_amount
         500u64, // min_lp_out
+        string::utf8(b"asset_coin"),
+        string::utf8(b"stable_coin"),
     );
 
     // Verify getters
@@ -66,6 +69,8 @@ fun test_new_add_liquidity_zero_asset_fails() {
         0u64, // zero asset
         2000u64,
         500u64,
+        string::utf8(b"asset_coin"),
+        string::utf8(b"stable_coin"),
     );
     destroy(action);
 }
@@ -79,6 +84,8 @@ fun test_new_add_liquidity_zero_stable_fails() {
         1000u64,
         0u64, // zero stable
         500u64,
+        string::utf8(b"asset_coin"),
+        string::utf8(b"stable_coin"),
     );
     destroy(action);
 }
@@ -91,6 +98,8 @@ fun test_new_add_liquidity_extreme_values() {
         18446744073709551615u64, // max u64
         18446744073709551615u64, // max u64
         0u64, // min_lp_out can be 0
+        string::utf8(b"asset_coin"),
+        string::utf8(b"stable_coin"),
     );
 
     destroy(action);
@@ -106,6 +115,7 @@ fun test_new_remove_liquidity_action() {
         1000u64, // lp_amount
         500u64, // min_asset_amount
         500u64, // min_stable_amount
+        string::utf8(b"lp_coin"),
     );
 
     destroy(action);
@@ -120,6 +130,7 @@ fun test_new_remove_liquidity_zero_lp_fails() {
         0u64, // zero lp_amount
         500u64,
         500u64,
+        string::utf8(b"lp_coin"),
     );
     destroy(action);
 }
@@ -132,6 +143,7 @@ fun test_new_remove_liquidity_zero_minimums() {
         1000u64,
         0u64, // zero min_asset_amount is allowed
         0u64, // zero min_stable_amount is allowed
+        string::utf8(b"lp_coin"),
     );
 
     destroy(action);
@@ -147,6 +159,7 @@ fun test_new_swap_action_asset_to_stable() {
         true, // swap_asset = true means asset -> stable
         1000u64, // amount_in
         500u64, // min_amount_out
+        string::utf8(b"input_coin"),
     );
 
     destroy(action);
@@ -160,6 +173,7 @@ fun test_new_swap_action_stable_to_asset() {
         false, // swap_asset = false means stable -> asset
         2000u64, // amount_in
         1000u64, // min_amount_out
+        string::utf8(b"input_coin"),
     );
 
     destroy(action);
@@ -174,6 +188,7 @@ fun test_new_swap_action_zero_amount_fails() {
         true,
         0u64, // zero amount_in
         500u64,
+        string::utf8(b"input_coin"),
     );
     destroy(action);
 }
@@ -186,6 +201,7 @@ fun test_new_swap_action_zero_min_out() {
         true,
         1000u64,
         0u64, // zero min_amount_out is allowed
+        string::utf8(b"input_coin"),
     );
 
     destroy(action);
@@ -199,6 +215,7 @@ fun test_new_swap_action_extreme_values() {
         true,
         18446744073709551615u64, // max u64
         18446744073709551615u64, // max u64
+        string::utf8(b"input_coin"),
     );
 
     destroy(action);

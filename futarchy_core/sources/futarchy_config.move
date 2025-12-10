@@ -821,7 +821,8 @@ public fun new_with_package_registry(
 ): Account {
     // Create dependencies using PackageRegistry for validation
     // All packages must be registered in the global registry
-    let deps = deps::new(registry);
+    // unverified_allowed = false by default (require all packages in global registry)
+    let deps = deps::new(registry, false);
 
     // Create account with FutarchyConfig using the config witness
     account::new(
@@ -842,11 +843,7 @@ public fun new_account_test(
     ctx: &mut TxContext,
 ): Account {
     // Create dependencies for testing with the actual registry
-    let deps = deps::new_for_testing_with_config_and_registry(
-        b"futarchy_core".to_string(),
-        @futarchy_core,
-        registry,
-    );
+    let deps = deps::new_for_testing(registry);
 
     // Create account with FutarchyConfig using the config witness
     account::new(

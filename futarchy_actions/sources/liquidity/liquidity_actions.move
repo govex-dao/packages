@@ -10,7 +10,7 @@ module futarchy_actions::liquidity_actions;
 // === Imports ===
 use std::string::{Self, String};
 use sui::{
-    coin::{Self, Coin, TreasuryCap, CoinMetadata},
+    coin::{Self, Coin},
     object::{Self, ID},
     clock::Clock,
     bcs,
@@ -18,6 +18,7 @@ use sui::{
 use account_protocol::{
     account::{Self, Account},
     executable::{Self, Executable},
+    executable_resources,
     intents::{Self, Expired},
     version_witness::VersionWitness,
     bcs_validation,
@@ -25,10 +26,7 @@ use account_protocol::{
     package_registry::PackageRegistry,
 };
 use account_actions::vault;
-use futarchy_core::{
-    futarchy_config::FutarchyConfig,
-    version,
-};
+use futarchy_core::futarchy_config::FutarchyConfig;
 use futarchy_core::resource_requests::{Self, ResourceRequest, ResourceReceipt};
 use futarchy_markets_core::unified_spot_pool::{Self, UnifiedSpotPool};
 
@@ -49,6 +47,7 @@ const EInvalidAmount: u64 = 1;
 const EPoolMismatch: u64 = 4;
 const EInsufficientVaultBalance: u64 = 5;
 const EUnsupportedActionVersion: u64 = 8;
+const EEmptyResourceName: u64 = 9;
 
 // === Constants ===
 const DEFAULT_VAULT_NAME: vector<u8> = b"treasury";
@@ -56,38 +55,48 @@ const DEFAULT_VAULT_NAME: vector<u8> = b"treasury";
 // === Action Structs ===
 
 /// Action to add liquidity to a pool
+/// Uses composable pattern: takes coins from executable_resources (put there by VaultSpend actions)
 public struct AddLiquidityAction<phantom AssetType, phantom StableType, phantom LPType> has store, drop, copy {
     pool_id: ID,
     asset_amount: u64,
     stable_amount: u64,
     min_lp_out: u64,
+    /// Resource name for asset coin in executable_resources (from prior VaultSpend)
+    asset_resource_name: String,
+    /// Resource name for stable coin in executable_resources (from prior VaultSpend)
+    stable_resource_name: String,
 }
 
 /// Action to remove liquidity from a pool
+/// Uses composable pattern: takes LP coin from executable_resources (put there by VaultSpend action)
 public struct RemoveLiquidityAction<phantom AssetType, phantom StableType, phantom LPType> has store, drop, copy {
     pool_id: ID,
     lp_amount: u64,
     min_asset_amount: u64,
     min_stable_amount: u64,
+    /// Resource name for LP coin in executable_resources (from prior VaultSpend)
+    lp_resource_name: String,
 }
 
 /// Action to perform a swap in the pool
+/// Uses composable pattern: takes input coin from executable_resources (put there by VaultSpend action)
 public struct SwapAction<phantom AssetType, phantom StableType, phantom LPType> has store, drop, copy {
     pool_id: ID,
     swap_asset: bool, // true = swap asset for stable, false = swap stable for asset
     amount_in: u64,
     min_amount_out: u64,
+    /// Resource name for input coin in executable_resources (from prior VaultSpend)
+    input_resource_name: String,
 }
 
 // === Execution Functions ===
 
 /// Execute add liquidity with type validation
-public fun do_add_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store, IW: copy + drop>(
+public fun do_add_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
     _version: VersionWitness,
-    _witness: IW,
     ctx: &mut TxContext,
 ): ResourceRequest<AddLiquidityAction<AssetType, StableType, LPType>> {
     executable::intent(executable).assert_is_account(account.addr());
@@ -106,21 +115,20 @@ public fun do_add_liquidity<AssetType: drop, StableType: drop, LPType: drop, Out
     let asset_amount = bcs::peel_u64(&mut reader);
     let stable_amount = bcs::peel_u64(&mut reader);
     let min_lp_out = bcs::peel_u64(&mut reader);
+    let asset_resource_name = string::utf8(bcs::peel_vec_u8(&mut reader));
+    let stable_resource_name = string::utf8(bcs::peel_vec_u8(&mut reader));
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Check vault has sufficient balance
-    let vault_name = string::utf8(DEFAULT_VAULT_NAME);
-    let vault = vault::borrow_vault(account, registry, vault_name);
-    assert!(vault::coin_type_exists<AssetType>(vault), EInsufficientVaultBalance);
-    assert!(vault::coin_type_exists<StableType>(vault), EInsufficientVaultBalance);
-    assert!(vault::coin_type_value<AssetType>(vault) >= asset_amount, EInsufficientVaultBalance);
-    assert!(vault::coin_type_value<StableType>(vault) >= stable_amount, EInsufficientVaultBalance);
+    // Note: Vault balance checks removed - coins are now provided via executable_resources
+    // from prior VaultSpend actions which already validated and withdrew from vault
 
     let action = AddLiquidityAction<AssetType, StableType, LPType> {
         pool_id,
         asset_amount,
         stable_amount,
         min_lp_out,
+        asset_resource_name,
+        stable_resource_name,
     };
 
     executable::increment_action_idx(executable);
@@ -131,14 +139,14 @@ public fun do_add_liquidity<AssetType: drop, StableType: drop, LPType: drop, Out
 }
 
 /// Fulfill add liquidity request
+/// Takes coins from executable_resources (put there by prior VaultSpend actions)
 /// LP coin is deposited directly to vault
-public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store, IW: copy + drop>(
+public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store>(
     request: ResourceRequest<AddLiquidityAction<AssetType, StableType, LPType>>,
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
     pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
-    witness: IW,
     ctx: &mut TxContext,
 ): ResourceReceipt<AddLiquidityAction<AssetType, StableType, LPType>> {
     let action: AddLiquidityAction<AssetType, StableType, LPType> =
@@ -146,23 +154,15 @@ public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, LPType: drop
 
     assert!(action.pool_id == object::id(pool), EPoolMismatch);
 
-    // Withdraw coins from vault
-    let asset_coin = vault::do_spend<FutarchyConfig, Outcome, AssetType, IW>(
-        executable,
-        account,
-        registry,
-        version::current(),
-        witness,
-        ctx,
+    // Take coins from executable_resources (put there by prior VaultSpend actions)
+    let asset_coin: Coin<AssetType> = executable_resources::take_object(
+        executable::uid_mut(executable),
+        action.asset_resource_name,
     );
 
-    let stable_coin = vault::do_spend<FutarchyConfig, Outcome, StableType, IW>(
-        executable,
-        account,
-        registry,
-        version::current(),
-        witness,
-        ctx,
+    let stable_coin: Coin<StableType> = executable_resources::take_object(
+        executable::uid_mut(executable),
+        action.stable_resource_name,
     );
 
     // Add liquidity to pool
@@ -210,11 +210,10 @@ public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, LPType: drop
 }
 
 /// Execute remove liquidity with type validation
-public fun do_remove_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store, IW: copy + drop>(
+public fun do_remove_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     _version: VersionWitness,
-    _witness: IW,
     ctx: &mut TxContext,
 ): ResourceRequest<RemoveLiquidityAction<AssetType, StableType, LPType>> {
     executable::intent(executable).assert_is_account(account.addr());
@@ -233,6 +232,7 @@ public fun do_remove_liquidity<AssetType: drop, StableType: drop, LPType: drop, 
     let lp_amount = bcs::peel_u64(&mut reader);
     let min_asset_amount = bcs::peel_u64(&mut reader);
     let min_stable_amount = bcs::peel_u64(&mut reader);
+    let lp_resource_name = string::utf8(bcs::peel_vec_u8(&mut reader));
     bcs_validation::validate_all_bytes_consumed(reader);
 
     assert!(lp_amount > 0, EInvalidAmount);
@@ -242,6 +242,7 @@ public fun do_remove_liquidity<AssetType: drop, StableType: drop, LPType: drop, 
         lp_amount,
         min_asset_amount,
         min_stable_amount,
+        lp_resource_name,
     };
 
     executable::increment_action_idx(executable);
@@ -250,14 +251,14 @@ public fun do_remove_liquidity<AssetType: drop, StableType: drop, LPType: drop, 
 }
 
 /// Fulfill remove liquidity request
-/// Withdraws LP from vault, burns it, deposits returned coins to vault
-public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store, IW: copy + drop>(
+/// Takes LP coin from executable_resources (put there by prior VaultSpend action)
+/// Burns LP, deposits returned coins to vault
+public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, LPType: drop, Outcome: store>(
     request: ResourceRequest<RemoveLiquidityAction<AssetType, StableType, LPType>>,
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
     pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
-    witness: IW,
     ctx: &mut TxContext,
 ): ResourceReceipt<RemoveLiquidityAction<AssetType, StableType, LPType>> {
     let action: RemoveLiquidityAction<AssetType, StableType, LPType> =
@@ -265,14 +266,10 @@ public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, LPType: d
 
     assert!(action.pool_id == object::id(pool), EPoolMismatch);
 
-    // Withdraw LP coin from vault
-    let lp_coin = vault::do_spend<FutarchyConfig, Outcome, LPType, IW>(
-        executable,
-        account,
-        registry,
-        version::current(),
-        witness,
-        ctx,
+    // Take LP coin from executable_resources (put there by prior VaultSpend action)
+    let lp_coin: Coin<LPType> = executable_resources::take_object(
+        executable::uid_mut(executable),
+        action.lp_resource_name,
     );
 
     // Remove liquidity from pool (burns LP coin)
@@ -303,11 +300,10 @@ public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, LPType: d
 }
 
 /// Execute a swap action
-public fun do_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome: store, IW: copy + drop>(
+public fun do_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome: store>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     _version: VersionWitness,
-    _witness: IW,
     ctx: &mut TxContext,
 ): ResourceRequest<SwapAction<AssetType, StableType, LPType>> {
     executable::intent(executable).assert_is_account(account.addr());
@@ -326,6 +322,7 @@ public fun do_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome: sto
     let swap_asset = bcs::peel_bool(&mut reader);
     let amount_in = bcs::peel_u64(&mut reader);
     let min_amount_out = bcs::peel_u64(&mut reader);
+    let input_resource_name = string::utf8(bcs::peel_vec_u8(&mut reader));
     bcs_validation::validate_all_bytes_consumed(reader);
 
     assert!(amount_in > 0, EInvalidAmount);
@@ -335,6 +332,7 @@ public fun do_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome: sto
         swap_asset,
         amount_in,
         min_amount_out,
+        input_resource_name,
     };
 
     executable::increment_action_idx(executable);
@@ -345,13 +343,13 @@ public fun do_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome: sto
 }
 
 /// Fulfill swap request
-public fun fulfill_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome: store, IW: copy + drop>(
+/// Takes input coin from executable_resources (put there by prior VaultSpend action)
+public fun fulfill_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome: store>(
     request: ResourceRequest<SwapAction<AssetType, StableType, LPType>>,
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
     pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
-    witness: IW,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ResourceReceipt<SwapAction<AssetType, StableType, LPType>> {
@@ -364,13 +362,10 @@ public fun fulfill_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome
 
     if (action.swap_asset) {
         // Swap asset for stable
-        let asset_coin = vault::do_spend<FutarchyConfig, Outcome, AssetType, IW>(
-            executable,
-            account,
-            registry,
-            version::current(),
-            witness,
-            ctx,
+        // Take asset coin from executable_resources (put there by prior VaultSpend action)
+        let asset_coin: Coin<AssetType> = executable_resources::take_object(
+            executable::uid_mut(executable),
+            action.input_resource_name,
         );
 
         let stable_coin = unified_spot_pool::swap_asset_for_stable(
@@ -389,13 +384,10 @@ public fun fulfill_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome
         );
     } else {
         // Swap stable for asset
-        let stable_coin = vault::do_spend<FutarchyConfig, Outcome, StableType, IW>(
-            executable,
-            account,
-            registry,
-            version::current(),
-            witness,
-            ctx,
+        // Take stable coin from executable_resources (put there by prior VaultSpend action)
+        let stable_coin: Coin<StableType> = executable_resources::take_object(
+            executable::uid_mut(executable),
+            action.input_resource_name,
         );
 
         let asset_coin = unified_spot_pool::swap_stable_for_asset(
@@ -438,15 +430,21 @@ public fun new_add_liquidity_action<AssetType, StableType, LPType>(
     asset_amount: u64,
     stable_amount: u64,
     min_lp_out: u64,
+    asset_resource_name: String,
+    stable_resource_name: String,
 ): AddLiquidityAction<AssetType, StableType, LPType> {
     assert!(asset_amount > 0, EInvalidAmount);
     assert!(stable_amount > 0, EInvalidAmount);
+    assert!(asset_resource_name.length() > 0, EEmptyResourceName);
+    assert!(stable_resource_name.length() > 0, EEmptyResourceName);
 
     AddLiquidityAction {
         pool_id,
         asset_amount,
         stable_amount,
         min_lp_out,
+        asset_resource_name,
+        stable_resource_name,
     }
 }
 
@@ -455,14 +453,17 @@ public fun new_remove_liquidity_action<AssetType, StableType, LPType>(
     lp_amount: u64,
     min_asset_amount: u64,
     min_stable_amount: u64,
+    lp_resource_name: String,
 ): RemoveLiquidityAction<AssetType, StableType, LPType> {
     assert!(lp_amount > 0, EInvalidAmount);
+    assert!(lp_resource_name.length() > 0, EEmptyResourceName);
 
     RemoveLiquidityAction {
         pool_id,
         lp_amount,
         min_asset_amount,
         min_stable_amount,
+        lp_resource_name,
     }
 }
 
@@ -471,14 +472,17 @@ public fun new_swap_action<AssetType, StableType, LPType>(
     swap_asset: bool,
     amount_in: u64,
     min_amount_out: u64,
+    input_resource_name: String,
 ): SwapAction<AssetType, StableType, LPType> {
     assert!(amount_in > 0, EInvalidAmount);
+    assert!(input_resource_name.length() > 0, EEmptyResourceName);
 
     SwapAction {
         pool_id,
         swap_asset,
         amount_in,
         min_amount_out,
+        input_resource_name,
     }
 }
 

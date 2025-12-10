@@ -28,11 +28,11 @@
 
 module account_protocol::account;
 
-use account_protocol::deps::{Self, Deps};
+use account_protocol::deps::{Self, Deps, DepInfo, AccountDepsKey};
 use account_protocol::executable::{Self, Executable};
 use account_protocol::intents::{Self, Intents, Intent, Expired, Params};
 use account_protocol::metadata::{Self, Metadata};
-use account_protocol::package_registry;
+use account_protocol::package_registry::{Self, PackageRegistry};
 use account_protocol::version;
 use account_protocol::version_witness::{Self, VersionWitness};
 use std::option::Option;
@@ -43,6 +43,7 @@ use sui::dynamic_field as df;
 use sui::dynamic_object_field as dof;
 use sui::event;
 use sui::package;
+use sui::table::Table;
 use sui::transfer::Receiving;
 use sui::vec_set::{Self, VecSet};
 
@@ -396,7 +397,7 @@ public fun auth_account_addr(auth: &Auth): address {
 /// Creates a new intent. Can only be called from a dependency of the account.
 public fun create_intent<Outcome: store, IW: drop>(
     account: &Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     params: Params,
     outcome: Outcome, // resolution settings
     managed_name: String, // managed struct/object name for the role
@@ -405,7 +406,7 @@ public fun create_intent<Outcome: store, IW: drop>(
     ctx: &mut TxContext,
 ): Intent<Outcome> {
     // ensures the package address is a dependency for this account OR in the global whitelist
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
 
     params.new_intent(
         outcome,
@@ -419,13 +420,13 @@ public fun create_intent<Outcome: store, IW: drop>(
 /// Adds an intent to the account. Can only be called from a dependency of the account.
 public fun insert_intent<Outcome: store, IW: drop>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     intent: Intent<Outcome>,
     version_witness: VersionWitness,
     intent_witness: IW,
 ) {
     // ensures the package address is a dependency for this account
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     // ensures the right account is passed
     intent.assert_is_account(account.addr());
     // ensures the intent is created by the same package that creates the action
@@ -442,13 +443,13 @@ public fun insert_intent<Outcome: store, IW: drop>(
 /// Adds a managed data struct to the account.
 public fun add_managed_data<Key: copy + drop + store, Data: store>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     data: Data,
     version_witness: VersionWitness,
 ) {
     assert!(!has_managed_data(account, key), EManagedDataAlreadyExists);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     df::add(&mut account.id, key, data);
 }
 
@@ -460,49 +461,49 @@ public fun has_managed_data<Key: copy + drop + store>(account: &Account, key: Ke
 /// Borrows a managed data struct from the account.
 public fun borrow_managed_data<Key: copy + drop + store, Data: store>(
     account: &Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     version_witness: VersionWitness,
 ): &Data {
     assert!(has_managed_data(account, key), EManagedDataDoesntExist);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     df::borrow(&account.id, key)
 }
 
 /// Borrows a managed data struct mutably from the account.
 public fun borrow_managed_data_mut<Key: copy + drop + store, Data: store>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     version_witness: VersionWitness,
 ): &mut Data {
     assert!(has_managed_data(account, key), EManagedDataDoesntExist);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     df::borrow_mut(&mut account.id, key)
 }
 
 /// Removes a managed data struct from the account.
 public fun remove_managed_data<Key: copy + drop + store, A: store>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     version_witness: VersionWitness,
 ): A {
     assert!(has_managed_data(account, key), EManagedDataDoesntExist);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     df::remove(&mut account.id, key)
 }
 
 /// Adds a managed object to the account.
 public fun add_managed_asset<Key: copy + drop + store, Asset: key + store>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     asset: Asset,
     version_witness: VersionWitness,
 ) {
     assert!(!has_managed_asset(account, key), EManagedAssetAlreadyExists);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     dof::add(&mut account.id, key, asset);
 }
 
@@ -514,36 +515,36 @@ public fun has_managed_asset<Key: copy + drop + store>(account: &Account, key: K
 /// Borrows a managed object from the account.
 public fun borrow_managed_asset<Key: copy + drop + store, Asset: key + store>(
     account: &Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     version_witness: VersionWitness,
 ): &Asset {
     assert!(has_managed_asset(account, key), EManagedAssetDoesntExist);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     dof::borrow(&account.id, key)
 }
 
 /// Borrows a managed object mutably from the account.
 public fun borrow_managed_asset_mut<Key: copy + drop + store, Asset: key + store>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     version_witness: VersionWitness,
 ): &mut Asset {
     assert!(has_managed_asset(account, key), EManagedAssetDoesntExist);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     dof::borrow_mut(&mut account.id, key)
 }
 
 /// Removes a managed object from the account.
 public fun remove_managed_asset<Key: copy + drop + store, Asset: key + store>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: Key,
     version_witness: VersionWitness,
 ): Asset {
     assert!(has_managed_asset(account, key), EManagedAssetDoesntExist);
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     dof::remove(&mut account.id, key)
 }
 
@@ -560,7 +561,7 @@ public fun remove_managed_asset<Key: copy + drop + store, Asset: key + store>(
 public fun new<Config: store, CW: drop>(
     config: Config,
     deps: Deps,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     version_witness: VersionWitness,
     config_witness: CW,
     ctx: &mut TxContext,
@@ -578,7 +579,12 @@ public fun new<Config: store, CW: drop>(
         intents: intents::empty(ctx),
     };
 
-    account.deps().check(version_witness, registry);
+    // Initialize per-account deps table as dynamic field
+    let account_deps_table = deps::new_account_deps_table(ctx);
+    df::add(&mut account.id, deps::account_deps_key(), account_deps_table);
+
+    // Check that the caller package is authorized (global registry check for now, table is empty)
+    account.deps().check(version_witness, registry, account.account_deps());
 
     // Store config and its type as dynamic fields
     df::add(&mut account.id, ConfigKey {}, config);
@@ -590,11 +596,11 @@ public fun new<Config: store, CW: drop>(
 /// Returns an Auth object that can be used to call gated functions. Can only be called from the config module.
 public fun new_auth<Config: store, CW: drop>(
     account: &Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     version_witness: VersionWitness,
     config_witness: CW,
 ): Auth {
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     assert_is_config_module<Config, CW>(account, config_witness);
 
     Auth { account_addr: account.addr() }
@@ -603,14 +609,14 @@ public fun new_auth<Config: store, CW: drop>(
 /// Returns a tuple of the outcome that must be validated and the executable. Can only be called from the config module.
 public fun create_executable<Config: store, Outcome: store + copy, CW: drop>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     key: String,
     clock: &Clock,
     version_witness: VersionWitness,
     config_witness: CW,
     ctx: &mut TxContext, // Kept for API compatibility
 ): (Outcome, Executable<Outcome>) {
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     assert_is_config_module<Config, CW>(account, config_witness);
 
     let mut intent = account.intents.remove_intent<Outcome>(key);
@@ -626,11 +632,11 @@ public fun create_executable<Config: store, Outcome: store + copy, CW: drop>(
 /// Returns a mutable reference to the intents of the account. Can only be called from the config module.
 public fun intents_mut<Config: store, CW: drop>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     version_witness: VersionWitness,
     config_witness: CW,
 ): &mut Intents {
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     assert_is_config_module<Config, CW>(account, config_witness);
 
     &mut account.intents
@@ -639,11 +645,11 @@ public fun intents_mut<Config: store, CW: drop>(
 /// Returns a mutable reference to the config of the account. Can only be called from the config module.
 public fun config_mut<Config: store, CW: drop>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     version_witness: VersionWitness,
     config_witness: CW,
 ): &mut Config {
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     assert_is_config_module<Config, CW>(account, config_witness);
 
     df::borrow_mut<ConfigKey, Config>(&mut account.id, ConfigKey {})
@@ -678,12 +684,12 @@ public fun config_mut<Config: store, CW: drop>(
 /// - If version witness check fails
 public(package) fun migrate_config<OldConfig: store, NewConfig: store>(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     new_config: NewConfig,
     version_witness: VersionWitness,
 ): OldConfig {
     // Ensure caller is authorized via deps
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
 
     // Validate that OldConfig matches what's currently stored
     let stored_type = df::borrow<ConfigTypeKey, TypeName>(&account.id, ConfigTypeKey {});
@@ -721,6 +727,16 @@ public fun metadata(account: &Account): &Metadata {
 /// Returns the dependencies of the account.
 public fun deps(account: &Account): &Deps {
     &account.deps
+}
+
+/// Returns the per-account deps table (for package authorization checks)
+public fun account_deps(account: &Account): &Table<address, DepInfo> {
+    df::borrow(&account.id, deps::account_deps_key())
+}
+
+/// Returns mutable reference to per-account deps table
+public(package) fun account_deps_mut(account: &mut Account): &mut Table<address, DepInfo> {
+    df::borrow_mut(&mut account.id, deps::account_deps_key())
 }
 
 /// Returns the intents of the account.
@@ -865,15 +881,25 @@ fun is_coin_type(type_name: TypeName): bool {
 /// Returns a mutable reference to the metadata of the account.
 public(package) fun metadata_mut(
     account: &mut Account,
-    registry: &package_registry::PackageRegistry,
+    registry: &PackageRegistry,
     version_witness: VersionWitness,
 ): &mut Metadata {
     // ensures the package address is a dependency for this account
-    account.deps().check(version_witness, registry);
+    account.deps().check(version_witness, registry, account.account_deps());
     &mut account.metadata
 }
 
-// Deps are no longer mutable - all packages must be in the global registry
+/// Returns a mutable reference to the deps of the account.
+/// Used by config actions to modify per-account package dependencies.
+public(package) fun deps_mut(
+    account: &mut Account,
+    registry: &PackageRegistry,
+    version_witness: VersionWitness,
+): &mut Deps {
+    // ensures the package address is a dependency for this account
+    account.deps().check(version_witness, registry, account.account_deps());
+    &mut account.deps
+}
 
 /// Receives an object from an account with tracking, only used in owned action lib module.
 /// NOTE: This is for WITHDRAWALS - receiving an object FROM the account to return it.

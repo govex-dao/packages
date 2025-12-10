@@ -176,9 +176,8 @@ public fun do_add_package<Outcome: store, IW: drop>(
 
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Verify package dependencies for security
-    // This checks both account-specific deps and the global PackageRegistry whitelist
-    account.deps().check(version_witness, registry);
+    // Verify package dependencies for security (checks global registry, then per-account table)
+    deps::check(account.deps(), version_witness, registry, account.account_deps());
 
     // Authorization is enforced by Move's type system:
     // Only the registry owner can obtain &mut PackageRegistry
@@ -217,8 +216,8 @@ public fun do_remove_package<Outcome: store, IW: drop>(
 
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Verify package dependencies for security
-    account.deps().check(version_witness, registry);
+    // Verify package dependencies for security (checks global registry, then per-account table)
+    deps::check(account.deps(), version_witness, registry, account.account_deps());
 
     // Authorization enforced by type system (&mut PackageRegistry)
     package_registry::remove_package(registry, name);
@@ -250,8 +249,8 @@ public fun do_update_package_version<Outcome: store, IW: drop>(
 
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Verify package dependencies for security
-    account.deps().check(version_witness, registry);
+    // Verify package dependencies for security (checks global registry, then per-account table)
+    deps::check(account.deps(), version_witness, registry, account.account_deps());
 
     // Authorization enforced by type system (&mut PackageRegistry)
     package_registry::update_package_version(registry, name, addr, version);
@@ -293,8 +292,8 @@ public fun do_update_package_metadata<Outcome: store, IW: drop>(
 
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Verify package dependencies for security
-    account.deps().check(version_witness, registry);
+    // Verify package dependencies for security (checks global registry, then per-account table)
+    deps::check(account.deps(), version_witness, registry, account.account_deps());
 
     // Authorization enforced by type system (&mut PackageRegistry)
     // action_types are already Strings
@@ -340,8 +339,8 @@ public fun do_pause_account_creation<Outcome: store, IW: drop>(
         EUnauthorized
     );
 
-    // Verify deps compatibility
-    deps::check(account::deps(account), version_witness, registry);
+    // Verify deps compatibility (checks global registry, then per-account table)
+    deps::check(account::deps(account), version_witness, registry, account::account_deps(account));
 
     // Pause account creation (authorization already verified above)
     package_registry::pause_account_creation_authorized(registry);
@@ -378,8 +377,8 @@ public fun do_unpause_account_creation<Outcome: store, IW: drop>(
         EUnauthorized
     );
 
-    // Verify deps compatibility
-    deps::check(account::deps(account), version_witness, registry);
+    // Verify deps compatibility (checks global registry, then per-account table)
+    deps::check(account::deps(account), version_witness, registry, account::account_deps(account));
 
     // Unpause account creation (authorization already verified above)
     package_registry::unpause_account_creation_authorized(registry);

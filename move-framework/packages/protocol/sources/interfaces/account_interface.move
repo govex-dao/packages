@@ -16,6 +16,7 @@ module account_protocol::account_interface;
 use account_protocol::account::{Self, Account, Auth};
 use account_protocol::deps::Deps;
 use account_protocol::executable::Executable;
+use account_protocol::package_registry::PackageRegistry;
 use account_protocol::version_witness::VersionWitness;
 use std::string::String;
 use sui::clock::Clock;
@@ -31,21 +32,20 @@ use sui::clock::Clock;
 /// public struct Witness() has drop;
 ///
 /// public fun new_account(
-///     extensions: &Extensions,
+///     registry: &PackageRegistry,
 ///     ctx: &mut TxContext,
 /// ): Account {
-///     fees.process(coin);
-///
 ///     let config = Config {
 ///        .. <FIELDS>
 ///     };
 ///
 ///     create_account!(
 ///        config,
+///        registry,
 ///        version::current(),
 ///        Witness(),
 ///        ctx,
-///        || deps::new(extensions)
+///        || deps::new(registry, false) // false = unverified_allowed
 ///     )
 /// }
 ///
@@ -54,13 +54,14 @@ use sui::clock::Clock;
 /// Returns a new Account object with a specific config and initialize dependencies.
 public macro fun create_account<$Config: store, $CW: drop>(
     $config: $Config,
+    $registry: &PackageRegistry,
     $version_witness: VersionWitness,
     $config_witness: $CW,
     $ctx: &mut TxContext,
     $init_deps: || -> Deps,
 ): Account {
     let deps = $init_deps();
-    account::new<$Config, $CW>($config, deps, $version_witness, $config_witness, $ctx)
+    account::new<$Config, $CW>($config, deps, $registry, $version_witness, $config_witness, $ctx)
 }
 
 /// Example implementation:

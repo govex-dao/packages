@@ -54,7 +54,7 @@ fun start(): (Scenario, PackageRegistry, Account, Clock) {
     package_registry::add_for_testing(&mut extensions, b"AccountMultisig".to_string(), @0x1, 1);
     package_registry::add_for_testing(&mut extensions, b"AccountActions".to_string(), @0x2, 1);
     // Account generic types are dummy types (bool, bool)
-    let deps = deps::new(&extensions);
+    let deps = deps::new(&extensions, false);
     let account = account::new(
         Config {},
         deps,
@@ -255,7 +255,7 @@ fun test_merge_2_coins_and_split() {
 fun test_error_do_withdraw_from_wrong_account() {
     let (mut scenario, extensions, mut account, clock) = start();
 
-    let deps = deps::new(&extensions);
+    let deps = deps::new(&extensions, false);
     let mut account2 = account::new(
         Config {},
         deps,
@@ -305,7 +305,7 @@ fun test_error_do_withdraw_from_wrong_account() {
 #[test, expected_failure(abort_code = intents::EWrongAccount)]
 fun test_error_delete_withdraw_from_wrong_account() {
     let (mut scenario, extensions, mut account, mut clock) = start();
-    let deps = deps::new(&extensions);
+    let deps = deps::new(&extensions, false);
     let mut account2 = account::new(
         Config {},
         deps,

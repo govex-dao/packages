@@ -10,7 +10,7 @@ use account_protocol::intents::{Self, ActionSpec};
 use account_protocol::account::{Self, Account};
 use account_protocol::package_registry::{Self, PackageRegistry};
 use account_protocol::version_witness;
-use account_actions::{action_spec_builder, stream_init_actions, memo_init_actions, transfer_init_actions};
+use account_actions::{action_spec_builder, stream_init_actions, memo_init_actions, transfer_init_actions, vault_init_actions};
 use futarchy_core::futarchy_config::{Self, FutarchyConfig};
 use sui::clock::{Self, Clock};
 use sui::test_scenario::{Self as ts, Scenario};
@@ -104,40 +104,53 @@ fun test_build_proposal_intent_with_multiple_actions() {
         memo,
     );
 
-    // === Add Transfer Action ===
-    // Transfer operational funds to recipient
+    // === Add Spend + Transfer Actions (composable pattern) ===
+    // Spend coins from vault to executable_resources, then transfer to recipient
     let transfer_vault = string::utf8(b"treasury");
     let transfer_amount = 50_000_000_000; // 50k tokens with 6 decimals
     let transfer_recipient = RECIPIENT_ADDR;
+    let resource_name = string::utf8(b"transfer_coin");
 
-    transfer_init_actions::add_withdraw_and_transfer_spec(
+    // First: Spend from vault (puts coin in executable_resources)
+    vault_init_actions::add_spend_spec(
         &mut builder,
         transfer_vault,
         transfer_amount,
+        false, // spend_all
+        resource_name,
+    );
+
+    // Second: Transfer to recipient (takes coin from executable_resources)
+    transfer_init_actions::add_transfer_object_spec(
+        &mut builder,
         transfer_recipient,
+        resource_name,
     );
 
     // Build the action specs
     let action_specs = action_spec_builder::into_vector(builder);
 
-    // Verify we have 3 actions
-    assert!(vector::length(&action_specs) == 3, 0);
+    // Verify we have 4 actions (stream, memo, spend, transfer)
+    assert!(vector::length(&action_specs) == 4, 0);
 
     // Verify each action spec has the correct version
     let stream_spec = vector::borrow(&action_specs, 0);
     let memo_spec = vector::borrow(&action_specs, 1);
-    let transfer_spec = vector::borrow(&action_specs, 2);
+    let spend_spec = vector::borrow(&action_specs, 2);
+    let transfer_spec = vector::borrow(&action_specs, 3);
 
     assert!(intents::action_spec_version(stream_spec) == 1, 1);
     assert!(intents::action_spec_version(memo_spec) == 1, 2);
-    assert!(intents::action_spec_version(transfer_spec) == 1, 3);
+    assert!(intents::action_spec_version(spend_spec) == 1, 3);
+    assert!(intents::action_spec_version(transfer_spec) == 1, 4);
 
     // Verify action types using type names
     // Note: We can't easily verify the exact type names in tests without exposing them,
     // but we can verify the data is serialized correctly by checking non-zero data
-    assert!(vector::length(intents::action_spec_data(stream_spec)) > 0, 4);
-    assert!(vector::length(intents::action_spec_data(memo_spec)) > 0, 5);
-    assert!(vector::length(intents::action_spec_data(transfer_spec)) > 0, 6);
+    assert!(vector::length(intents::action_spec_data(stream_spec)) > 0, 5);
+    assert!(vector::length(intents::action_spec_data(memo_spec)) > 0, 6);
+    assert!(vector::length(intents::action_spec_data(spend_spec)) > 0, 7);
+    assert!(vector::length(intents::action_spec_data(transfer_spec)) > 0, 8);
 
     scenario.end();
 }
@@ -158,18 +171,25 @@ fun test_build_proposal_intent_memo_and_transfer_only() {
         string::utf8(b"Treasury diversification: Converting to stablecoins"),
     );
 
-    // Add transfer
-    transfer_init_actions::add_withdraw_and_transfer_spec(
+    // Add spend + transfer (composable pattern)
+    let resource_name = string::utf8(b"transfer_coin");
+    vault_init_actions::add_spend_spec(
         &mut builder,
         string::utf8(b"treasury"),
         1_000_000_000_000, // 1M tokens
+        false,
+        resource_name,
+    );
+    transfer_init_actions::add_transfer_object_spec(
+        &mut builder,
         RECIPIENT_ADDR,
+        resource_name,
     );
 
     let action_specs = action_spec_builder::into_vector(builder);
 
-    // Verify we have exactly 2 actions
-    assert!(vector::length(&action_specs) == 2, 0);
+    // Verify we have exactly 3 actions (memo, spend, transfer)
+    assert!(vector::length(&action_specs) == 3, 0);
 
     scenario.end();
 }
@@ -268,11 +288,19 @@ fun test_action_spec_builder_pattern_documentation() {
         string::utf8(b"Governance action approved"),
     );
 
-    transfer_init_actions::add_withdraw_and_transfer_spec(
+    // Use composable spend + transfer pattern
+    let resource_name = string::utf8(b"transfer_coin");
+    vault_init_actions::add_spend_spec(
         &mut builder,
         string::utf8(b"treasury"),
         500_000,
+        false,
+        resource_name,
+    );
+    transfer_init_actions::add_transfer_object_spec(
+        &mut builder,
         RECIPIENT_ADDR,
+        resource_name,
     );
 
     let action_specs = action_spec_builder::into_vector(builder);
@@ -291,11 +319,12 @@ fun test_action_spec_builder_pattern_documentation() {
     // let executable = ptb_executor::begin_execution(...);
     // let stream_id = stream::do_create_stream<Config, Outcome, CoinType, IW>(&mut executable, ...);
     // memo::do_emit_memo<Config, Outcome, IW>(&mut executable, ...);
-    // vault::do_init_withdraw_and_transfer<Config, Outcome, CoinType, IW>(&mut executable, ...);
+    // vault::do_spend<Config, Outcome, CoinType, IW>(&mut executable, ...);  // puts coin in executable_resources
+    // transfer::do_init_transfer<Config, Outcome, T, IW>(&mut executable, ...);  // takes coin and transfers
     // ptb_executor::finalize_execution(executable, ...);
 
-    // Verify specs were built correctly
-    assert!(vector::length(&action_specs) == 3, 0);
+    // Verify specs were built correctly (stream, memo, spend, transfer = 4 actions)
+    assert!(vector::length(&action_specs) == 4, 0);
 
     scenario.end();
 }

@@ -23,12 +23,13 @@ use account_protocol::{
     account::{Self, Account, Auth},
     intents::{Intent, Expired, Params},
     executable::Executable,
+    deps::{Self, DepInfo},
     metadata,
     version,
     version_witness::VersionWitness,
     intent_interface,
 };
-use account_protocol::package_registry::PackageRegistry;
+use account_protocol::package_registry::{Self, PackageRegistry};
 
 use fun account_protocol::intents::add_typed_action as Intent.add_typed_action;
 
@@ -41,6 +42,8 @@ use fun intent_interface::process_intent as Account.process_intent;
 
 /// Error when action version is not supported
 const EUnsupportedActionVersion: u64 = 1;
+/// Error when package is not authorized (not in global registry and unverified_allowed is false)
+const EPackageNotAuthorized: u64 = 10;
 
 // === Action Type Markers ===
 
@@ -50,10 +53,19 @@ public struct ConfigUpdateMetadata has drop {}
 public struct ConfigUpdateDeposits has drop {}
 /// Manage type whitelist for deposits
 public struct ConfigManageWhitelist has drop {}
+/// Toggle unverified packages allowed flag
+public struct ConfigToggleUnverified has drop {}
+/// Add package to per-account deps
+public struct ConfigAddDep has drop {}
+/// Remove package from per-account deps
+public struct ConfigRemoveDep has drop {}
 
 public fun config_update_metadata(): ConfigUpdateMetadata { ConfigUpdateMetadata {} }
 public fun config_update_deposits(): ConfigUpdateDeposits { ConfigUpdateDeposits {} }
 public fun config_manage_whitelist(): ConfigManageWhitelist { ConfigManageWhitelist {} }
+public fun config_toggle_unverified(): ConfigToggleUnverified { ConfigToggleUnverified {} }
+public fun config_add_dep(): ConfigAddDep { ConfigAddDep {} }
+public fun config_remove_dep(): ConfigRemoveDep { ConfigRemoveDep {} }
 
 // === Structs ===
 
@@ -61,6 +73,12 @@ public fun config_manage_whitelist(): ConfigManageWhitelist { ConfigManageWhitel
 public struct ConfigureDepositsIntent() has drop;
 /// Intent Witness for whitelist management
 public struct ManageWhitelistIntent() has drop;
+/// Intent Witness for toggling unverified allowed
+public struct ToggleUnverifiedAllowedIntent() has drop;
+/// Intent Witness for adding a dep
+public struct AddDepIntent() has drop;
+/// Intent Witness for removing a dep
+public struct RemoveDepIntent() has drop;
 
 /// Action to configure object deposit settings
 public struct ConfigureDepositsAction has drop, store {
@@ -72,6 +90,20 @@ public struct ConfigureDepositsAction has drop, store {
 public struct ManageWhitelistAction has drop, store {
     add_types: vector<String>,
     remove_types: vector<String>,
+}
+/// Action to toggle the unverified_allowed flag for per-account deps
+public struct ToggleUnverifiedAllowedAction has copy, drop, store {}
+
+/// Action to add a package to the per-account deps table
+public struct AddDepAction has copy, drop, store {
+    addr: address,
+    name: String,
+    version: u64,
+}
+
+/// Action to remove a package from the per-account deps table
+public struct RemoveDepAction has copy, drop, store {
+    addr: address,
 }
 
 // === Public Constructors for Actions ===
@@ -331,4 +363,166 @@ public fun delete_manage_whitelist(expired: &mut Expired) {
         add_types: peel_vector_string(&mut reader),
         remove_types: peel_vector_string(&mut reader)
     };
+}
+
+// ============================================================================
+// === Per-Account Dependencies Management (3-Layer Pattern) ===
+// ============================================================================
+
+// --- Toggle Unverified Allowed ---
+
+/// Executes an action to toggle the unverified_allowed flag
+/// When enabled, the account can add packages not in the global registry
+public fun do_toggle_unverified_allowed<Config: store, Outcome: store, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    _version_witness: VersionWitness,
+    _intent_witness: IW,
+) {
+    // Assert account ownership
+    executable.intent().assert_is_account(account.addr());
+
+    // Get ActionSpec
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // Validate action type
+    account_protocol::action_validation::assert_action_type<ConfigToggleUnverified>(spec);
+
+    // Check version
+    let spec_version = account_protocol::intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // ToggleUnverifiedAllowedAction has no fields, nothing to deserialize
+
+    // Toggle the flag
+    deps::toggle_unverified_allowed(account::deps_mut(account, registry, version::current()));
+
+    // Increment action index
+    account_protocol::executable::increment_action_idx(executable);
+}
+
+/// Deletes the ToggleUnverifiedAllowedAction from an expired intent
+public fun delete_toggle_unverified_allowed(expired: &mut Expired) {
+    let _spec = expired.remove_action_spec();
+    // Empty struct, nothing to deserialize
+}
+
+// --- Add Dep ---
+
+/// Executes an action to add a package to the per-account deps table
+/// If unverified_allowed is false, the package must be in the global registry
+public fun do_add_dep<Config: store, Outcome: store, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    _version_witness: VersionWitness,
+    _intent_witness: IW,
+) {
+    // Assert account ownership
+    executable.intent().assert_is_account(account.addr());
+
+    // Get ActionSpec
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // Validate action type
+    account_protocol::action_validation::assert_action_type<ConfigAddDep>(spec);
+
+    // Check version
+    let spec_version = account_protocol::intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Deserialize action
+    let action_data = account_protocol::intents::action_spec_data(spec);
+    let mut reader = bcs::new(*action_data);
+    let addr = bcs::peel_address(&mut reader);
+    let name = string::utf8(bcs::peel_vec_u8(&mut reader));
+    let dep_version = bcs::peel_u64(&mut reader);
+
+    // Validate all bytes consumed
+    account_protocol::bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Authorization check: if unverified_allowed is false, package must be in global registry.
+    // We perform this check here (duplicating deps::add_dep logic) to avoid borrow conflicts:
+    // we need &Deps to check unverified_allowed, but &mut Table to add the dep.
+    // See deps::add_dep for the canonical implementation of this authorization logic.
+    let unverified_allowed = account.deps().unverified_allowed();
+    if (!unverified_allowed) {
+        assert!(registry.contains_package_addr(addr), EPackageNotAuthorized);
+    };
+
+    // Add to per-account table (auth check already done above)
+    let account_deps = account::account_deps_mut(account);
+    deps::add_dep_no_auth_check(
+        account_deps,
+        addr,
+        name,
+        dep_version,
+    );
+
+    // Increment action index
+    account_protocol::executable::increment_action_idx(executable);
+}
+
+/// Deletes the AddDepAction from an expired intent
+public fun delete_add_dep(expired: &mut Expired) {
+    let spec = expired.remove_action_spec();
+    let action_data = account_protocol::intents::action_spec_data(&spec);
+    let mut reader = bcs::new(*action_data);
+
+    // Consume the bytes
+    let _addr = bcs::peel_address(&mut reader);
+    let _name = string::utf8(bcs::peel_vec_u8(&mut reader));
+    let _version = bcs::peel_u64(&mut reader);
+}
+
+// --- Remove Dep ---
+
+/// Executes an action to remove a package from the per-account deps table
+public fun do_remove_dep<Config: store, Outcome: store, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    account: &mut Account,
+    registry: &PackageRegistry,
+    _version_witness: VersionWitness,
+    _intent_witness: IW,
+) {
+    // Assert account ownership
+    executable.intent().assert_is_account(account.addr());
+
+    // Get ActionSpec
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // Validate action type
+    account_protocol::action_validation::assert_action_type<ConfigRemoveDep>(spec);
+
+    // Check version
+    let spec_version = account_protocol::intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Deserialize action
+    let action_data = account_protocol::intents::action_spec_data(spec);
+    let mut reader = bcs::new(*action_data);
+    let addr = bcs::peel_address(&mut reader);
+
+    // Validate all bytes consumed
+    account_protocol::bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Remove the dep from per-account table
+    let _removed = deps::remove_dep(account::account_deps_mut(account), addr);
+
+    // Increment action index
+    account_protocol::executable::increment_action_idx(executable);
+}
+
+/// Deletes the RemoveDepAction from an expired intent
+public fun delete_remove_dep(expired: &mut Expired) {
+    let spec = expired.remove_action_spec();
+    let action_data = account_protocol::intents::action_spec_data(&spec);
+    let mut reader = bcs::new(*action_data);
+
+    // Consume the bytes
+    let _addr = bcs::peel_address(&mut reader);
 }

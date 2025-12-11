@@ -329,8 +329,6 @@ fun test_do_init_create_stream() {
         option::none(), // cliff_time
         option::none(), // claim_window_ms
         stream_amount, // max_per_withdrawal
-        true, // is_transferable
-        true, // is_cancellable
     );
 
     // Stage success specs

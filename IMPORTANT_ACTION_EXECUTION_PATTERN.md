@@ -547,6 +547,8 @@ launchpad::finalize_init_execution(executable, account, registry, clock, ctx);
 **COMPLETED - Full 3-Layer Pattern:**
 - [X] `do_init_create_stream` (vault.move:1439 - verified working)
 - [X] `do_init_withdraw_and_transfer` (vault.move - NEW - withdraws from vault + transfers)
+- [X] `do_create_vesting` (vesting.move - creates standalone vesting with TRUE fund isolation)
+- [X] `do_cancel_vesting` (vesting.move - cancels vesting, returns unvested funds)
 - [X] `do_init_remove_treasury_cap` (currency.move - verified working)
 - [X] `do_init_remove_metadata` (currency.move - verified working)
 - [X] `do_emit_memo` (memo.move - reuses existing, has Layer 1 & 2 added)
@@ -612,8 +614,8 @@ launchpad::finalize_init_execution(executable, account, registry, clock, ctx);
 - [X] `do_update_coin_proposal_fee` (protocol_admin_actions.move:785 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
 - [X] `do_apply_pending_coin_fees` (protocol_admin_actions.move:836 - has Layer 3, added Layers 1 & 2 in protocol_admin_init_actions.move)
 
-**✅ ALL ACTIONS COMPLETE! All 57 actions now have full 3-layer pattern implementation.**
-- 23 actions in account_actions package
+**✅ ALL ACTIONS COMPLETE! All 59 actions now have full 3-layer pattern implementation.**
+- 25 actions in account_actions package (including CreateVesting, CancelVesting)
 - 2 actions in futarchy_oracle_actions package
 - 12 actions in futarchy_actions package
 - 20 actions in futarchy_governance_actions package

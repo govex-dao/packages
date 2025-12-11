@@ -15,7 +15,7 @@ Complete list of all action types across all packages. Each action follows the 3
 
 ---
 
-## account_actions (21 actions)
+## account_actions (23 actions)
 
 ### Vault Actions
 | Marker | SDK ID | Description |
@@ -24,8 +24,14 @@ Complete list of all action types across all packages. Each action follows the 3
 | `VaultSpend` | `spend` | Spend coins from a vault (provides to executable_resources) |
 | `VaultApproveCoinType` | `approve_coin_type` | Approve a coin type for vault |
 | `VaultRemoveApprovedCoinType` | `remove_approved_coin_type` | Remove approved coin type |
-| `CreateStream` | `create_stream` | Create a vesting stream |
-| `CancelStream` | `cancel_stream` | Cancel an active stream |
+| `CreateStream` | `create_stream` | Create a vault vesting stream (accounting isolation, always cancellable) |
+| `CancelStream` | `cancel_stream` | Cancel an active vault stream |
+
+### Vesting Actions (Physical Isolation)
+| Marker | SDK ID | Description |
+|--------|--------|-------------|
+| `CreateVesting` | `create_vesting` | Create standalone vesting with TRUE fund isolation (funds in shared object) |
+| `CancelVesting` | `cancel_vesting` | Cancel a cancellable vesting, return unvested funds to DAO |
 
 ### Currency Actions
 | Marker | SDK ID | Description |
@@ -147,11 +153,11 @@ Complete list of all action types across all packages. Each action follows the 3
 | Package | Action Count |
 |---------|--------------|
 | account_protocol | 3 |
-| account_actions | 21 |
+| account_actions | 23 |
 | futarchy_actions | 16 |
 | futarchy_governance_actions | 20 |
 | futarchy_oracle_actions | 2 |
-| **Total** | **62** |
+| **Total** | **64** |
 
 ---
 
@@ -188,3 +194,17 @@ All other actions follow the deterministic 3-layer pattern:
 3. **Layer 3**: `do_*` execution function (reads from ActionSpec only)
 
 See `IMPORTANT_ACTION_EXECUTION_PATTERN.md` for full documentation.
+
+### Vesting vs Vault Streams
+
+| Feature | Vesting | Vault Stream |
+|---------|---------|--------------|
+| Fund Isolation | Physical (funds in shared Vesting object) | Accounting (funds remain in vault) |
+| Cancellable | Configurable (`is_cancellable` flag) | Always (by DAO governance) |
+| Transferable | With ClaimCap (if `is_transferable`) | No |
+| Modification | Cannot modify, must recreate | Cancel & recreate |
+| Claim Method | Beneficiary with ClaimCap | Any beneficiary address |
+
+**When to use Vesting:** Permanent commitments where recipient needs guaranteed funds (employee vesting, investor lockups, grants). Uncancellable vestings are GUARANTEED to recipient.
+
+**When to use Vault Streams:** DAO-controlled distributions that may need adjustment (contributor payments, operational expenses).

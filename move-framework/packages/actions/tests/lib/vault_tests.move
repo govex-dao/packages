@@ -148,8 +148,6 @@ fun test_create_and_withdraw_from_stream() {
         option::none(), // cliff_time
         option::none(), // claim_window_ms
         500, // max_per_withdrawal
-        true, // is_transferable
-        true, // is_cancellable
         &clock,
         scenario.ctx(),
     );
@@ -217,8 +215,6 @@ fun test_withdraw_before_start() {
         option::none(), // cliff_time
         option::none(), // claim_window_ms
         500, // max_per_withdrawal
-        true, // is_transferable
-        true, // is_cancellable
         &clock,
         scenario.ctx(),
     );
@@ -270,8 +266,6 @@ fun test_withdraw_before_cliff() {
         option::some(cliff_time), // cliff_time
         option::none(), // claim_window_ms
         500, // max_per_withdrawal
-        true, // is_transferable
-        true, // is_cancellable
         &clock,
         scenario.ctx(),
     );
@@ -324,8 +318,6 @@ fun test_cancel_stream() {
         option::none(), // cliff_time
         option::none(), // claim_window_ms
         500, // max_per_withdrawal
-        true, // is_transferable
-        true, // is_cancellable
         &clock,
         scenario.ctx(),
     );
@@ -386,8 +378,6 @@ fun test_withdrawal_limit() {
         option::none(), // cliff_time
         option::none(), // claim_window_ms
         100, // max_per_withdrawal = 100
-        true, // is_transferable
-        true, // is_cancellable
         &clock,
         scenario.ctx(),
     );
@@ -443,7 +433,6 @@ fun test_withdrawal_limit() {
 //         option::none(), // claim_window_ms
 //         100, // max_per_withdrawal
 //         true, // is_transferable
-//         true, // is_cancellable
 //         &clock,
 //         scenario.ctx(),
 //     );

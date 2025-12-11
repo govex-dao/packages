@@ -22,6 +22,7 @@ use sui::tx_context::TxContext;
 
 /// Action to create an iteration-based vesting stream
 /// Stored in InitActionSpecs with BCS serialization
+/// Note: All streams are always cancellable by DAO governance (cancel & recreate to modify)
 public struct CreateStreamAction has copy, drop, store {
     vault_name: String,
     beneficiary: address,
@@ -32,14 +33,13 @@ public struct CreateStreamAction has copy, drop, store {
     cliff_time: Option<u64>,
     claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    is_transferable: bool,
-    is_cancellable: bool,
 }
 
 // === Spec Builders (for PTB construction) ===
 
 /// Add CreateStreamAction to Builder
 /// Used for staging actions in launchpad raises via PTB
+/// Note: All streams are always cancellable by DAO governance (cancel & recreate to modify)
 public fun add_create_stream_spec(
     builder: &mut account_actions::action_spec_builder::Builder,
     vault_name: String,
@@ -51,14 +51,12 @@ public fun add_create_stream_spec(
     cliff_time: Option<u64>,
     claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    is_transferable: bool,
-    is_cancellable: bool,
 ) {
     use account_actions::action_spec_builder as builder;
     use std::type_name;
     use sui::bcs;
 
-    // Create action struct
+    // Create action struct (streams are always cancellable)
     let action = CreateStreamAction {
         vault_name,
         beneficiary,
@@ -69,8 +67,6 @@ public fun add_create_stream_spec(
         cliff_time,
         claim_window_ms,
         max_per_withdrawal,
-        is_transferable,
-        is_cancellable,
     };
 
     // Serialize
@@ -89,6 +85,7 @@ public fun add_create_stream_spec(
 
 /// Execute init_create_stream from a staged action
 /// Accepts typed action directly (zero deserialization cost!)
+/// Note: All streams are always cancellable by DAO governance (cancel & recreate to modify)
 public fun dispatch_create_stream<Config: store, CoinType: drop>(
     account: &mut Account,
     registry: &PackageRegistry,
@@ -109,8 +106,6 @@ public fun dispatch_create_stream<Config: store, CoinType: drop>(
         action.cliff_time,
         action.claim_window_ms,
         action.max_per_withdrawal,
-        action.is_transferable,
-        action.is_cancellable,
         clock,
         ctx,
     )

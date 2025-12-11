@@ -109,6 +109,8 @@ public fun init_store_data<Config: store, Key: copy + drop + store, T: store>(
 
 // === Stream Actions ===
 
+/// Create a stream during initialization
+/// Note: All streams are always cancellable by DAO governance (cancel & recreate to modify)
 public fun init_create_stream<Config: store, CoinType: drop>(
     account: &mut Account,
     registry: &PackageRegistry,
@@ -121,8 +123,6 @@ public fun init_create_stream<Config: store, CoinType: drop>(
     cliff_time: std::option::Option<u64>,
     claim_window_ms: std::option::Option<u64>,
     max_per_withdrawal: u64,
-    is_transferable: bool,
-    is_cancellable: bool,
     clock: &sui::clock::Clock,
     ctx: &mut TxContext,
 ): sui::object::ID {
@@ -138,8 +138,6 @@ public fun init_create_stream<Config: store, CoinType: drop>(
         cliff_time,
         claim_window_ms,
         max_per_withdrawal,
-        is_transferable,
-        is_cancellable,
         clock,
         ctx,
     )

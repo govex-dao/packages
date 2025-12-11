@@ -108,13 +108,15 @@ public struct Vault has store {
 /// Features:
 /// - Iteration-based vesting (discrete unlock events)
 /// - Optional "use or lose" claim window per iteration
-/// - Multiple beneficiaries support (unlimited)
 /// - Metadata for extensibility
-/// - Transfer and reduction capabilities
+/// - Always cancellable by DAO governance (cancel & recreate to modify)
+///
+/// Note: For immutable vestings with beneficiary control, use the standalone
+/// vesting module instead. Vault streams are simple DAO-controlled streams.
 public struct VaultStream has store, drop {
     id: ID,
     coin_type: TypeName,
-    beneficiary: address,  // Primary beneficiary
+    beneficiary: address,
     // Core vesting parameters (iteration-based)
     amount_per_iteration: u64,   // Tokens that unlock per iteration (NO DIVISION!)
     claimed_amount: u64,          // Total claimed so far
@@ -126,13 +128,8 @@ public struct VaultStream has store, drop {
     claim_window_ms: Option<u64>, // If Some(X), must claim within X ms after unlock or forfeit
     // Rate limiting (per claim)
     max_per_withdrawal: u64,
-    // Multiple beneficiaries support (unlimited)
-    additional_beneficiaries: vector<address>,
     // Metadata for extensibility
     metadata: Option<String>,
-    // Transfer settings
-    is_transferable: bool,
-    is_cancellable: bool,
 }
 
 // Event structures for stream operations
@@ -717,7 +714,7 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
     assert!(vault.streams.contains(stream_id), EStreamNotFound);
 
     let stream = table::remove(&mut vault.streams, stream_id);
-    assert!(stream.is_cancellable, ENotCancellable);
+    // Streams are always cancellable by DAO governance
 
     let current_time = clock.timestamp_ms();
 
@@ -966,6 +963,7 @@ public fun delete_toggle_stream_freeze(expired: &mut Expired) {
 // === Stream Management Functions ===
 
 /// Creates a new iteration-based stream in the vault
+/// All streams are cancellable by DAO governance (cancel & recreate to modify)
 public fun create_stream<Config: store, CoinType: drop>(
     auth: Auth,
     account: &mut Account,
@@ -979,8 +977,6 @@ public fun create_stream<Config: store, CoinType: drop>(
     cliff_time: Option<u64>,
     claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    is_transferable: bool,
-    is_cancellable: bool,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
@@ -1027,10 +1023,7 @@ public fun create_stream<Config: store, CoinType: drop>(
         cliff_time,
         claim_window_ms,
         max_per_withdrawal,
-        additional_beneficiaries: vector::empty(),
         metadata: option::none(),
-        is_transferable,
-        is_cancellable,
     };
 
     let id = object::uid_to_inner(&stream_id);
@@ -1069,7 +1062,7 @@ public fun cancel_stream<Config: store, CoinType: drop>(
     assert!(table::contains(&vault.streams, stream_id), EStreamNotFound);
 
     let stream = table::remove(&mut vault.streams, stream_id);
-    assert!(stream.is_cancellable, ENotCancellable);
+    // Streams are always cancellable by DAO governance
 
     let current_time = clock.timestamp_ms();
 
@@ -1139,12 +1132,9 @@ public fun withdraw_from_stream<Config: store, CoinType: drop>(
     let stream = table::borrow_mut(&mut vault.streams, stream_id);
     let current_time = clock.timestamp_ms();
 
-    // CRITICAL: Check authorization - only beneficiaries can withdraw
+    // CRITICAL: Check authorization - only beneficiary can withdraw
     let sender = tx_context::sender(ctx);
-    assert!(
-        sender == stream.beneficiary || stream.additional_beneficiaries.contains(&sender),
-        EUnauthorizedBeneficiary
-    );
+    assert!(sender == stream.beneficiary, EUnauthorizedBeneficiary);
 
     // Check if stream has started
     assert!(current_time >= stream.start_time, EStreamNotStarted);
@@ -1227,13 +1217,14 @@ public fun calculate_claimable<Config: store>(
 }
 
 /// Get stream information
-/// Returns: (beneficiary, total_amount, claimed_amount, start_time, iterations_total, iteration_period_ms, is_cancellable)
+/// Returns: (beneficiary, total_amount, claimed_amount, start_time, iterations_total, iteration_period_ms)
+/// Note: All streams are always cancellable by DAO governance
 public fun stream_info<Config: store>(
     account: &Account,
     registry: &PackageRegistry,
     vault_name: String,
     stream_id: ID,
-): (address, u64, u64, u64, u64, u64, bool) {
+): (address, u64, u64, u64, u64, u64) {
     let vault: &Vault = account.borrow_managed_data(registry, VaultKey(vault_name), version::current());
     assert!(table::contains(&vault.streams, stream_id), EStreamNotFound);
 
@@ -1245,7 +1236,6 @@ public fun stream_info<Config: store>(
         stream.start_time,
         stream.iterations_total,
         stream.iteration_period_ms,
-        stream.is_cancellable
     )
 }
 
@@ -1266,6 +1256,7 @@ public fun has_stream(
 
 /// Create a stream during initialization - works on unshared Accounts.
 /// Directly creates a stream without requiring Auth during DAO creation.
+/// All streams are cancellable by DAO governance (cancel & recreate to modify).
 /// SAFETY: This function MUST only be called on unshared Accounts
 /// during the initialization phase before the Account is shared.
 /// Once an Account is shared, this function will fail as it bypasses
@@ -1282,8 +1273,6 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
     cliff_time: Option<u64>,
     claim_window_ms: Option<u64>,
     max_per_withdrawal: u64,
-    is_transferable: bool,
-    is_cancellable: bool,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
@@ -1322,7 +1311,7 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
     let stream_id = object::uid_to_inner(&stream_uid);
     object::delete(stream_uid);
 
-    // Create stream
+    // Create stream (always cancellable by DAO governance)
     let stream = VaultStream {
         id: stream_id,
         coin_type: coin_type_name,
@@ -1335,9 +1324,6 @@ public(package) fun create_stream_unshared<Config: store, CoinType: drop>(
         cliff_time,
         claim_window_ms,
         max_per_withdrawal,
-        is_transferable,
-        is_cancellable,
-        additional_beneficiaries: vector::empty<address>(),
         metadata: option::none(),
     };
 
@@ -1411,13 +1397,11 @@ public fun do_init_create_stream<Config: store, Outcome: store, CoinType: drop, 
     };
 
     let max_per_withdrawal = bcs::peel_u64(&mut reader);
-    let is_transferable = bcs::peel_bool(&mut reader);
-    let is_cancellable = bcs::peel_bool(&mut reader);
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
 
-    // Call existing create_stream_unshared
+    // Call existing create_stream_unshared (streams are always cancellable)
     let stream_id = create_stream_unshared<Config, CoinType>(
         account,
         registry,
@@ -1430,8 +1414,6 @@ public fun do_init_create_stream<Config: store, Outcome: store, CoinType: drop, 
         cliff_time,
         claim_window_ms,
         max_per_withdrawal,
-        is_transferable,
-        is_cancellable,
         clock,
         ctx,
     );

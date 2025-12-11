@@ -18,23 +18,23 @@ public fun max_amm_fee_bps(): u64 { 500 }
 /// Allows high initial fees for anti-snipe protection
 public fun max_launch_fee_bps(): u64 { 9900 }
 
-/// LP fee share in basis points for CONDITIONAL AMMs (80% of fees go to LPs)
-public fun conditional_lp_fee_share_bps(): u64 { 8000 }
+/// LP fee share in basis points for CONDITIONAL AMMs (50% of fees go to LPs)
+public fun conditional_lp_fee_share_bps(): u64 { 5000 }
 
-/// Protocol fee share in basis points for CONDITIONAL AMMs (20% of fees go to protocol)
-public fun conditional_protocol_fee_share_bps(): u64 { 2000 }
+/// Protocol fee share in basis points for CONDITIONAL AMMs (50% of fees go to protocol)
+public fun conditional_protocol_fee_share_bps(): u64 { 5000 }
 
-/// LP fee share in basis points for SPOT AMM (90% of fees go to LPs)
-public fun spot_lp_fee_share_bps(): u64 { 9000 }
+/// LP fee share in basis points for SPOT AMM (50% of fees go to LPs)
+public fun spot_lp_fee_share_bps(): u64 { 5000 }
 
-/// Protocol fee share in basis points for SPOT AMM (10% of fees go to protocol)
-public fun spot_protocol_fee_share_bps(): u64 { 1000 }
+/// Protocol fee share in basis points for SPOT AMM (50% of fees go to protocol)
+public fun spot_protocol_fee_share_bps(): u64 { 5000 }
 
 /// Total fee basis points denominator (100%)
 public fun total_fee_bps(): u64 { 10000 }
 
-/// Default AMM total fee in basis points (0.3%)
-public fun default_amm_total_fee_bps(): u64 { 30 }
+/// Default AMM total fee in basis points (1%)
+public fun default_amm_total_fee_bps(): u64 { 100 }
 
 // === Price Precision Constants ===
 

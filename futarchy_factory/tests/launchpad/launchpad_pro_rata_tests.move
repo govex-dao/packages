@@ -152,7 +152,6 @@ fun test_pro_rata_cap_exclusion() {
             b"pro-rata-test".to_string(),
             1_000_000_000_000, // tokens_for_sale (1M tokens)
             15_000_000_000, // min_raise_amount (15k)
-            option::some(100_000_000_000), // max_raise_amount (100k)
             allowed_caps,
             option::none(),
             false,
@@ -305,7 +304,6 @@ fun test_contribution_multiple_times_same_cap() {
             b"multi-contrib".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(),
             false,
@@ -439,7 +437,6 @@ fun test_view_allowed_caps() {
             b"view-test".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(),
             false,

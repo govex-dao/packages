@@ -147,7 +147,6 @@ fun test_set_admin_trust_score() {
             b"admin-test".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -235,7 +234,6 @@ fun test_create_raise_empty_caps_error() {
             b"empty-caps".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -291,7 +289,6 @@ fun test_create_raise_unsorted_caps_error() {
             b"unsorted-caps".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -346,7 +343,6 @@ fun test_create_raise_last_cap_not_unlimited() {
             b"no-unlimited".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -364,192 +360,5 @@ fun test_create_raise_last_cap_not_unlimited() {
         ts::return_shared(fee_manager);
     };
 
-    ts::end(scenario);
-}
-
-#[test]
-#[expected_failure(abort_code = launchpad::EInvalidMaxRaise)]
-/// Test create_raise fails if max_raise_amount < min_raise_amount
-fun test_create_raise_invalid_max_raise() {
-    let creator = @0xA;
-    let mut scenario = setup_test(creator);
-
-    // Create test coin using test module
-    ts::next_tx(&mut scenario, creator);
-    admin_token::init_for_testing(ts::ctx(&mut scenario));
-
-    ts::next_tx(&mut scenario, creator);
-    {
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
-        let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
-
-        let mut allowed_caps = vector::empty<u64>();
-        vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
-
-        // max (5k) < min (10k) - should fail
-        launchpad::create_raise<ADMIN_TOKEN, ADMIN_STABLE>(
-            &factory,
-            &mut fee_manager,
-            treasury_cap,
-            coin_metadata,
-            b"invalid-max".to_string(),
-            1_000_000_000_000,
-            10_000_000_000, // min 10k
-            option::some(5_000_000_000), // max 5k (INVALID)
-            allowed_caps,
-            option::none(), // start_delay_ms
-            false,
-            b"Invalid max raise test".to_string(),
-            vector::empty<String>(),
-            vector::empty<String>(),
-            payment,
-            0, // extra_mint_to_caller
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(factory);
-        ts::return_shared(fee_manager);
-    };
-
-    ts::end(scenario);
-}
-
-#[test]
-/// Test max_raise_amount caps the final settlement amount
-fun test_max_raise_caps_settlement() {
-    let creator = @0xA;
-    let alice = @0xB;
-    let bob = @0xC;
-    let mut scenario = setup_test(creator);
-
-    // Create test coin using test module
-    ts::next_tx(&mut scenario, creator);
-    admin_token::init_for_testing(ts::ctx(&mut scenario));
-
-    // Create raise with max_raise_amount = 30k
-    ts::next_tx(&mut scenario, creator);
-    {
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let treasury_cap = ts::take_from_sender<coin::TreasuryCap<ADMIN_TOKEN>>(&scenario);
-        let coin_metadata = ts::take_from_sender<coin::CoinMetadata<ADMIN_TOKEN>>(&scenario);
-        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
-
-        let mut allowed_caps = vector::empty<u64>();
-        vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
-
-        launchpad::create_raise<ADMIN_TOKEN, ADMIN_STABLE>(
-            &factory,
-            &mut fee_manager,
-            treasury_cap,
-            coin_metadata,
-            b"max-cap-test".to_string(),
-            1_000_000_000_000,
-            10_000_000_000, // min 10k
-            option::some(30_000_000_000), // max 30k
-            allowed_caps,
-            option::none(), // start_delay_ms
-            false,
-            b"Max raise capping test".to_string(),
-            vector::empty<String>(),
-            vector::empty<String>(),
-            payment,
-            0, // extra_mint_to_caller
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(factory);
-        ts::return_shared(fee_manager);
-    };
-
-    // Lock intents and start raise
-    ts::next_tx(&mut scenario, creator);
-    {
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
-        let mut raise = ts::take_shared<launchpad::Raise<ADMIN_TOKEN, ADMIN_STABLE>>(&scenario);
-
-        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
-
-        ts::return_to_sender(&scenario, creator_cap);
-        ts::return_shared(raise);
-    };
-
-    // Contribute total of 50k (above 30k max)
-    ts::next_tx(&mut scenario, alice);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<ADMIN_TOKEN, ADMIN_STABLE>>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let contribution = coin::mint_for_testing<ADMIN_STABLE>(
-            30_000_000_000,
-            ts::ctx(&mut scenario),
-        );
-        let crank_fee = create_payment(100_000_000, &mut scenario);
-        launchpad::contribute(
-            &mut raise,
-            &factory,
-            contribution,
-            launchpad::unlimited_cap(),
-            crank_fee,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-        clock::destroy_for_testing(clock);
-        ts::return_shared(raise);
-        ts::return_shared(factory);
-    };
-
-    ts::next_tx(&mut scenario, bob);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<ADMIN_TOKEN, ADMIN_STABLE>>(&scenario);
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let contribution = coin::mint_for_testing<ADMIN_STABLE>(
-            20_000_000_000,
-            ts::ctx(&mut scenario),
-        );
-        let crank_fee = create_payment(100_000_000, &mut scenario);
-        launchpad::contribute(
-            &mut raise,
-            &factory,
-            contribution,
-            launchpad::unlimited_cap(),
-            crank_fee,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-        clock::destroy_for_testing(clock);
-        ts::return_shared(raise);
-        ts::return_shared(factory);
-    };
-
-    // Settle
-    ts::next_tx(&mut scenario, creator);
-    let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
-    clock::increment_for_testing(&mut clock, constants::launchpad_duration_ms() + 1);
-
-    ts::next_tx(&mut scenario, creator);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<ADMIN_TOKEN, ADMIN_STABLE>>(&scenario);
-        launchpad::settle_raise(&mut raise, &clock, ts::ctx(&mut scenario));
-
-        // Verify final_raise_amount is capped at max (30k), not the contributed amount (50k)
-        assert!(launchpad::final_raise_amount(&raise) == 30_000_000_000, 0);
-
-        ts::return_shared(raise);
-    };
-
-    clock::destroy_for_testing(clock);
     ts::end(scenario);
 }

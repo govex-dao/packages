@@ -56,17 +56,22 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType, LP
     _clock: &Clock,
     ctx: &mut TxContext,
 ): option::Option<ConditionalMarketBalance<AssetType, StableType>> {
-    // Get market info and compute optimal arbitrage using FEELESS math
+    // Get market info and compute optimal arbitrage using tri-arbitrage
     // (internal arbitrage doesn't charge fees - just moving liquidity between pools)
+    // Note: nav_price=0, max_bid_tokens=0 disables bid routes for internal rebalancing
     let (arb_amount, is_cond_to_spot, market_id, outcome_count) = {
         let market_state = coin_escrow::get_market_state(escrow);
         let pools = market_state::borrow_amm_pools(market_state);
 
-        // Use feeless computation since internal arbitrage has no fees
-        let (arb_amount, is_cond_to_spot) = arbitrage_math::compute_optimal_arbitrage_feeless(
+        let (arb_amount, route, _profit) = arbitrage_math::compute_optimal_tri_arbitrage(
             spot_pool,
             pools,
+            0, // nav_price = 0 (no bid)
+            0, // max_bid_tokens = 0 (no bid)
+            0, // bid_fee_bps = 0 (no bid)
+            0, // no hint
         );
+        let is_cond_to_spot = (route == arbitrage_math::route_cond_to_spot());
 
         let market_id = market_state::market_id(market_state);
         let outcome_count = market_state::outcome_count(market_state);
@@ -89,20 +94,53 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType, LP
         // Direction: Conditional price too LOW (cond asset is cheap)
         // Action: Buy asset from conditional pools using stable
         // Flow: spot stable → cond stable → cond asset → spot asset
+        //
+        // NOTE: arb_amount from arbitrage_math is optimal ASSET to buy
+        // We need to calculate how much STABLE is required to buy that asset
+
+        // Calculate stable needed to buy arb_amount asset from each pool
+        // Take max due to quantum model (same stable backs all outcomes)
+        let stable_needed = {
+            let market_state = coin_escrow::get_market_state(escrow);
+            let pools = market_state::borrow_amm_pools(market_state);
+
+            let mut max_stable = 0u64;
+            let mut i = 0u64;
+            while (i < outcome_count) {
+                let pool = &pools[i];
+                let (cond_asset, cond_stable) = conditional_amm::get_reserves(pool);
+                // Can't buy more asset than exists in pool
+                if (arb_amount >= cond_asset) {
+                    return existing_balance_opt
+                };
+                // AMM formula: stable_in = cond_stable * arb_amount / (cond_asset - arb_amount)
+                let stable_for_pool = (
+                    ((cond_stable as u128) * (arb_amount as u128)) /
+                    ((cond_asset - arb_amount) as u128)
+                ) as u64;
+                // Add 1 for rounding up to ensure we get at least arb_amount asset
+                let stable_for_pool = stable_for_pool + 1;
+                if (stable_for_pool > max_stable) {
+                    max_stable = stable_for_pool;
+                };
+                i = i + 1;
+            };
+            max_stable
+        };
 
         // Safety check: spot pool needs enough stable
-        if (spot_stable < arb_amount) {
+        if (spot_stable < stable_needed) {
             return existing_balance_opt
         };
 
         // 1. Take stable from spot pool and deposit to escrow
         // CRITICAL: Must update supplies to maintain quantum invariant
-        let stable_taken = unified_spot_pool::take_stable_for_arbitrage(spot_pool, arb_amount);
+        let stable_taken = unified_spot_pool::take_stable_for_arbitrage(spot_pool, stable_needed);
         coin_escrow::deposit_spot_liquidity(escrow, sui::balance::zero<AssetType>(), stable_taken);
         // Immediately decrement LP backing - arbitrage is internal, not LP deposit
-        coin_escrow::decrement_lp_backing(escrow, 0, arb_amount);
+        coin_escrow::decrement_lp_backing(escrow, 0, stable_needed);
         // Update supplies to maintain invariant: escrow == supply + wrapped
-        coin_escrow::increment_supplies_for_all_outcomes(escrow, 0, arb_amount);
+        coin_escrow::increment_supplies_for_all_outcomes(escrow, 0, stable_needed);
 
         // 2-5. Do all pool operations in one block
         let (asset_outs, min_asset) = {
@@ -113,7 +151,7 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType, LP
             let mut i = 0u64;
             while (i < outcome_count) {
                 let pool = &mut pools_mut[i];
-                conditional_amm::inject_reserves_for_arbitrage(pool, 0, arb_amount);
+                conditional_amm::inject_reserves_for_arbitrage(pool, 0, stable_needed);
                 i = i + 1;
             };
 
@@ -125,7 +163,7 @@ public fun auto_rebalance_spot_after_conditional_swaps<AssetType, StableType, LP
                 let pool = &mut pools_mut[i];
                 let asset_out = conditional_amm::swap_from_injected_stable_to_asset(
                     pool,
-                    arb_amount,
+                    stable_needed,
                 );
                 vector::push_back(&mut asset_outs, asset_out);
                 i = i + 1;

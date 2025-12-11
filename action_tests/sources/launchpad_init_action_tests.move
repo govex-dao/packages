@@ -157,7 +157,6 @@ fun create_raise(scenario: &mut Scenario, sender: address) {
             b"test".to_string(),
             TOKENS_FOR_SALE,
             MIN_RAISE,
-            option::some(MAX_RAISE),
             allowed_caps,
             option::none(),
             false,

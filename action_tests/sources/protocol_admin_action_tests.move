@@ -108,7 +108,7 @@ fun create_raise(scenario: &mut Scenario, sender: address) {
 
         launchpad::create_raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>(
             &factory, &mut fee_manager, treasury_cap, coin_metadata,
-            b"test".to_string(), TOKENS_FOR_SALE, MIN_RAISE, option::some(MAX_RAISE),
+            b"test".to_string(), TOKENS_FOR_SALE, MIN_RAISE,
             allowed_caps, option::none(), false, b"Protocol Admin Test".to_string(),
             vector::empty<String>(), vector::empty<String>(), payment, 0,
             &clock, ts::ctx(scenario),

@@ -148,7 +148,6 @@ fun test_settlement_algorithm_basic() {
             b"settlement-test".to_string(),
             1_000_000_000_000,
             10_000_000_000, // min 10k
-            option::none(),
             allowed_caps,
             option::none(),
             false,
@@ -301,7 +300,6 @@ fun test_settlement_with_cap_violation() {
             b"cap-violation".to_string(),
             1_000_000_000_000,
             5_000_000_000, // min 5k
-            option::none(),
             allowed_caps,
             option::none(),
             false,
@@ -420,143 +418,6 @@ fun test_settlement_with_cap_violation() {
 }
 
 #[test]
-/// Test settlement with max_raise_amount enforcement
-fun test_settlement_respects_max_raise() {
-    let mut scenario = setup_test(CREATOR);
-
-    ts::next_tx(&mut scenario, CREATOR);
-    test_asset_regular::init_for_testing(ts::ctx(&mut scenario));
-
-    // Create raise with max_raise_amount of 20k
-    ts::next_tx(&mut scenario, CREATOR);
-    {
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let mut fee_manager = ts::take_shared<fee::FeeManager>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let treasury_cap = ts::take_from_sender<coin::TreasuryCap<TEST_ASSET_REGULAR>>(&scenario);
-        let coin_metadata = ts::take_from_sender<coin::CoinMetadata<TEST_ASSET_REGULAR>>(&scenario);
-        let payment = create_payment(fee::get_launchpad_creation_fee(&fee_manager), &mut scenario);
-
-        let mut allowed_caps = vector::empty<u64>();
-        vector::push_back(&mut allowed_caps, launchpad::unlimited_cap());
-
-        launchpad::create_raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>(
-            &factory,
-            &mut fee_manager,
-            treasury_cap,
-            coin_metadata,
-            b"max-raise".to_string(),
-            1_000_000_000_000,
-            10_000_000_000, // min 10k
-            option::some(20_000_000_000), // max 20k
-            allowed_caps,
-            option::none(),
-            false,
-            b"Max Raise Test".to_string(),
-            vector::empty<String>(),
-            vector::empty<String>(),
-            payment,
-            0, // extra_mint_to_caller
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(factory);
-        ts::return_shared(fee_manager);
-    };
-
-    // Lock intents before accepting contributions
-    ts::next_tx(&mut scenario, CREATOR);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
-            &scenario,
-        );
-        let creator_cap = ts::take_from_sender<launchpad::CreatorCap>(&scenario);
-        launchpad::lock_intents_and_start_raise(&mut raise, &creator_cap, ts::ctx(&mut scenario));
-        ts::return_to_sender(&scenario, creator_cap);
-        ts::return_shared(raise);
-    };
-
-    // Contributors contribute 30k total (exceeds max)
-    ts::next_tx(&mut scenario, CONTRIBUTOR1);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
-            &scenario,
-        );
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let contribution = create_stable_coin(15_000_000_000, &mut scenario);
-        let crank_fee = create_payment(factory::launchpad_bid_fee(&factory), &mut scenario);
-
-        launchpad::contribute(
-            &mut raise,
-            &factory,
-            contribution,
-            launchpad::unlimited_cap(),
-            crank_fee,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(raise);
-        ts::return_shared(factory);
-    };
-
-    ts::next_tx(&mut scenario, CONTRIBUTOR2);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
-            &scenario,
-        );
-        let factory = ts::take_shared<factory::Factory>(&scenario);
-        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let contribution = create_stable_coin(15_000_000_000, &mut scenario);
-        let crank_fee = create_payment(factory::launchpad_bid_fee(&factory), &mut scenario);
-
-        launchpad::contribute(
-            &mut raise,
-            &factory,
-            contribution,
-            launchpad::unlimited_cap(),
-            crank_fee,
-            &clock,
-            ts::ctx(&mut scenario),
-        );
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(raise);
-        ts::return_shared(factory);
-    };
-
-    // Settle - should cap at 20k despite 30k contributed
-    ts::next_tx(&mut scenario, CREATOR);
-    {
-        let mut raise = ts::take_shared<launchpad::Raise<TEST_ASSET_REGULAR, TEST_STABLE_REGULAR>>(
-            &scenario,
-        );
-        let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
-
-        let deadline = launchpad::deadline(&raise);
-        clock.set_for_testing(deadline + 1000);
-
-        launchpad::settle_raise(&mut raise, &clock, ts::ctx(&mut scenario));
-
-        // Settlement finds best_total = 30k, but max_raise_amount = 20k
-        // So final_raise_amount should be capped at 20k
-        assert!(launchpad::final_raise_amount(&raise) == 20_000_000_000, 0);
-
-        clock::destroy_for_testing(clock);
-        ts::return_shared(raise);
-    };
-
-    ts::end(scenario);
-}
-
-#[test]
 /// Test settlement with complex multi-tier scenario
 fun test_settlement_complex_multi_tier() {
     let mut scenario = setup_test(CREATOR);
@@ -589,7 +450,6 @@ fun test_settlement_complex_multi_tier() {
             b"complex".to_string(),
             1_000_000_000_000,
             10_000_000_000, // min 10k
-            option::none(),
             allowed_caps,
             option::none(),
             false,

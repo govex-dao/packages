@@ -151,7 +151,6 @@ fun test_batch_refund_for_failed_raise() {
             b"batch-refund".to_string(),
             1_000_000_000_000,
             100_000_000_000, // min 100k (will fail)
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -354,7 +353,6 @@ fun test_batch_refund_skips_already_claimed() {
             b"skip-test".to_string(),
             1_000_000_000_000,
             100_000_000_000, // min 100k (will fail)
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,

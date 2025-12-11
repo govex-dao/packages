@@ -165,7 +165,6 @@ fun test_basic_launchpad_creation() {
             b"test-affiliate".to_string(), // affiliate_id
             1_000_000_000_000, // tokens_for_sale (1M tokens)
             10_000_000_000, // min_raise_amount (10k USDC)
-            option::some(100_000_000_000), // max_raise_amount (100k USDC)
             allowed_caps,
             option::none(), // start_delay_ms
             false, // allow_early_completion
@@ -232,7 +231,6 @@ fun test_launchpad_with_unallowed_stable() {
             b"test".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::some(100_000_000_000),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -289,7 +287,6 @@ fun test_launchpad_contribution() {
             b"test-affiliate".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::some(100_000_000_000),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -400,7 +397,6 @@ fun test_settlement_and_successful_raise() {
             b"test".to_string(),
             1_000_000_000_000, // 1M tokens for sale
             10_000_000_000, // min 10k
-            option::some(50_000_000_000), // max 50k
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -510,7 +506,7 @@ fun test_settlement_and_successful_raise() {
         assert!(launchpad::settlement_done(&raise), 0);
         // Contributor1 (15k, unlimited) + Contributor2 (10k, 20k cap) = 25k total
         // Best valid cap: unlimited (25k total, all contributors can participate)
-        // Final amount: min(25k, max_raise_amount=50k) = 25k
+        // Final amount: 25k (raises are uncapped now)
         assert!(launchpad::final_raise_amount(&raise) == 25_000_000_000, 1);
 
         ts::return_shared(raise);
@@ -558,7 +554,6 @@ fun test_pro_rata_allocation_logic() {
             b"prorata-test".to_string(),
             1_000_000_000_000,
             5_000_000_000, // min 5k
-            option::some(100_000_000_000), // max 100k
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -738,7 +733,6 @@ fun test_failed_raise_settlement() {
             b"fail-test".to_string(),
             1_000_000_000_000,
             20_000_000_000, // min 20k
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -893,7 +887,6 @@ fun test_claim_tokens_successful_raise() {
             b"claim-test".to_string(),
             1_000_000_000, // 1000 tokens for sale
             10_000_000_000, // min 10k
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -1053,7 +1046,6 @@ fun test_claim_refund_failed_raise() {
             b"refund-test".to_string(),
             1_000_000_000,
             50_000_000_000, // min 50k (high, will fail)
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -1181,7 +1173,6 @@ fun test_batch_claim_tokens() {
             b"batch-test".to_string(),
             3_000_000_000, // 3000 tokens
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -1403,7 +1394,6 @@ fun test_early_raise_completion() {
             b"early-end-test".to_string(),
             1_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             true, // allow early completion
@@ -1524,7 +1514,6 @@ fun test_raised_stables_in_dao_vault() {
             b"test".to_string(),
             1_000_000_000_000, // 1M tokens for sale
             20_000_000_000, // min 20k
-            option::some(50_000_000_000), // max 50k
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -1726,7 +1715,6 @@ fun test_extra_mint_to_caller() {
             b"extra-mint-test".to_string(), // affiliate_id
             1_000_000_000_000, // tokens_for_sale (1M tokens)
             10_000_000_000, // min_raise_amount (10k USDC)
-            option::some(100_000_000_000), // max_raise_amount (100k USDC)
             allowed_caps,
             option::none(), // start_delay_ms
             false, // allow_early_completion

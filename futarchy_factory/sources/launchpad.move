@@ -55,7 +55,6 @@ const ETooManyInitActions: u64 = 110;
 const EDaoNotPreCreated: u64 = 111;
 const EIntentsAlreadyLocked: u64 = 113;
 const EResourcesNotFound: u64 = 114;
-const EInvalidMaxRaise: u64 = 116;
 const EAllowedCapsNotSorted: u64 = 121;
 const EAllowedCapsEmpty: u64 = 122;
 const EIntentsNotLocked: u64 = 123;
@@ -111,7 +110,6 @@ public struct Raise<phantom RaiseToken, phantom StableCoin> has key, store {
     state: u8,
 
     min_raise_amount: u64,
-    max_raise_amount: Option<u64>,
     start_time_ms: u64,
     deadline_ms: u64,
     allow_early_completion: bool,
@@ -192,6 +190,9 @@ public struct SettlementFinalized has copy, drop {
 
 public struct RaiseSuccessful has copy, drop {
     raise_id: ID,
+    account_id: ID,
+    pool_id: Option<ID>,  // Set by init actions, may be None if pool creation failed
+    bid_id: Option<ID>,   // Protective bid ID if created
     total_raised: u64,
 }
 
@@ -419,7 +420,7 @@ public entry fun lock_intents_and_start_raise<RaiseToken, StableCoin>(
     raise.intents_locked = true;
 }
 
-/// Create a pro-rata raise with max cap levels
+/// Create a pro-rata raise (uncapped - no max_raise_amount limit)
 public fun create_raise<RaiseToken: drop, StableCoin: drop>(
     factory: &factory::Factory,
     fee_manager: &mut fee::FeeManager,
@@ -428,7 +429,6 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
     affiliate_id: String,
     tokens_for_sale: u64,
     min_raise_amount: u64,
-    max_raise_amount: Option<u64>,
     allowed_caps: vector<u64>,
     start_delay_ms: Option<u64>,
     allow_early_completion: bool,
@@ -459,10 +459,6 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
     assert!(metadata_keys.length() == metadata_values.length(), EInvalidStateForAction);
     assert!(metadata_keys.length() <= 20, EInvalidStateForAction); // Max 20 metadata entries
 
-    if (option::is_some(&max_raise_amount)) {
-        assert!(*option::borrow(&max_raise_amount) >= min_raise_amount, EInvalidMaxRaise);
-    };
-
     // Validate allowed_caps
     assert!(!vector::is_empty(&allowed_caps), EAllowedCapsEmpty);
     assert!(is_sorted_ascending(&allowed_caps), EAllowedCapsNotSorted);
@@ -478,7 +474,6 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
         affiliate_id,
         tokens_for_sale,
         min_raise_amount,
-        max_raise_amount,
         allowed_caps,
         start_delay_ms,
         allow_early_completion,
@@ -582,6 +577,7 @@ public entry fun contribute<RaiseToken, StableCoin>(
 /// Settle raise: O(C) algorithm where C ≤ 128
 /// Finds max valid raise S where S <= cap C
 /// cap_sums maintained incrementally during contribute()
+/// Note: No max_raise_amount limit - raises are uncapped
 public entry fun settle_raise<RaiseToken, StableCoin>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     clock: &Clock,
@@ -603,25 +599,13 @@ public entry fun settle_raise<RaiseToken, StableCoin>(
         };
     };
 
-    let mut final_amount = best_total;
-
-    // Don't abort if minimum not met - allow settlement to complete
-    // State will be set to FAILED in finalize_and_share_dao if min not met
-    // This allows failure_specs to be executed via Intent
-
-    if (option::is_some(&raise.max_raise_amount)) {
-        let max_raise = *option::borrow(&raise.max_raise_amount);
-        if (final_amount > max_raise) {
-            final_amount = max_raise;
-        };
-    };
-
-    raise.final_raise_amount = final_amount;
+    // No max_raise_amount capping - raises are uncapped
+    raise.final_raise_amount = best_total;
     raise.settlement_done = true;
 
     event::emit(SettlementFinalized {
         raise_id: object::id(raise),
-        final_total: final_amount,
+        final_total: best_total,
     });
 }
 
@@ -664,14 +648,10 @@ public entry fun complete_raise<RaiseToken: drop, StableCoin: drop>(
     assert!(clock.timestamp_ms() >= raise.deadline_ms, EDeadlineNotReached);
     assert!(raise.settlement_done, EInvalidStateForAction);
 
-    // Validate final_raise_amount
+    // Validate final_raise_amount (no max_raise_amount limit - raises are uncapped)
     let total_raised = raise.stable_coin_vault.value();
     assert!(final_raise_amount >= raise.min_raise_amount, EMinRaiseNotMet);
     assert!(final_raise_amount <= total_raised, EInvalidStateForAction);
-    if (option::is_some(&raise.max_raise_amount)) {
-        let max = *option::borrow(&raise.max_raise_amount);
-        assert!(final_raise_amount <= max, EInvalidStateForAction);
-    };
 
     // Override the settlement's final_raise_amount with creator's choice
     raise.final_raise_amount = final_raise_amount;
@@ -679,7 +659,7 @@ public entry fun complete_raise<RaiseToken: drop, StableCoin: drop>(
     complete_raise_internal(raise, factory, registry, clock, ctx);
 }
 
-/// Permissionless completion after 24h delay (uses max automatically)
+/// Permissionless completion after raise finished (uses settlement result)
 public entry fun complete_raise_permissionless<RaiseToken: drop, StableCoin: drop>(
     raise: &mut Raise<RaiseToken, StableCoin>,
     factory: &mut factory::Factory,
@@ -691,22 +671,11 @@ public entry fun complete_raise_permissionless<RaiseToken: drop, StableCoin: dro
     assert!(clock.timestamp_ms() >= raise.deadline_ms, EDeadlineNotReached);
     assert!(raise.settlement_done, EInvalidStateForAction);
 
-    let permissionless_open = raise.deadline_ms + PERMISSIONLESS_COMPLETION_DELAY_MS;
+    let permissionless_open = raise.deadline_ms;
     assert!(clock.timestamp_ms() >= permissionless_open, EInvalidStateForAction);
 
-    // Permissionless uses the total raised (max possible)
-    let total_raised = raise.stable_coin_vault.value();
-    let mut final_amount = total_raised;
-
-    // But respect max_raise_amount if set
-    if (option::is_some(&raise.max_raise_amount)) {
-        let max = *option::borrow(&raise.max_raise_amount);
-        if (final_amount > max) {
-            final_amount = max;
-        };
-    };
-
-    raise.final_raise_amount = final_amount;
+    // Permissionless uses the settlement result (no max_raise_amount limit - raises are uncapped)
+    // final_raise_amount was already set by settle_raise
 
     complete_raise_internal(raise, factory, registry, clock, ctx);
 }
@@ -915,14 +884,22 @@ public fun finalize_and_share_dao<RaiseToken: drop, StableCoin: drop>(
         );
     };
 
+    // Store account ID before sharing (for event)
+    let account_id = object::id(&account);
+
     // Share DAO account
     // NOTE: Spot pool is created and shared via init actions, not here
     sui_transfer::public_share_object(account);
 
     // Emit appropriate event based on outcome
+    // NOTE: pool_id and bid_id are None here - they're created via init actions
+    // Init actions should emit their own events with account_id for indexer linking
     if (raise_succeeded) {
         event::emit(RaiseSuccessful {
             raise_id: object::id(raise),
+            account_id,
+            pool_id: option::none(),  // Created via init actions
+            bid_id: option::none(),   // Created via init actions
             total_raised: raise.final_raise_amount,
         });
     } else {
@@ -1419,7 +1396,6 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
     affiliate_id: String,
     tokens_for_sale: u64,
     min_raise_amount: u64,
-    max_raise_amount: Option<u64>,
     allowed_caps: vector<u64>,
     start_delay_ms: Option<u64>,
     allow_early_completion: bool,
@@ -1459,7 +1435,6 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
         affiliate_id,
         state: STATE_FUNDING,
         min_raise_amount,
-        max_raise_amount,
         start_time_ms: start_time,
         deadline_ms: deadline,
         allow_early_completion,

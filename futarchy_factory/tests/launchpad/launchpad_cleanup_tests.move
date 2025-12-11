@@ -148,7 +148,6 @@ fun test_cleanup_failed_raise_returns_treasury_cap() {
             b"cleanup-test".to_string(),
             1_000_000_000_000, // 1M tokens for sale
             100_000_000_000, // min 100k (very high, will fail)
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -253,7 +252,6 @@ fun test_cleanup_failed_raise_cleans_dao_resources() {
             b"dao-cleanup".to_string(),
             1_000_000_000_000,
             50_000_000_000, // min 50k (will fail)
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -353,7 +351,6 @@ fun test_cleanup_cannot_run_on_successful_raise() {
             b"success-test".to_string(),
             1_000_000_000_000,
             10_000_000_000, // min 10k (low, will succeed)
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,

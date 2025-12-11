@@ -21,7 +21,9 @@ use sui::coin;
 
 /// Quantum split with configurable ratio
 /// x% stays in spot pool, (100-x)% quantum splits to ALL conditional pools
-/// Enforces 6-hour gap between proposals and blocks LP operations during proposals
+/// Enforces 12-hour exponential decay gap between proposals and blocks LP operations during proposals
+/// Gap fee decays from u64::MAX to 0 over 12 hours (30-minute half-life)
+/// Use unified_spot_pool::get_proposal_gap_fee() to retrieve the current gap fee
 public fun auto_quantum_split_on_proposal_start<AssetType, StableType, LPType>(
     spot_pool: &mut UnifiedSpotPool<AssetType, StableType, LPType>,
     escrow: &mut TokenEscrow<AssetType, StableType>,
@@ -30,7 +32,8 @@ public fun auto_quantum_split_on_proposal_start<AssetType, StableType, LPType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    // Check 6-hour gap since last proposal ended
+    // Check proposal gap - blocks immediate re-proposals, allows after first half-life (30 min)
+    // Gap fee available via unified_spot_pool::get_proposal_gap_fee() for optional charging
     unified_spot_pool::check_proposal_gap(spot_pool, clock);
 
     // Mark proposal as active - this blocks all LP operations

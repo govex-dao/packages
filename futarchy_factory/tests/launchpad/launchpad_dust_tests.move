@@ -150,7 +150,6 @@ fun test_sweep_dust_after_claim_period() {
             b"dust-test".to_string(),
             1_000_000_000_000, // 1M tokens for sale
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -351,7 +350,6 @@ fun test_sweep_dust_fails_before_claim_period() {
             b"early-sweep".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,

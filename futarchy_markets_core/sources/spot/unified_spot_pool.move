@@ -42,9 +42,14 @@ const ELPSupplyNotZero: u64 = 22;
 // === Constants ===
 const MINIMUM_LIQUIDITY: u64 = 1000;
 const PRECISION: u128 = 1_000_000_000_000; // 1e12 for price calculations
-const SIX_HOURS_MS: u64 = 21_600_000; // 6 hours in milliseconds
 const LP_SYMBOL: vector<u8> = b"GOVEX_LP_TOKEN";
 const LP_NAME: vector<u8> = b"GOVEX_LP_TOKEN";
+
+// Proposal gap decay constants
+// Exponential decay from u64::MAX to 0 over 12+ hours using half-life formula
+const U64_MAX: u64 = 18_446_744_073_709_551_615;
+const TWELVE_HOURS_MS: u64 = 43_200_000; // 12 hours in milliseconds
+const HALF_LIFE_MS: u64 = 1_800_000; // 30 minutes - after 24 half-lives (12h), fee ≈ 0
 
 // === Structs ===
 
@@ -645,15 +650,64 @@ public(package) fun clear_active_proposal<AssetType, StableType, LPType>(
     pool.last_proposal_end_time = option::some(clock.timestamp_ms());
 }
 
+/// Calculate the proposal gap fee using smooth exponential decay (half-life formula)
+/// Returns u64::MAX immediately after proposal ends, decays smoothly to 0 over 12+ hours
+/// Uses bit-shift with linear interpolation for smooth continuous curve
+public fun get_proposal_gap_fee<AssetType, StableType, LPType>(
+    pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
+    clock: &Clock,
+): u64 {
+    // No previous proposal = no gap fee
+    if (pool.last_proposal_end_time.is_none()) {
+        return 0
+    };
+
+    let last_end = *option::borrow(&pool.last_proposal_end_time);
+    let current_time = clock.timestamp_ms();
+
+    // Shouldn't happen, but handle edge case
+    if (current_time <= last_end) {
+        return U64_MAX
+    };
+
+    let elapsed = current_time - last_end;
+
+    // After 12 hours, fee is 0
+    if (elapsed >= TWELVE_HOURS_MS) {
+        return 0
+    };
+
+    // Calculate number of complete half-lives elapsed and remainder
+    let half_lives = elapsed / HALF_LIFE_MS;
+    let remainder = elapsed % HALF_LIFE_MS;
+
+    // After 63 half-lives, result is essentially 0 (avoid shift overflow)
+    if (half_lives >= 63) {
+        return 0
+    };
+
+    // Get fee at current step and next step
+    let fee_at_step = U64_MAX >> (half_lives as u8);
+    let fee_at_next = U64_MAX >> ((half_lives + 1) as u8);
+
+    // Linear interpolate between steps for smooth curve
+    // decay_amount = (fee_at_step - fee_at_next) * remainder / HALF_LIFE_MS
+    let fee_drop = fee_at_step - fee_at_next;
+    let decay_amount = ((fee_drop as u128) * (remainder as u128) / (HALF_LIFE_MS as u128)) as u64;
+
+    fee_at_step - decay_amount
+}
+
+/// Check proposal gap - now uses exponential decay fee
+/// Blocks if gap fee is still at maximum (prevents immediate re-proposal)
 public(package) fun check_proposal_gap<AssetType, StableType, LPType>(
     pool: &UnifiedSpotPool<AssetType, StableType, LPType>,
     clock: &Clock,
 ) {
-    if (pool.last_proposal_end_time.is_some()) {
-        let last_end = *option::borrow(&pool.last_proposal_end_time);
-        let current_time = clock.timestamp_ms();
-        assert!(current_time >= last_end + SIX_HOURS_MS, EInsufficientGapBetweenProposals);
-    }
+    let gap_fee = get_proposal_gap_fee(pool, clock);
+    // Block if fee is at maximum (no time has passed) - prevents spam
+    // Once any half-life has passed, proposals are allowed (with associated fee)
+    assert!(gap_fee < U64_MAX, EInsufficientGapBetweenProposals);
 }
 
 #[test_only]

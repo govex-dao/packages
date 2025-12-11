@@ -149,7 +149,6 @@ fun test_permissionless_completion_after_delay() {
             b"permissionless-test".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,
@@ -263,7 +262,6 @@ fun test_permissionless_completion_requires_settlement() {
             b"test".to_string(),
             1_000_000_000_000,
             10_000_000_000,
-            option::none(),
             allowed_caps,
             option::none(), // start_delay_ms
             false,

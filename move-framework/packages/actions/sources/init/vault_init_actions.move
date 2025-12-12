@@ -43,9 +43,12 @@ public struct RemoveApprovedCoinTypeAction has copy, drop, store {
 }
 
 /// Action to cancel a vesting stream
+/// The refund coin is provided to executable_resources under the given resource_name
+/// for consumption by subsequent actions (e.g., VaultDeposit to return funds)
 public struct CancelStreamAction has copy, drop, store {
     vault_name: String,
     stream_id: ID,
+    resource_name: String,
 }
 
 // === Layer 2: Spec Builder Functions ===
@@ -140,16 +143,20 @@ public fun add_remove_approved_coin_type_spec(
 }
 
 /// Add a cancel stream action to the spec builder
+/// The resource_name is used to store the refund coin in executable_resources
+/// so subsequent actions can retrieve it (e.g., VaultDeposit to return funds)
 public fun add_cancel_stream_spec(
     builder: &mut action_spec_builder::Builder,
     vault_name: String,
     stream_id: ID,
+    resource_name: String,
 ) {
     use account_actions::action_spec_builder as builder_mod;
 
     let action = CancelStreamAction {
         vault_name,
         stream_id,
+        resource_name,
     };
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(

@@ -37,9 +37,11 @@ public struct CreateVestingAction has copy, drop, store {
 }
 
 /// Action to cancel a vesting (if cancellable)
-/// Returns unvested funds to DAO (typically deposited back to vault)
+/// The refund coin is provided to executable_resources under the given resource_name
+/// for consumption by subsequent actions (e.g., VaultDeposit to return funds)
 public struct CancelVestingAction has copy, drop, store {
     vesting_id: address, // Object ID as address for BCS
+    resource_name: String,
 }
 
 // === Spec Builders (Layer 2) ===
@@ -95,9 +97,12 @@ public fun add_create_vesting_spec(
 
 /// Add CancelVestingAction to Builder
 /// Used for cancelling vestings via proposals
+/// The resource_name is used to store the refund coin in executable_resources
+/// so subsequent actions can retrieve it (e.g., VaultDeposit to return funds)
 public fun add_cancel_vesting_spec(
     builder: &mut account_actions::action_spec_builder::Builder,
     vesting_id: address,
+    resource_name: String,
 ) {
     use account_actions::action_spec_builder as builder;
     use std::type_name;
@@ -105,6 +110,7 @@ public fun add_cancel_vesting_spec(
 
     let action = CancelVestingAction {
         vesting_id,
+        resource_name,
     };
 
     let action_data = bcs::to_bytes(&action);

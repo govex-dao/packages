@@ -383,7 +383,8 @@ public fun do_create_vesting<Config: store, Outcome: store, CoinType, IW: drop>(
 }
 
 /// Execute CancelVesting from intent
-/// Returns unvested funds to caller (typically deposited back to vault)
+/// Refund is provided to executable_resources under the resource_name from ActionSpec
+/// for consumption by subsequent actions (e.g., VaultDeposit to return funds)
 public fun do_cancel_vesting<Outcome: store, CoinType, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &Account,
@@ -392,7 +393,7 @@ public fun do_cancel_vesting<Outcome: store, CoinType, IW: drop>(
     _version_witness: VersionWitness,
     _intent_witness: IW,
     ctx: &mut TxContext,
-): Coin<CoinType> {
+) {
     executable.intent().assert_is_account(account.addr());
 
     let specs = executable.intent().action_specs();
@@ -407,6 +408,7 @@ public fun do_cancel_vesting<Outcome: store, CoinType, IW: drop>(
     let mut reader = bcs::new(*action_data);
 
     let expected_vesting_id = bcs::peel_address(&mut reader).to_id();
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     bcs_validation::validate_all_bytes_consumed(reader);
 
@@ -464,10 +466,17 @@ public fun do_cancel_vesting<Outcome: store, CoinType, IW: drop>(
 
     id.delete();
 
-    executable::increment_action_idx(executable);
+    // Provide refund to executable_resources for consumption by subsequent actions
+    // (e.g., VaultDeposit to return funds to the vault)
+    let refund_coin = coin::from_balance(balance, ctx);
+    executable_resources::provide_coin(
+        executable::uid_mut(executable),
+        resource_name,
+        refund_coin,
+        ctx,
+    );
 
-    // Return remaining (unvested) funds to caller
-    coin::from_balance(balance, ctx)
+    executable::increment_action_idx(executable);
 }
 
 // === Delete Functions for Expired Intents ===

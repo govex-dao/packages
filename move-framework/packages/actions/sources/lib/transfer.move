@@ -33,6 +33,10 @@ const EUnsupportedActionVersion: u64 = 0;
 public struct TransferObject has drop {}
 /// Transfer object to transaction sender
 public struct TransferToSender has drop {}
+/// Transfer coin to recipient (uses take_coin key format)
+public struct TransferCoin has drop {}
+/// Transfer coin to transaction sender (uses take_coin key format)
+public struct TransferCoinToSender has drop {}
 
 // === Constructors ===
 
@@ -41,6 +45,12 @@ public fun transfer_object(): TransferObject { TransferObject {} }
 
 /// Create a TransferToSender action type marker
 public fun transfer_to_sender(): TransferToSender { TransferToSender {} }
+
+/// Create a TransferCoin action type marker
+public fun transfer_coin(): TransferCoin { TransferCoin {} }
+
+/// Create a TransferCoinToSender action type marker
+public fun transfer_coin_to_sender(): TransferCoinToSender { TransferCoinToSender {} }
 
 // === Structs ===
 
@@ -53,6 +63,19 @@ public struct TransferAction has store {
 /// Action to transfer to the transaction sender (perfect for crank fees)
 public struct TransferToSenderAction has store {
     // No recipient field needed - uses tx_context::sender()
+}
+
+/// Action to transfer a coin to a recipient (uses take_coin key format)
+/// Use this when the coin was provided via provide_coin (e.g., from VaultSpend, CurrencyMint)
+public struct TransferCoinAction has store {
+    recipient: address,
+    resource_name: String,
+}
+
+/// Action to transfer a coin to the transaction sender (uses take_coin key format)
+/// Use this for crank fees when the coin was provided via provide_coin
+public struct TransferCoinToSenderAction has store {
+    resource_name: String,
 }
 
 // === Destruction Functions ===
@@ -171,6 +194,100 @@ public fun do_init_transfer_to_sender<Outcome: store, T: key + store, IW: drop>(
 
 /// Deletes a TransferToSenderAction from an expired intent.
 public fun delete_transfer_to_sender(expired: &mut Expired) {
+    let _spec = intents::remove_action_spec(expired);
+    // ActionSpec has drop, automatically cleaned up
+}
+
+// === Coin Transfer Functions (use take_coin key format) ===
+
+/// Processes a TransferCoinAction and transfers a coin to a recipient.
+/// DETERMINISTIC: Takes coin from executable_resources (from previous action), NOT from PTB!
+/// Uses take_coin which matches provide_coin key format (from VaultSpend, CurrencyMint, etc.)
+public fun do_init_transfer_coin<Outcome: store, CoinType, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    _intent_witness: IW,
+) {
+    // Get BCS bytes from ActionSpec
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // CRITICAL: Assert that the action type is what we expect
+    action_validation::assert_action_type<TransferCoin>(spec);
+
+    let action_data = intents::action_spec_data(spec);
+
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Create BCS reader and deserialize
+    // ActionSpec contains: recipient, resource_name (where to take coin from)
+    let mut reader = bcs::new(*action_data);
+    let recipient = bcs::peel_address(&mut reader);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+
+    // Validate all bytes consumed
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Take coin from executable_resources using take_coin (matches provide_coin key!)
+    let coin: sui::coin::Coin<CoinType> = executable_resources::take_coin(
+        executable::uid_mut(executable),
+        resource_name,
+    );
+
+    transfer::public_transfer(coin, recipient);
+    executable::increment_action_idx(executable);
+}
+
+/// Deletes a TransferCoinAction from an expired intent.
+public fun delete_transfer_coin(expired: &mut Expired) {
+    let _spec = intents::remove_action_spec(expired);
+    // ActionSpec has drop, automatically cleaned up
+}
+
+/// Processes a TransferCoinToSenderAction and transfers a coin to the transaction sender.
+/// DETERMINISTIC: Takes coin from executable_resources (from previous action), NOT from PTB!
+/// Uses take_coin which matches provide_coin key format (from VaultSpend, CurrencyMint, etc.)
+/// Perfect for crank fees!
+public fun do_init_transfer_coin_to_sender<Outcome: store, CoinType, IW: drop>(
+    executable: &mut Executable<Outcome>,
+    _intent_witness: IW,
+    ctx: &mut TxContext,
+) {
+    // Get BCS bytes from ActionSpec
+    let specs = executable.intent().action_specs();
+    let spec = specs.borrow(executable.action_idx());
+
+    // CRITICAL: Assert that the action type is what we expect
+    action_validation::assert_action_type<TransferCoinToSender>(spec);
+
+    let action_data = intents::action_spec_data(spec);
+
+    // Check version before deserialization
+    let spec_version = intents::action_spec_version(spec);
+    assert!(spec_version == 1, EUnsupportedActionVersion);
+
+    // Create BCS reader and deserialize
+    // ActionSpec contains: resource_name (where to take coin from)
+    let mut reader = bcs::new(*action_data);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+
+    // Validate all bytes consumed
+    bcs_validation::validate_all_bytes_consumed(reader);
+
+    // Take coin from executable_resources using take_coin (matches provide_coin key!)
+    let coin: sui::coin::Coin<CoinType> = executable_resources::take_coin(
+        executable::uid_mut(executable),
+        resource_name,
+    );
+
+    // Transfer to the transaction sender (the cranker!)
+    transfer::public_transfer(coin, tx_context::sender(ctx));
+    executable::increment_action_idx(executable);
+}
+
+/// Deletes a TransferCoinToSenderAction from an expired intent.
+public fun delete_transfer_coin_to_sender(expired: &mut Expired) {
     let _spec = intents::remove_action_spec(expired);
     // ActionSpec has drop, automatically cleaned up
 }

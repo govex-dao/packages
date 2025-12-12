@@ -166,7 +166,10 @@ fun test_mint_and_burn_basic() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&100u64);
+            // action_data format: amount (u64) + resource_name (string as bytes)
+            let mut action_data = bcs::to_bytes(&100u64);
+            let resource_name = b"minted_tokens";
+            vector::append(&mut action_data, bcs::to_bytes(&resource_name));
             intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
@@ -181,13 +184,19 @@ fun test_mint_and_burn_basic() {
         scenario.ctx(),
     );
 
-    let minted_coin = currency::do_mint<Outcome, SUI, CurrencyIntent>(
+    currency::do_init_mint<Outcome, SUI, CurrencyIntent>(
         &mut executable,
         &mut account,
         &extensions,
         version::current(),
         CurrencyIntent(),
         scenario.ctx(),
+    );
+
+    // Take minted coin from executable_resources to verify
+    let minted_coin = executable_resources::take_coin<SUI>(
+        executable::uid_mut(&mut executable),
+        b"minted_tokens".to_string(),
     );
 
     assert!(minted_coin.value() == 100, 0);
@@ -291,7 +300,9 @@ fun test_mint_exceeds_max_supply() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&100u64);
+            // Serialize MintAction: amount (u64) + resource_name (vec<u8>)
+            let mut action_data = bcs::to_bytes(&100u64);
+            action_data.append(bcs::to_bytes(&b"minted_coin"));
             intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
@@ -306,13 +317,19 @@ fun test_mint_exceeds_max_supply() {
     );
 
     // This should abort with EMaxSupply
-    let coin = currency::do_mint<Outcome, SUI, CurrencyIntent>(
+    currency::do_init_mint<Outcome, SUI, CurrencyIntent>(
         &mut executable,
         &mut account,
         &extensions,
         version::current(),
         CurrencyIntent(),
         scenario.ctx(),
+    );
+
+    // Take the coin from executable_resources
+    let coin = executable_resources::take_coin<SUI>(
+        executable::uid_mut(&mut executable),
+        b"minted_coin".to_string(),
     );
 
     destroy(coin);
@@ -464,7 +481,9 @@ fun test_mint_when_disabled() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&50u64);
+            // Serialize MintAction: amount (u64) + resource_name (vec<u8>)
+            let mut action_data = bcs::to_bytes(&50u64);
+            action_data.append(bcs::to_bytes(&b"minted_coin"));
             intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
@@ -479,13 +498,19 @@ fun test_mint_when_disabled() {
     );
 
     // This should abort with EMintDisabled
-    let coin = currency::do_mint<Outcome, SUI, CurrencyIntent>(
+    currency::do_init_mint<Outcome, SUI, CurrencyIntent>(
         &mut exec2,
         &mut account,
         &extensions,
         version::current(),
         CurrencyIntent(),
         scenario.ctx(),
+    );
+
+    // Take the coin from executable_resources
+    let coin = executable_resources::take_coin<SUI>(
+        executable::uid_mut(&mut exec2),
+        b"minted_coin".to_string(),
     );
 
     destroy(coin);
@@ -523,7 +548,9 @@ fun test_public_burn() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&200u64);
+            // Serialize MintAction: amount (u64) + resource_name (vec<u8>)
+            let mut action_data = bcs::to_bytes(&200u64);
+            action_data.append(bcs::to_bytes(&b"minted_coin"));
             intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
@@ -536,13 +563,18 @@ fun test_public_burn() {
         Witness(),
         scenario.ctx(),
     );
-    let coin = currency::do_mint<Outcome, SUI, CurrencyIntent>(
+    currency::do_init_mint<Outcome, SUI, CurrencyIntent>(
         &mut executable,
         &mut account,
         &extensions,
         version::current(),
         CurrencyIntent(),
         scenario.ctx(),
+    );
+    // Take the coin from executable_resources
+    let coin = executable_resources::take_coin<SUI>(
+        executable::uid_mut(&mut executable),
+        b"minted_coin".to_string(),
     );
     account.confirm_execution(executable);
 
@@ -659,7 +691,9 @@ fun test_burn_wrong_value() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&100u64);
+            // Serialize MintAction: amount (u64) + resource_name (vec<u8>)
+            let mut action_data = bcs::to_bytes(&100u64);
+            action_data.append(bcs::to_bytes(&b"minted_coin"));
             intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
@@ -671,13 +705,18 @@ fun test_burn_wrong_value() {
         Witness(),
         scenario.ctx(),
     );
-    let coin = currency::do_mint<Outcome, SUI, CurrencyIntent>(
+    currency::do_init_mint<Outcome, SUI, CurrencyIntent>(
         &mut exec1,
         &mut account,
         &extensions,
         version::current(),
         CurrencyIntent(),
         scenario.ctx(),
+    );
+    // Take the coin from executable_resources
+    let coin = executable_resources::take_coin<SUI>(
+        executable::uid_mut(&mut exec1),
+        b"minted_coin".to_string(),
     );
     account.confirm_execution(exec1);
 
@@ -790,7 +829,9 @@ fun test_delete_actions() {
         CurrencyIntent(),
         scenario.ctx(),
         |intent, iw| {
-            let action_data = bcs::to_bytes(&10u64);
+            // Serialize MintAction: amount (u64) + resource_name (vec<u8>)
+            let mut action_data = bcs::to_bytes(&10u64);
+            action_data.append(bcs::to_bytes(&b"minted_coin"));
             intents::add_typed_action(intent, currency::currency_mint(), action_data, iw);
         },
     );
@@ -831,13 +872,18 @@ fun test_delete_actions() {
         Witness(),
         scenario.ctx(),
     );
-    let c = currency::do_mint<Outcome, SUI, CurrencyIntent>(
+    currency::do_init_mint<Outcome, SUI, CurrencyIntent>(
         &mut e2,
         &mut account,
         &extensions,
         version::current(),
         CurrencyIntent(),
         scenario.ctx(),
+    );
+    // Take the coin from executable_resources
+    let c = executable_resources::take_coin<SUI>(
+        executable::uid_mut(&mut e2),
+        b"minted_coin".to_string(),
     );
     account.confirm_execution(e2);
 

@@ -534,17 +534,23 @@ public fun delete_update<CoinType>(expired: &mut Expired) {
     // ActionSpec has drop, so it's automatically cleaned up
 }
 
-/// Creates a MintAction and adds it to an intent with descriptor.
+/// Deletes a MintAction from an expired intent.
+public fun delete_mint<CoinType>(expired: &mut Expired) {
+    let _spec = intents::remove_action_spec(expired);
+    // ActionSpec has drop, so it's automatically cleaned up
+}
 
-/// Processes a MintAction, mints and returns new coins.
-public fun do_mint<Outcome: store, CoinType, IW: drop>(
+/// Processes a MintAction for init actions, mints coins and stores in executable_resources.
+/// DETERMINISTIC: Stores minted coin in executable_resources for subsequent actions.
+/// The resource_name in ActionSpec tells us where to store the coin.
+public fun do_init_mint<Outcome: store, CoinType, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     registry: &PackageRegistry,
     version_witness: VersionWitness,
     _intent_witness: IW,
-    ctx: &mut TxContext
-): Coin<CoinType> {
+    ctx: &mut TxContext,
+) {
     executable.intent().assert_is_account(account.addr());
 
     // Get BCS bytes from ActionSpec
@@ -554,7 +560,6 @@ public fun do_mint<Outcome: store, CoinType, IW: drop>(
     // CRITICAL: Assert that the action type is what we expect
     action_validation::assert_action_type<CurrencyMint>(spec);
 
-
     let action_data = intents::action_spec_data(spec);
 
     // Check version before deserialization
@@ -562,18 +567,23 @@ public fun do_mint<Outcome: store, CoinType, IW: drop>(
     assert!(spec_version == 1, EUnsupportedActionVersion);
 
     // Create BCS reader and deserialize
+    // ActionSpec contains: amount, resource_name (where to store minted coin)
     let mut reader = bcs::new(*action_data);
     let amount = bcs::peel_u64(&mut reader);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Validate all bytes consumed
     bcs_validation::validate_all_bytes_consumed(reader);
 
+    // Check rules and mint
     let total_supply = currency::coin_type_supply<CoinType>(account, registry);
     let rules_mut: &mut CurrencyRules<CoinType> =
         account.borrow_managed_data_mut(registry, CurrencyRulesKey<CoinType>(), version_witness);
 
     assert!(rules_mut.can_mint, EMintDisabled);
-    if (rules_mut.max_supply.is_some()) assert!(amount + total_supply <= *rules_mut.max_supply.borrow(), EMaxSupply);
+    if (rules_mut.max_supply.is_some()) {
+        assert!(amount + total_supply <= *rules_mut.max_supply.borrow(), EMaxSupply);
+    };
 
     rules_mut.total_minted = rules_mut.total_minted + amount;
 
@@ -583,21 +593,17 @@ public fun do_mint<Outcome: store, CoinType, IW: drop>(
     // Mint the coin
     let coin = cap_mut.mint(amount, ctx);
 
-    // Store coin info in context for potential use by later actions
-    // PTBs handle object flow naturally - no context storage needed
+    // Store coin in executable_resources for subsequent actions (e.g., CreateVesting)
+    executable_resources::provide_coin(
+        executable::uid_mut(executable),
+        resource_name,
+        coin,
+        ctx,
+    );
 
     // Increment action index
     executable::increment_action_idx(executable);
-
-    coin
 }
-
-/// Deletes a MintAction from an expired intent.
-public fun delete_mint<CoinType>(expired: &mut Expired) {
-    let _spec = intents::remove_action_spec(expired);
-    // ActionSpec has drop, so it's automatically cleaned up
-}
-
 
 /// Processes a BurnAction, burns coins taken from executable_resources.
 /// DETERMINISTIC: Takes coin from executable_resources (from previous action), NOT from PTB!

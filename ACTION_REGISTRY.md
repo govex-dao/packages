@@ -4,7 +4,7 @@ Complete list of all action types across all packages. Each action follows the 3
 
 ---
 
-## account_protocol (3 actions)
+## account_protocol (5 actions)
 
 ### Per-Account Dependencies Management
 | Marker | SDK ID | Description |
@@ -13,9 +13,15 @@ Complete list of all action types across all packages. Each action follows the 3
 | `ConfigAddDep` | `add_dep` | Add a package to per-account deps table |
 | `ConfigRemoveDep` | `remove_dep` | Remove a package from per-account deps table |
 
+### Owned Object Actions
+| Marker | SDK ID | Description |
+|--------|--------|-------------|
+| `OwnedWithdrawObject` | `withdraw_object` | Withdraw owned object (provides to executable_resources via provide_object) |
+| `OwnedWithdrawCoin` | `withdraw_coin` | Withdraw owned coin (provides to executable_resources via provide_coin) |
+
 ---
 
-## account_actions (23 actions)
+## account_actions (25 actions)
 
 ### Vault Actions
 | Marker | SDK ID | Description |
@@ -52,8 +58,10 @@ Complete list of all action types across all packages. Each action follows the 3
 ### Transfer Actions
 | Marker | SDK ID | Description |
 |--------|--------|-------------|
-| `TransferObject` | `transfer` | Transfer object to recipient (takes from executable_resources) |
-| `TransferToSender` | `transfer_to_sender` | Transfer object to transaction sender (takes from executable_resources) |
+| `TransferObject` | `transfer` | Transfer object to recipient (takes from executable_resources via take_object) |
+| `TransferToSender` | `transfer_to_sender` | Transfer object to transaction sender (takes from executable_resources via take_object) |
+| `TransferCoin` | `transfer_coin` | Transfer coin to recipient (takes from executable_resources via take_coin) |
+| `TransferCoinToSender` | `transfer_coin_to_sender` | Transfer coin to transaction sender (takes from executable_resources via take_coin) |
 
 ### Package Upgrade Actions
 | Marker | SDK ID | Description |
@@ -152,12 +160,12 @@ Complete list of all action types across all packages. Each action follows the 3
 
 | Package | Action Count |
 |---------|--------------|
-| account_protocol | 3 |
-| account_actions | 23 |
+| account_protocol | 5 |
+| account_actions | 25 |
 | futarchy_actions | 16 |
 | futarchy_governance_actions | 20 |
 | futarchy_oracle_actions | 2 |
-| **Total** | **64** |
+| **Total** | **68** |
 
 ---
 

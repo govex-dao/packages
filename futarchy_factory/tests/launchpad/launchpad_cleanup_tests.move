@@ -155,7 +155,6 @@ fun test_cleanup_failed_raise_returns_treasury_cap() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
-            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -259,7 +258,6 @@ fun test_cleanup_failed_raise_cleans_dao_resources() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
-            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -358,7 +356,6 @@ fun test_cleanup_cannot_run_on_successful_raise() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
-            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );

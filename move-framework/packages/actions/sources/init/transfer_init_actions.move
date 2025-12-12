@@ -29,6 +29,19 @@ public struct TransferToSenderAction has copy, drop, store {
     resource_name: String,
 }
 
+/// Action to transfer a coin to a recipient (uses take_coin key format)
+/// Use this when the coin was provided via provide_coin (e.g., from VaultSpend, CurrencyMint)
+public struct TransferCoinAction has copy, drop, store {
+    recipient: address,
+    resource_name: String,
+}
+
+/// Action to transfer a coin to the transaction sender (uses take_coin key format)
+/// Use this for crank fees when the coin was provided via provide_coin
+public struct TransferCoinToSenderAction has copy, drop, store {
+    resource_name: String,
+}
+
 // === Spec Builders (for PTB construction) ===
 
 /// Add a transfer object action to the spec builder
@@ -71,6 +84,50 @@ public fun add_transfer_to_sender_spec(
     let action_data = bcs::to_bytes(&action);
     let action_spec = intents::new_action_spec_with_typename(
         type_name::with_defining_ids<account_actions::transfer::TransferToSender>(),
+        action_data,
+        1,
+    );
+    builder_mod::add(builder, action_spec);
+}
+
+/// Add a transfer coin action to the spec builder
+/// Use this when the coin was provided via provide_coin (e.g., from VaultSpend, CurrencyMint)
+/// The resource_name should match what the previous action used
+public fun add_transfer_coin_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    recipient: address,
+    resource_name: String,
+) {
+    use account_actions::action_spec_builder as builder_mod;
+    use std::type_name;
+    use sui::bcs;
+
+    let action = TransferCoinAction { recipient, resource_name };
+    let action_data = bcs::to_bytes(&action);
+    let action_spec = intents::new_action_spec_with_typename(
+        type_name::with_defining_ids<account_actions::transfer::TransferCoin>(),
+        action_data,
+        1,
+    );
+    builder_mod::add(builder, action_spec);
+}
+
+/// Add a transfer coin to sender action to the spec builder
+/// The coin will be transferred to whoever executes the intent (cranker)
+/// Use this for crank fees when the coin was provided via provide_coin
+/// The resource_name should match what the previous action used
+public fun add_transfer_coin_to_sender_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    resource_name: String,
+) {
+    use account_actions::action_spec_builder as builder_mod;
+    use std::type_name;
+    use sui::bcs;
+
+    let action = TransferCoinToSenderAction { resource_name };
+    let action_data = bcs::to_bytes(&action);
+    let action_spec = intents::new_action_spec_with_typename(
+        type_name::with_defining_ids<account_actions::transfer::TransferCoinToSender>(),
         action_data,
         1,
     );

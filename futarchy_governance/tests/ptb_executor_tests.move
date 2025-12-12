@@ -92,8 +92,6 @@ fun test_build_proposal_intent_with_multiple_actions() {
         option::none(), // cliff_time
         option::none(), // claim_window_ms
         0, // max_per_withdrawal (0 = unlimited)
-        false, // is_transferable
-        true, // is_cancellable
     );
 
     // === Add Memo Action ===
@@ -121,7 +119,8 @@ fun test_build_proposal_intent_with_multiple_actions() {
     );
 
     // Second: Transfer to recipient (takes coin from executable_resources)
-    transfer_init_actions::add_transfer_object_spec(
+    // Use add_transfer_coin_spec because VaultSpend uses provide_coin (key: name::coin::Type)
+    transfer_init_actions::add_transfer_coin_spec(
         &mut builder,
         transfer_recipient,
         resource_name,
@@ -180,7 +179,8 @@ fun test_build_proposal_intent_memo_and_transfer_only() {
         false,
         resource_name,
     );
-    transfer_init_actions::add_transfer_object_spec(
+    // Use add_transfer_coin_spec because VaultSpend uses provide_coin (key: name::coin::Type)
+    transfer_init_actions::add_transfer_coin_spec(
         &mut builder,
         RECIPIENT_ADDR,
         resource_name,
@@ -229,8 +229,6 @@ fun test_build_proposal_with_multiple_streams() {
             option::none(), // cliff_time
             option::none(), // claim_window_ms
             0, // max_per_withdrawal
-            false, // is_transferable
-            true, // is_cancellable
         );
         i = i + 1;
     };
@@ -279,8 +277,6 @@ fun test_action_spec_builder_pattern_documentation() {
         option::none(), // cliff_time
         option::none(), // claim_window_ms
         0, // max_per_withdrawal
-        false, // is_transferable
-        true, // is_cancellable
     );
 
     memo_init_actions::add_emit_memo_spec(
@@ -297,7 +293,8 @@ fun test_action_spec_builder_pattern_documentation() {
         false,
         resource_name,
     );
-    transfer_init_actions::add_transfer_object_spec(
+    // Use add_transfer_coin_spec because VaultSpend uses provide_coin (key: name::coin::Type)
+    transfer_init_actions::add_transfer_coin_spec(
         &mut builder,
         RECIPIENT_ADDR,
         resource_name,

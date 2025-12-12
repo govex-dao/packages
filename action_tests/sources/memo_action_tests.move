@@ -79,7 +79,7 @@ fun create_raise(scenario: &mut Scenario, sender: address) {
             &factory, &mut fee_manager, treasury_cap, coin_metadata,
             b"test".to_string(), TOKENS_FOR_SALE, MIN_RAISE,
             allowed_caps, option::none(), false, b"Memo Test".to_string(),
-            vector::empty<String>(), vector::empty<String>(), payment, 0,
+            vector::empty<String>(), vector::empty<String>(), payment,
             &clock, ts::ctx(scenario),
         );
         clock::destroy_for_testing(clock);

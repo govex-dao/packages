@@ -28,7 +28,8 @@ use account_protocol::{
     action_validation,
     account::{Self, Account, Auth},
     intents::{Self, Expired, Intent},
-    executable::Executable,
+    executable::{Self, Executable},
+    executable_resources,
 };
 
 use fun account_protocol::intents::add_typed_action as Intent.add_typed_action;
@@ -53,44 +54,53 @@ public fun owned_withdraw_coin(): OwnedWithdrawCoin { OwnedWithdrawCoin {} }
 // === Structs ===
 
 /// Action guarding access to account owned objects which can only be received via this action
+/// The object is stored in executable_resources under resource_name for subsequent actions
 public struct WithdrawObjectAction has drop, store {
     // the owned object we want to access
     object_id: ID,
+    // output name in executable_resources for subsequent actions
+    resource_name: String,
 }
 
 /// Action guarding access to account owned coins which can only be received via this action
+/// The coin is stored in executable_resources under resource_name for subsequent actions
 public struct WithdrawCoinAction has drop, store {
     // the type of the coin we want to access
     coin_type: String,
     // the amount of the coin we want to access
     coin_amount: u64,
+    // output name in executable_resources for subsequent actions
+    resource_name: String,
 }
 
 // === Destruction Functions ===
 
 /// Destroy a WithdrawObjectAction after serialization
 public fun destroy_withdraw_object_action(action: WithdrawObjectAction) {
-    let WithdrawObjectAction { object_id: _ } = action;
+    let WithdrawObjectAction { object_id: _, resource_name: _ } = action;
 }
 
 /// Destroy a WithdrawCoinAction after serialization
 public fun destroy_withdraw_coin_action(action: WithdrawCoinAction) {
-    let WithdrawCoinAction { coin_type: _, coin_amount: _ } = action;
+    let WithdrawCoinAction { coin_type: _, coin_amount: _, resource_name: _ } = action;
 }
 
 // === Public functions ===
 
 /// Creates a new WithdrawObjectAction and add it to an intent
+/// The resource_name specifies where the object will be stored in executable_resources
+/// for subsequent actions to consume (e.g., TransferObject)
 public fun new_withdraw_object<Outcome, IW: drop>(
     intent: &mut Intent<Outcome>,
     account: &Account,
     object_id: ID,
+    resource_name: String,
     intent_witness: IW,
 ) {
     intent.assert_is_account(account.addr());
 
     // Create the action struct
-    let action = WithdrawObjectAction { object_id };
+    let action = WithdrawObjectAction { object_id, resource_name };
 
     // Serialize it
     let action_data = bcs::to_bytes(&action);
@@ -106,13 +116,16 @@ public fun new_withdraw_object<Outcome, IW: drop>(
     destroy_withdraw_object_action(action);
 }
 
-/// Executes a WithdrawObjectAction and returns the object
+/// Executes a WithdrawObjectAction and stores the object in executable_resources
+/// SECURE: Object is stored in executable_resources under resource_name from ActionSpec
+/// for consumption by subsequent actions (e.g., TransferObject)
 public fun do_withdraw_object<Outcome: store, T: key + store, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     receiving: Receiving<T>,
-    intent_witness: IW,
-): T {
+    _intent_witness: IW,
+    ctx: &mut TxContext,
+) {
     executable.intent().assert_is_account(account.addr());
 
     // Get BCS bytes from ActionSpec
@@ -131,17 +144,25 @@ public fun do_withdraw_object<Outcome: store, T: key + store, IW: drop>(
     // Create BCS reader and deserialize
     let mut reader = bcs::new(*action_data);
     let object_id = object::id_from_address(bcs::peel_address(&mut reader));
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Validate all bytes consumed (prevent trailing data attacks)
     account_protocol::bcs_validation::validate_all_bytes_consumed(reader);
 
     assert!(receiving.receiving_object_id() == object_id, EWrongObject);
 
-    // Receive the object and increment action index
+    // Receive the object
     let obj = account::receive(account, receiving);
-    account_protocol::executable::increment_action_idx(executable);
 
-    obj
+    // Store in executable_resources for subsequent actions to consume
+    executable_resources::provide_object(
+        executable::uid_mut(executable),
+        resource_name,
+        obj,
+        ctx,
+    );
+
+    executable::increment_action_idx(executable);
 }
 
 /// Deletes a WithdrawObjectAction from an expired intent
@@ -152,24 +173,26 @@ public fun delete_withdraw_object(expired: &mut Expired, account: &Account) {
     let action_data = intents::action_spec_data(&spec);
     let mut reader = bcs::new(*action_data);
 
-    // We don't need the value, but we must peel it to consume the bytes
-    let WithdrawObjectAction { object_id: _ } = WithdrawObjectAction {
-        object_id: object::id_from_bytes(bcs::peel_vec_u8(&mut reader))
-    };
+    // We don't need the values, but we must peel them to consume the bytes
+    let _object_id = object::id_from_bytes(bcs::peel_vec_u8(&mut reader));
+    let _resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 }
 
 /// Creates a new WithdrawCoinAction and add it to an intent
+/// The resource_name specifies where the coin will be stored in executable_resources
+/// for subsequent actions to consume (e.g., TransferObject, VaultDeposit)
 public fun new_withdraw_coin<Outcome, IW: drop>(
     intent: &mut Intent<Outcome>,
     account: &Account,
     coin_type: String,
     coin_amount: u64,
+    resource_name: String,
     intent_witness: IW,
 ) {
     intent.assert_is_account(account.addr());
 
     // Create the action struct
-    let action = WithdrawCoinAction { coin_type, coin_amount };
+    let action = WithdrawCoinAction { coin_type, coin_amount, resource_name };
 
     // Serialize it
     let action_data = bcs::to_bytes(&action);
@@ -185,13 +208,16 @@ public fun new_withdraw_coin<Outcome, IW: drop>(
     destroy_withdraw_coin_action(action);
 }
 
-/// Executes a WithdrawCoinAction and returns the coin
+/// Executes a WithdrawCoinAction and stores the coin in executable_resources
+/// SECURE: Coin is stored in executable_resources under resource_name from ActionSpec
+/// for consumption by subsequent actions (e.g., TransferObject, VaultDeposit)
 public fun do_withdraw_coin<Outcome: store, CoinType, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
     receiving: Receiving<Coin<CoinType>>,
-    intent_witness: IW,
-): Coin<CoinType> {
+    _intent_witness: IW,
+    ctx: &mut TxContext,
+) {
     executable.intent().assert_is_account(account.addr());
 
     // Get BCS bytes from ActionSpec
@@ -211,6 +237,7 @@ public fun do_withdraw_coin<Outcome: store, CoinType, IW: drop>(
     let mut reader = bcs::new(*action_data);
     let coin_type = std::string::utf8(bcs::peel_vec_u8(&mut reader));
     let coin_amount = bcs::peel_u64(&mut reader);
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Validate all bytes consumed (prevent trailing data attacks)
     account_protocol::bcs_validation::validate_all_bytes_consumed(reader);
@@ -225,10 +252,15 @@ public fun do_withdraw_coin<Outcome: store, CoinType, IW: drop>(
         EWrongCoinType
     );
 
-    // Increment action index
-    account_protocol::executable::increment_action_idx(executable);
+    // Store in executable_resources for subsequent actions to consume
+    executable_resources::provide_coin(
+        executable::uid_mut(executable),
+        resource_name,
+        coin,
+        ctx,
+    );
 
-    coin
+    executable::increment_action_idx(executable);
 }
 
 /// Deletes a WithdrawCoinAction from an expired intent
@@ -240,10 +272,9 @@ public fun delete_withdraw_coin(expired: &mut Expired, account: &Account) {
     let mut reader = bcs::new(*action_data);
 
     // We don't need the values, but we must peel them to consume the bytes
-    let WithdrawCoinAction { coin_type: _, coin_amount: _ } = WithdrawCoinAction {
-        coin_type: std::string::utf8(bcs::peel_vec_u8(&mut reader)),
-        coin_amount: bcs::peel_u64(&mut reader)
-    };
+    let _coin_type = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+    let _coin_amount = bcs::peel_u64(&mut reader);
+    let _resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 }
 
 // Coin operations

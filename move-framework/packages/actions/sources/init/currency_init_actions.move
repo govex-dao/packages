@@ -24,14 +24,17 @@ public struct ReturnMetadataAction has copy, drop, store {
     recipient: address,
 }
 
-/// Action to mint new coins
+/// Action to mint new coins and store in executable_resources
+/// The minted coin can be consumed by subsequent actions (e.g., CreateVesting)
 public struct MintAction has copy, drop, store {
     amount: u64,
+    resource_name: std::string::String, // Output name in executable_resources
 }
 
-/// Action to burn coins
+/// Action to burn coins from executable_resources
 public struct BurnAction has copy, drop, store {
     amount: u64,
+    resource_name: std::string::String, // Name of coin resource to burn
 }
 
 /// Action to disable currency operations (immutable - can only disable, not re-enable)
@@ -101,12 +104,18 @@ public fun add_return_metadata_spec(
 }
 
 /// Add MintAction to Builder
-public fun add_mint_spec(builder: &mut account_actions::action_spec_builder::Builder, amount: u64) {
+/// Mints coins and stores them in executable_resources with the given resource_name
+/// Subsequent actions (like CreateVesting) can consume from executable_resources
+public fun add_mint_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    amount: u64,
+    resource_name: std::string::String,
+) {
     use account_actions::action_spec_builder;
     use std::type_name;
     use sui::bcs;
 
-    let action = MintAction { amount };
+    let action = MintAction { amount, resource_name };
     let action_data = bcs::to_bytes(&action);
 
     let action_spec = intents::new_action_spec_with_typename(
@@ -118,12 +127,17 @@ public fun add_mint_spec(builder: &mut account_actions::action_spec_builder::Bui
 }
 
 /// Add BurnAction to Builder
-public fun add_burn_spec(builder: &mut account_actions::action_spec_builder::Builder, amount: u64) {
+/// Burns coins from executable_resources with the given resource_name
+public fun add_burn_spec(
+    builder: &mut account_actions::action_spec_builder::Builder,
+    amount: u64,
+    resource_name: std::string::String,
+) {
     use account_actions::action_spec_builder;
     use std::type_name;
     use sui::bcs;
 
-    let action = BurnAction { amount };
+    let action = BurnAction { amount, resource_name };
     let action_data = bcs::to_bytes(&action);
 
     let action_spec = intents::new_action_spec_with_typename(

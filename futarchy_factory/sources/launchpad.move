@@ -421,6 +421,8 @@ public entry fun lock_intents_and_start_raise<RaiseToken, StableCoin>(
 }
 
 /// Create a pro-rata raise (uncapped - no max_raise_amount limit)
+/// Treasury cap MUST have zero supply - tokens are minted internally for the raise.
+/// For team/creator allocations, use CurrencyMint action in success_specs.
 public fun create_raise<RaiseToken: drop, StableCoin: drop>(
     factory: &factory::Factory,
     fee_manager: &mut fee::FeeManager,
@@ -437,8 +439,6 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
     metadata_keys: vector<String>,
     metadata_values: vector<String>,
     launchpad_fee: Coin<sui::sui::SUI>,
-    // Extra tokens to mint and return to caller (for creator allocation)
-    extra_mint_to_caller: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -480,7 +480,6 @@ public fun create_raise<RaiseToken: drop, StableCoin: drop>(
         description,
         metadata_keys,
         metadata_values,
-        extra_mint_to_caller,
         clock,
         ctx,
     );
@@ -1402,20 +1401,15 @@ fun init_raise<RaiseToken: drop, StableCoin: drop>(
     description: String,
     metadata_keys: vector<String>,
     metadata_values: vector<String>,
-    extra_mint_to_caller: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     // Validate coin set (supply must be zero, types must match)
     futarchy_one_shot_utils::coin_registry::validate_coin_set(&treasury_cap, &coin_metadata);
 
+    // Mint only tokens_for_sale for the raise vault
+    // For team/creator allocations, use CurrencyMint action in success_specs
     let minted_tokens = coin::mint(&mut treasury_cap, tokens_for_sale, ctx);
-
-    // Mint extra tokens for the caller if requested (for creator allocation)
-    if (extra_mint_to_caller > 0) {
-        let extra_tokens = coin::mint(&mut treasury_cap, extra_mint_to_caller, ctx);
-        sui_transfer::public_transfer(extra_tokens, ctx.sender());
-    };
 
     // Calculate start_time: creation_time + delay (if delay provided, otherwise start immediately)
     let current_time = clock.timestamp_ms();

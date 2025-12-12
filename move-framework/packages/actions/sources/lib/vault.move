@@ -678,6 +678,8 @@ public fun delete_deposit<CoinType>(expired: &mut Expired) {
 // === Execution Functions ===
 
 /// Execute cancel stream action
+/// Refund is provided to executable_resources under the resource_name from ActionSpec
+/// for consumption by subsequent actions (e.g., VaultDeposit to return funds)
 public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: drop>(
     executable: &mut Executable<Outcome>,
     account: &mut Account,
@@ -686,7 +688,7 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
     version_witness: VersionWitness,
     _witness: IW,
     ctx: &mut TxContext,
-): (Coin<CoinType>, u64) {
+) {
     executable.intent().assert_is_account(account.addr());
 
     let specs = executable.intent().action_specs();
@@ -705,6 +707,7 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
     let mut reader = bcs::new(*action_data);
     let vault_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
     let stream_id = bcs::peel_address(&mut reader).to_id();
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
 
     // Security: ensure all bytes are consumed to prevent trailing data attacks
     bcs_validation::validate_all_bytes_consumed(reader);
@@ -765,10 +768,17 @@ public fun do_cancel_stream<Config: store, Outcome: store, CoinType: drop, IW: d
         vault.bag.remove<TypeName, Balance<CoinType>>(stream.coin_type).destroy_zero();
     };
 
+    // Provide refund to executable_resources for consumption by subsequent actions
+    // (e.g., VaultDeposit to return funds to the vault)
+    executable_resources::provide_coin(
+        executable::uid_mut(executable),
+        resource_name,
+        refund_coin,
+        ctx,
+    );
+
     // Increment action index
     executable::increment_action_idx(executable);
-
-    (refund_coin, to_refund)
 }
 
 /// Processes a SpendAction and takes a coin from the vault.
@@ -824,8 +834,8 @@ public fun do_spend<Config: store, Outcome: store, CoinType: drop, IW: drop>(
         vault.bag.remove<_, Balance<CoinType>>(type_name::with_defining_ids<CoinType>()).destroy_zero();
 
     // Provide coin to executable_resources for subsequent actions
-    // Use provide_object so take_object can retrieve it (compatible with do_init_transfer)
-    executable_resources::provide_object<Coin<CoinType>>(
+    // Use provide_coin so take_coin can retrieve it (compatible with do_init_transfer_coin)
+    executable_resources::provide_coin<CoinType>(
         executable::uid_mut(executable),
         resource_name,
         coin,

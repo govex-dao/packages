@@ -155,12 +155,13 @@ public fun fulfill_add_liquidity<AssetType: drop, StableType: drop, LPType: drop
     assert!(action.pool_id == object::id(pool), EPoolMismatch);
 
     // Take coins from executable_resources (put there by prior VaultSpend actions)
-    let asset_coin: Coin<AssetType> = executable_resources::take_object(
+    // Use take_coin to match provide_coin key format!
+    let asset_coin: Coin<AssetType> = executable_resources::take_coin(
         executable::uid_mut(executable),
         action.asset_resource_name,
     );
 
-    let stable_coin: Coin<StableType> = executable_resources::take_object(
+    let stable_coin: Coin<StableType> = executable_resources::take_coin(
         executable::uid_mut(executable),
         action.stable_resource_name,
     );
@@ -267,7 +268,8 @@ public fun fulfill_remove_liquidity<AssetType: drop, StableType: drop, LPType: d
     assert!(action.pool_id == object::id(pool), EPoolMismatch);
 
     // Take LP coin from executable_resources (put there by prior VaultSpend action)
-    let lp_coin: Coin<LPType> = executable_resources::take_object(
+    // Use take_coin to match provide_coin key format!
+    let lp_coin: Coin<LPType> = executable_resources::take_coin(
         executable::uid_mut(executable),
         action.lp_resource_name,
     );
@@ -363,7 +365,8 @@ public fun fulfill_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome
     if (action.swap_asset) {
         // Swap asset for stable
         // Take asset coin from executable_resources (put there by prior VaultSpend action)
-        let asset_coin: Coin<AssetType> = executable_resources::take_object(
+        // Use take_coin to match provide_coin key format!
+        let asset_coin: Coin<AssetType> = executable_resources::take_coin(
             executable::uid_mut(executable),
             action.input_resource_name,
         );
@@ -385,7 +388,8 @@ public fun fulfill_swap<AssetType: drop, StableType: drop, LPType: drop, Outcome
     } else {
         // Swap stable for asset
         // Take stable coin from executable_resources (put there by prior VaultSpend action)
-        let stable_coin: Coin<StableType> = executable_resources::take_object(
+        // Use take_coin to match provide_coin key format!
+        let stable_coin: Coin<StableType> = executable_resources::take_coin(
             executable::uid_mut(executable),
             action.input_resource_name,
         );

@@ -665,6 +665,123 @@ launchpad::finalize_init_execution(executable, account, registry, clock, ctx);
 
 ---
 
+## CRITICAL: Never Return Objects to PTB Caller
+
+### The Vulnerability
+
+**Action functions that return objects to the PTB caller are EXPLOITABLE.** The executor can steal returned objects instead of passing them to subsequent actions.
+
+```move
+// ❌ VULNERABLE - Returns coin to PTB caller
+public fun do_spend<...>(...): Coin<CoinType> {
+    let coin = vault.withdraw(amount);
+    coin  // PTB caller receives this - CAN STEAL IT
+}
+
+// ❌ VULNERABLE - Returns object to PTB caller
+public fun do_withdraw_object<...>(...): T {
+    let obj = account.receive(receiving);
+    obj  // PTB caller receives this - CAN STEAL IT
+}
+```
+
+**Attack scenario:**
+```
+Intent: [SpendAction(100 SUI), TransferAction(recipient)]
+
+Expected flow:
+  do_spend() → returns 100 SUI → PTB passes to → do_transfer() → recipient gets 100 SUI
+
+Attack flow:
+  do_spend() → returns 100 SUI → PTB KEEPS IT → do_transfer() never called
+  Executor steals 100 SUI!
+```
+
+### The Fix: Use `executable_resources`
+
+**All objects produced by actions MUST be stored in `executable_resources`, not returned.**
+
+```move
+// ✅ SECURE - Stores coin in executable_resources
+public fun do_spend<...>(
+    executable: &mut Executable<Outcome>,
+    ...
+    ctx: &mut TxContext,
+) {
+    // Deserialize resource_name from ActionSpec (deterministic!)
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+
+    let coin = vault.withdraw(amount);
+
+    // Store in executable_resources - PTB cannot intercept
+    executable_resources::provide_coin(
+        executable::uid_mut(executable),
+        resource_name,
+        coin,
+        ctx,
+    );
+
+    executable::increment_action_idx(executable);
+}
+
+// ✅ SECURE - Takes coin from executable_resources
+public fun do_transfer<...>(
+    executable: &mut Executable<Outcome>,
+    ...
+) {
+    // Deserialize resource_name and recipient from ActionSpec
+    let resource_name = std::string::utf8(bcs::peel_vec_u8(&mut reader));
+    let recipient = bcs::peel_address(&mut reader);
+
+    // Take from executable_resources (deterministic!)
+    let coin = executable_resources::take_coin(
+        executable::uid_mut(executable),
+        resource_name,
+    );
+
+    transfer::public_transfer(coin, recipient);
+    executable::increment_action_idx(executable);
+}
+```
+
+### Why This Works
+
+1. **`resource_name` is in ActionSpec** - Set at Intent creation, approved by governance, immutable at execution
+2. **PTB caller never touches the object** - Goes directly from producer action → executable_resources → consumer action
+3. **Deterministic** - Same Intent always produces same resource flow
+4. **Enforced cleanup** - `destroy_resources()` aborts if bag not empty
+
+### Checklist for New Actions
+
+When writing a new action that produces an object:
+
+- [ ] **NEVER return the object** from the function
+- [ ] **Add `resource_name: String` field** to the Action struct
+- [ ] **Deserialize `resource_name`** from ActionSpec BCS data
+- [ ] **Call `executable_resources::provide_coin/provide_object`** to store output
+- [ ] **Document** which resource_name the action outputs to
+
+When writing a new action that consumes an object:
+
+- [ ] **NEVER accept the object as a function parameter** from PTB
+- [ ] **Add `resource_name: String` field** to the Action struct
+- [ ] **Deserialize `resource_name`** from ActionSpec BCS data
+- [ ] **Call `executable_resources::take_coin/take_object`** to retrieve input
+
+### Exceptions (Intentional Returns)
+
+Some patterns legitimately return objects to PTB:
+
+1. **Hot Potatoes** (no `store` ability) - Must be used in same tx, e.g., `UpgradeTicket`
+2. **ResourceRequest pattern** - For external contributions (PTB provides resources TO the protocol)
+3. **Borrow/Return pattern** - Returns Cap but REQUIRES matching ReturnAction in same Intent
+
+These are safe because the returned object either:
+- Cannot be stored (hot potato forces immediate use)
+- Is being PROVIDED by PTB, not taken from protocol
+
+---
+
 ## Anti-Patterns (DO NOT DO)
 
 ### ❌ Don't Add Dispatcher Layer
@@ -717,6 +834,21 @@ public fun do_create_stream(executable: &mut Executable, ...) {
     execute_action(...);
     // Missing: executable::increment_action_idx(executable);
     // ❌ Next action will read same ActionSpec again!
+}
+```
+
+### ❌ Don't Return Objects to PTB Caller
+```move
+// BAD - executor can steal the coin!
+public fun do_spend(...): Coin<CoinType> {
+    let coin = vault.withdraw(amount);
+    coin  // ❌ NEVER return objects - use executable_resources instead!
+}
+
+// GOOD - store in executable_resources
+public fun do_spend(...) {
+    let coin = vault.withdraw(amount);
+    executable_resources::provide_coin(uid, resource_name, coin, ctx);  // ✅
 }
 ```
 

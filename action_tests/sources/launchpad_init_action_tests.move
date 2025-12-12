@@ -164,7 +164,6 @@ fun create_raise(scenario: &mut Scenario, sender: address) {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
-            0,
             &clock,
             ts::ctx(scenario),
         );
@@ -438,7 +437,8 @@ fun test_spend_and_transfer() {
     );
 
     // Action 2: Transfer to recipient (takes coin from executable_resources)
-    transfer_init_actions::add_transfer_object_spec(
+    // Use add_transfer_coin_spec because VaultSpend uses provide_coin (key: name::coin::Type)
+    transfer_init_actions::add_transfer_coin_spec(
         &mut builder,
         transfer_recipient,
         resource_name,
@@ -495,10 +495,10 @@ fun test_spend_and_transfer() {
             ts::ctx(&mut scenario),
         );
 
-        // Action 2: Execute transfer (takes from executable_resources)
-        transfer::do_init_transfer<
+        // Action 2: Execute transfer (takes from executable_resources using take_coin)
+        transfer::do_init_transfer_coin<
             dao_init_outcome::DaoInitOutcome,
-            Coin<TEST_STABLE_REGULAR>,
+            TEST_STABLE_REGULAR,
             dao_init_executor::DaoInitIntent,
         >(
             &mut executable,

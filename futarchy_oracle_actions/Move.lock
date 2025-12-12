@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "B3F90123D87698538337282F446B9DA6172F5922DD7B0F92D482FEE969E75AEE"
+manifest_digest = "939D06F5D5B4E57657B1D12C293F26147278D00AC8F69159CC0A3F6BD0E2BDC2"
 deps_digest = "D7FB1F2E1A893B9A0E80A392473710373DE5791D3AC8F6D898803754B2ADAE6B"
 dependencies = [
   { id = "AccountActions", name = "AccountActions" },
@@ -165,6 +165,6 @@ flavor = "sui"
 
 [env.devnet]
 chain-id = "58e278c2"
-original-published-id = "0x93ccc1fbfa04e8d6ad17a08f45237c32a1caa0db228e6ac4d140bc1c008c2715"
-latest-published-id = "0x93ccc1fbfa04e8d6ad17a08f45237c32a1caa0db228e6ac4d140bc1c008c2715"
+original-published-id = "0x4ba54e99d88b6435f01933f20c718e5604253e873d788701553bfb79a8ab60a3"
+latest-published-id = "0x4ba54e99d88b6435f01933f20c718e5604253e873d788701553bfb79a8ab60a3"
 published-version = "1"

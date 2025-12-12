@@ -156,7 +156,6 @@ fun test_permissionless_completion_after_delay() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
-            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
@@ -269,7 +268,6 @@ fun test_permissionless_completion_requires_settlement() {
             vector::empty<String>(),
             vector::empty<String>(),
             payment,
-            0, // extra_mint_to_caller
             &clock,
             ts::ctx(&mut scenario),
         );
